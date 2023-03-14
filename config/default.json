@@ -176,6 +176,9 @@
         "Zvbc" : {
             "supported" : true
         },
+        "Zvkned" : {
+            "supported" : true
+        },
         "Sscofpmf" : {
             "supported" : true
         },
