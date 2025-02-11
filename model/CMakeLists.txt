@@ -78,7 +78,11 @@ foreach (xlen IN ITEMS 32 64)
                 ${vext_srcs}
                 "riscv_insts_zicbom.sail"
                 "riscv_insts_zicboz.sail"
+<<<<<<< HEAD
                 "riscv_insts_zvbb.sail"
+=======
+                "riscv_insts_zcmp.sail"
+>>>>>>> 28200a2f (Add support for Zcmp extension)
             )
 
             if (variant STREQUAL "rmem")
