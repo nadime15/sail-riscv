@@ -209,7 +209,7 @@ function process_cmpop (rlist : bits(4), spimm : bits(2), write_pc : bool, write
   foreach (i from 31 downto 1) {
     if mask[i] == bitone then {
       let imm = to_bits(12, offset);
-      let rd = bits_regidx(to_bits(5, i));
+      let rd  = bits_regidx(to_bits(5, i));
       match execute(LOAD(imm, sp, rd, true, width, false, false)) {
         RETIRE_SUCCESS => { offset = offset - xlen_bytes },
         RETIRE_FAIL    => { return RETIRE_FAIL }
