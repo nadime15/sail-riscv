@@ -107,6 +107,8 @@ enum clause extension = Ext_Zhinx
 
 // Vector Basic Bit-manipulation
 enum clause extension = Ext_Zvbb
+// Vector Carryless Multiplication
+enum clause extension = Ext_Zvbc
 // Vector Cryptography Bit-manipulation
 enum clause extension = Ext_Zvkb
 
