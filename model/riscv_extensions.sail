@@ -137,6 +137,10 @@ function clause hartSupports(Ext_Zvkb) = config extensions.Zvkb.supported
 // Vector Carryless Multiplication
 enum clause extension = Ext_Zvbc
 function clause hartSupports(Ext_Zvbc) = config extensions.Zvbc.supported
+// NIST Suite: Vector SHA-2 Secure Hash
+enum clause extension = Ext_Zvknha
+
+enum clause extension = Ext_Zvknhb
 
 // Count Overflow and Mode-Based Filtering
 enum clause extension = Ext_Sscofpmf
