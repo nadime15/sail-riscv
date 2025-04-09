@@ -6,14 +6,14 @@
 /*  SPDX-License-Identifier: BSD-2-Clause                                                */
 /*=======================================================================================*/
 
-function clause extensionEnabled(Ext_Zvknha) = extensionEnabled(Ext_V)
-function clause extensionEnabled(Ext_Zvknhb) = extensionEnabled(Ext_V)
+function clause currentlyEnabled(Ext_Zvknha) = currentlyEnabled(Ext_V)
+function clause currentlyEnabled(Ext_Zvknhb) = currentlyEnabled(Ext_V)
 
 union clause ast = VSHA2MS_VV : (vregidx, vregidx, vregidx)
 
 mapping clause encdec = VSHA2MS_VV(vs2, vs1, vd)
   <-> 0b1011011 @ encdec_vreg(vs2) @ encdec_vreg(vs1) @ 0b010 @ encdec_vreg(vd) @ 0b1110111
-  when (extensionEnabled(Ext_Zvknha) & get_sew() == 32) | (extensionEnabled(Ext_Zvknhb) & (get_sew() == 32 | get_sew() == 64)) & zvknhab_check_encdec(vs2, vs1, vd)
+  when (currentlyEnabled(Ext_Zvknha) & get_sew() == 32) | (currentlyEnabled(Ext_Zvknhb) & (get_sew() == 32 | get_sew() == 64)) & zvknhab_check_encdec(vs2, vs1, vd)
 
 mapping clause assembly = VSHA2MS_VV(vs2, vs1, vd)
   <-> "vsha2ms.vv" ^ spc() ^ vreg_name(vd) ^ sep() ^ vreg_name(vs2) ^ vreg_name(vs1)
@@ -70,11 +70,11 @@ union clause ast = VSHA2C : (zvkfunct6, vregidx, vregidx, vregidx)
 
 mapping clause encdec = VSHA2C(VV_VSHA2CH, vs2, vs1, vd)
   <-> 0b1011101 @ encdec_vreg(vs2) @ encdec_vreg(vs1) @ 0b010 @ encdec_vreg(vd) @ 0b1110111
-  when (extensionEnabled(Ext_Zvknha) & get_sew() == 32) | (extensionEnabled(Ext_Zvknhb) & (get_sew() == 32 | get_sew() == 64)) & zvknhab_check_encdec(vs2, vs1, vd)
+  when (currentlyEnabled(Ext_Zvknha) & get_sew() == 32) | (currentlyEnabled(Ext_Zvknhb) & (get_sew() == 32 | get_sew() == 64)) & zvknhab_check_encdec(vs2, vs1, vd)
 
 mapping clause encdec = VSHA2C(VV_VSHA2CL, vs2, vs1, vd)
   <-> 0b1011111 @ encdec_vreg(vs2) @ encdec_vreg(vs1) @ 0b010 @ encdec_vreg(vd) @ 0b1110111
- when (extensionEnabled(Ext_Zvknha) & get_sew() == 32) | (extensionEnabled(Ext_Zvknhb) & (get_sew() == 32 | get_sew() == 64)) & zvknhab_check_encdec(vs2, vs1, vd)
+ when (currentlyEnabled(Ext_Zvknha) & get_sew() == 32) | (currentlyEnabled(Ext_Zvknhb) & (get_sew() == 32 | get_sew() == 64)) & zvknhab_check_encdec(vs2, vs1, vd)
 
 mapping vsha2c_mnemonic : zvkfunct6 <-> string = {
   VV_VSHA2CH <-> "vsha2ch.vv",
