@@ -29,10 +29,10 @@ function zvknhab_check_encdec(vs2: vregidx, vs1: vregidx, vd: vregidx) -> bool =
   zvk_check_encdec(SEW, 4) & zvk_valid_reg_overlap(vs1, vd, LMUL_pow) & zvk_valid_reg_overlap(vs2, vd, LMUL_pow);
 }
 
-val ROTR : forall 'n 'm 'p. (bits('n), int('m), int('p)) -> bits('n)
+val ROTR : forall 'n 'm 'p, 'n >= 0. (bits('n), int('m), int('p)) -> bits('n)
 function ROTR (x, n, SEW) = (x >> to_bits('n, n)) | (x << (to_bits('n, SEW) - to_bits('n, n)))
 
-val SHR : forall 'n 'm. (bits('n), int('m)) -> bits('n)
+val SHR : forall 'n 'm, 'n >= 0. (bits('n), int('m)) -> bits('n)
 function SHR (x, n) = x >> to_bits('n, n)
 
 val sig0 : forall 'n 'm, 'n >= 0 & ('m == 32 | 'm == 64). (bits('n), int('m)) -> bits('n)
