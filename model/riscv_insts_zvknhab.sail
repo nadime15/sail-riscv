@@ -19,19 +19,17 @@ mapping clause assembly = VSHA2MS_VV(vs2, vs1, vd)
   <-> "vsha2ms.vv" ^ spc() ^ vreg_name(vd) ^ sep() ^ vreg_name(vs2) ^ vreg_name(vs1)
 
 function clause execute (VSHA2MS_VV(vs2, vs1, vd)) = {
-  let SEW      = get_sew();
+  let 'SEW     = get_sew();
   let LMUL_pow = get_lmul_pow();
   let num_elem = get_num_elem(LMUL_pow, SEW);
 
   assert(SEW == 32 | SEW == 64);
 
-  let 'm = SEW;
-
   let vs2_val = read_vreg(num_elem, SEW, LMUL_pow, vs2);
   let vs1_val = read_vreg(num_elem, SEW, LMUL_pow, vs1);
   let vd_val  = read_vreg(num_elem, SEW, LMUL_pow, vd);
 
-  var w : vector(20, bits('m)) = vector_init(zeros());
+  var w : vector(20, bits('SEW)) = vector_init(zeros());
 
   let eg_len   = (unsigned(vl) / 4);
   let eg_start = (unsigned(vstart) / 4);
@@ -61,7 +59,7 @@ function clause execute (VSHA2MS_VV(vs2, vs1, vd)) = {
     w[18] = sig1(w[16], SEW) + w[11] + sig0(w[3], SEW) + w[2];
     w[19] = sig1(w[17], SEW) + w[12] + sig0(w[4], SEW) + w[3];
 
-    set_velem(vd, SEW, w[19] @ w[18] @ w[17] @ w[16], i);
+    set_velem_4(vd, SEW, w[19] @ w[18] @ w[17] @ w[16], i);
   };
 
  set_vstart(zeros());
@@ -113,7 +111,7 @@ function clause execute (VSHA2C(funct6, vs2, vs1, vd)) = {
     var d = vd_val[i*4+2];
     var c = vd_val[i*4+3];
 
-    let MessageSchedPlusC = get_velem(vs1_val, i);
+    let MessageSchedPlusC = get_velem_4(vs1_val, i);
 
     let w0 = if funct6 == VV_VSHA2CL
     then MessageSchedPlusC[(SEW * 1) - 1 .. 0]
@@ -146,7 +144,7 @@ function clause execute (VSHA2C(funct6, vs2, vs1, vd)) = {
     b  = a;
     a  = T1 + T2;
 
-    set_velem(vd, SEW, a @ b @ e @ f, i);
+    set_velem_4(vd, SEW, a @ b @ e @ f, i);
   };
 
   set_vstart(zeros());

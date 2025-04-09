@@ -173,7 +173,7 @@ foreach (xlen IN ITEMS 32 64)
                 ${sail_vm_srcs}
                 # Shared/common code for the cryptography extension.
                 "riscv_types_kext.sail"
-                "riscv_types_zvk.sail"
+                "riscv_zvk_utils.sail"
             )
 
             if (variant STREQUAL "rvfi")
