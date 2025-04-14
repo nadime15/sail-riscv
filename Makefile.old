@@ -96,6 +96,7 @@ SAIL_VM_SRCS += riscv_vmem_pte.sail
 SAIL_VM_SRCS += riscv_vmem_ptw.sail
 SAIL_VM_SRCS += riscv_vmem_tlb.sail
 SAIL_VM_SRCS += riscv_vmem.sail
+SAIL_VM_SRCS += riscv_vmem_utils.sail
 
 # Non-instruction sources
 PRELUDE = prelude.sail riscv_errors.sail $(SAIL_XLEN) $(SAIL_FLEN) $(SAIL_VLEN) prelude_mem_addrtype.sail prelude_mem_metadata.sail prelude_mem.sail arithmetic.sail
@@ -201,7 +202,7 @@ RISCV_EXTRAS_LEM = $(addprefix handwritten_support/,$(RISCV_EXTRAS_LEM_FILES))
 .PHONY:
 
 all: c_emulator/riscv_sim_$(ARCH)
-.PHONY: all
+.PHONY: all check_properties
 
 # the following ensures empty sail-generated .c files don't hang around and
 # break future builds if sail exits badly
@@ -212,6 +213,9 @@ check: $(SAIL_SRCS) model/main.sail Makefile.old
 
 check_properties: $(SAIL_SRCS) Makefile.old
 	$(SAIL) --smt --smt-auto --smt-auto-solver z3 $(SAIL_FLAGS) $(SAIL_SRCS)
+
+config-schema.json: $(SAIL_SRCS) Makefile.old
+	$(SAIL) --output-schema $@ $(SAIL_FLAGS) $(SAIL_SRCS)
 
 interpret: $(SAIL_SRCS) model/main.sail
 	$(SAIL) -i $(SAIL_FLAGS) $(SAIL_SRCS) model/main.sail

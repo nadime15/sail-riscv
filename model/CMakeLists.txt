@@ -133,6 +133,7 @@ foreach (xlen IN ITEMS 32 64)
                 "riscv_vmem_ptw.sail"
                 "riscv_vmem_tlb.sail"
                 "riscv_vmem.sail"
+                "riscv_vmem_utils.sail"
             )
 
             set(prelude
