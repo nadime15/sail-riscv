@@ -301,16 +301,11 @@ function clause execute(LOAD_FP(imm, rs1, rd, width)) = {
     Ext_DataAddr_Error(e)  => { ext_handle_data_check_error(e); RETIRE_FAIL },
     Ext_DataAddr_OK(vaddr) => {
       if   check_misaligned(vaddr, width)
-      then { handle_mem_exception(vaddr, E_Load_Addr_Align()); RETIRE_FAIL }
-      else match translateAddr(vaddr, Read(Data)) {
-        TR_Failure(e, _)    => { handle_mem_exception(vaddr, e); RETIRE_FAIL },
-        TR_Address(addr, _) => {
-          let (aq, rl, res) = (false, false, false);
-          match mem_read(Read(Data), addr, width_bytes, aq, rl, res) {
-            Ok(result) => { F(rd) = nan_box(result); RETIRE_SUCCESS },
-            Err(e)     => { handle_mem_exception(vaddr, e); RETIRE_FAIL },
-          }
-        },
+      then { handle_mem_exception(vaddr, E_Load_Addr_Align()); return RETIRE_FAIL };
+      let (aq, rl, res) = (false, false, false);
+      match vmem_read(vaddr, width_bytes, aq, rl, res) {
+        Err(vaddr, e) => { handle_mem_exception(vaddr, e); RETIRE_FAIL },
+        Ok(result)    => { F(rd) = nan_box(result); RETIRE_SUCCESS }
       }
     }
   }
@@ -355,29 +350,19 @@ function clause execute (STORE_FP(imm, rs2, rs1, width)) = {
   assert(width_bytes <= flen_bytes);
 
   let offset : xlenbits = sign_extend(imm);
-  let (aq, rl, con) = (false, false, false);
   /* Get the address, X(rs1) + offset.
      Some extensions perform additional checks on address validity. */
   match ext_data_get_addr(rs1, offset, Write(Data), width_bytes) {
     Ext_DataAddr_Error(e)  => { ext_handle_data_check_error(e); RETIRE_FAIL },
     Ext_DataAddr_OK(vaddr) => {
       if   check_misaligned(vaddr, width)
-      then { handle_mem_exception(vaddr, E_SAMO_Addr_Align()); RETIRE_FAIL }
-      else match translateAddr(vaddr, Write(Data)) {
-        TR_Failure(e, _)    => { handle_mem_exception(vaddr, e); RETIRE_FAIL },
-        TR_Address(addr, _) => {
-          match mem_write_ea(addr, width_bytes, aq, rl, false) {
-            Err(e) => { handle_mem_exception(vaddr, e); RETIRE_FAIL },
-            Ok(_)  => {
-              let rs2_val = F(rs2);
-              match mem_write_value(addr, width_bytes, rs2_val[width_bytes * 8 - 1 .. 0], aq, rl, con) {
-                Ok(true)  => { RETIRE_SUCCESS },
-                Ok(false) => { internal_error(__FILE__, __LINE__, "store got false from mem_write_value") },
-                Err(e)    => { handle_mem_exception(vaddr, e); RETIRE_FAIL }
-              }
-            },
-          }
-        }
+      then { handle_mem_exception(vaddr, E_SAMO_Addr_Align()); return RETIRE_FAIL };
+
+      let (aq, rl, res) = (false, false, false);
+      let data = F(rs2)[width_bytes * 8 - 1 .. 0];
+      match vmem_write(vaddr, width_bytes, data, aq, rl, res) {
+        Ok(_)         => RETIRE_SUCCESS,
+        Err(vaddr, e) => { handle_mem_exception(vaddr, e); RETIRE_FAIL },
       }
     }
   }

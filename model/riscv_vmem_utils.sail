@@ -126,7 +126,7 @@ function check_misaligned(vaddr : virtaddr, width : word_width) -> bool = {
   }
 }
 
-val vmem_read : forall 'width, 'width in {1, 2, 4, 8} & 'width <= xlen_bytes.
+val vmem_read : forall 'width, 'width in {1, 2, 4, 8} & ('width <= xlen_bytes | 'width <= flen_bytes).
   (virtaddr, int('width), bool, bool, bool) -> result(bits(8 * 'width), (virtaddr, ExceptionType))
 
 function vmem_read(vaddr, bytes, aq, rl, res) = {
@@ -179,7 +179,7 @@ function vmem_read(vaddr, bytes, aq, rl, res) = {
 // https://github.com/riscv/sail-riscv/issues/766#issuecomment-2698992551
 // I'm keeping it here for confirmation during code review.
 
-val vmem_write : forall 'width, 'width in {1, 2, 4, 8} & 'width <= xlen_bytes.
+val vmem_write : forall 'width, 'width in {1, 2, 4, 8} & ('width <= xlen_bytes | 'width <= flen_bytes).
   (virtaddr, int('width), bits(8 * 'width), bool, bool, bool) -> result(bool, (virtaddr, ExceptionType))
 
 function vmem_write(vaddr, bytes, data, aq, rl, res) = {

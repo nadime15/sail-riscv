@@ -84,18 +84,15 @@ function process_vlseg (nf, vm, vd, load_width_bytes, rs1, EMUL_pow, num_elem) =
         let elem_offset = (i * nf + j) * load_width_bytes;
         match ext_data_get_addr(rs1, to_bits(xlen, elem_offset), Read(Data), load_width_bytes) {
           Ext_DataAddr_Error(e)  => { ext_handle_data_check_error(e); return RETIRE_FAIL },
-          Ext_DataAddr_OK(vaddr) =>
+          Ext_DataAddr_OK(vaddr) => {
               if check_misaligned(vaddr, width_type)
-              then { handle_mem_exception(vaddr, E_Load_Addr_Align()); return RETIRE_FAIL }
-              else match translateAddr(vaddr, Read(Data)) {
-                TR_Failure(e, _)     => { handle_mem_exception(vaddr, e); return RETIRE_FAIL },
-                TR_Address(paddr, _) => {
-                  match mem_read(Read(Data), paddr, load_width_bytes, false, false, false) {
-                    Ok(elem) => write_single_element(load_width_bytes * 8, i, vregidx_offset(vd, to_bits(5, j * EMUL_reg)), elem),
-                    Err(e)   => { handle_mem_exception(vaddr, e); return RETIRE_FAIL }
-                  }
-                }
+              then { handle_mem_exception(vaddr, E_Load_Addr_Align()); return RETIRE_FAIL };
+              let (aq, rl, res) = (false, false, false);
+              match vmem_read(vaddr, load_width_bytes, aq, rl, res) {
+                Ok(elem)      => write_single_element(load_width_bytes * 8, i, vregidx_offset(vd, to_bits(5, j * EMUL_reg)), elem),
+                Err(vaddr, e) => { handle_mem_exception(vaddr, e); return RETIRE_FAIL },
               }
+          }
         }
       }
     } else { /* prestart, masked or tail segments */
@@ -170,28 +167,14 @@ function process_vlsegff (nf, vm, vd, load_width_bytes, rs1, EMUL_pow, num_elem)
                   print_reg("CSR vl <- " ^ BitStr(vl));
                   trimmed = true
                 }
-              } else match translateAddr(vaddr, Read(Data)) {
-                TR_Failure(e, _)     => {
-                  if i == 0 then { handle_mem_exception(vaddr, e); return RETIRE_FAIL }
-                  else {
-                    vl = to_bits(xlen, i);
-                    print_reg("CSR vl <- " ^ BitStr(vl));
-                    trimmed = true
-                  }
-                },
-                TR_Address(paddr, _) => {
-                  match mem_read(Read(Data), paddr, load_width_bytes, false, false, false) {
-                    Ok(elem) => write_single_element(load_width_bytes * 8, i, vregidx_offset(vd, to_bits(5, j * EMUL_reg)), elem),
-                    Err(e)   => {
-                      if i == 0 then { handle_mem_exception(vaddr, e); return RETIRE_FAIL }
-                      else {
-                        vl = to_bits(xlen, i);
-                        print_reg("CSR vl <- " ^ BitStr(vl));
-                        trimmed = true
-                      }
-                    }
-                  }
-                }
+              } else match vmem_read(vaddr, load_width_bytes, false, false, false) {
+                 Ok(elem)      => write_single_element(load_width_bytes * 8, i, vregidx_offset(vd, to_bits(5, j * EMUL_reg)), elem),
+                 Err(vaddr, e) => if i == 0 then { handle_mem_exception(vaddr, e); return RETIRE_FAIL }
+                                  else {
+                                    vl = to_bits(xlen, i);
+                                    print_reg("CSR vl <- " ^ BitStr(vl));
+                                    trimmed = true
+                                  }
               }
             }
           }
@@ -260,25 +243,16 @@ function process_vsseg (nf, vm, vs3, load_width_bytes, rs1, EMUL_pow, num_elem) 
         let elem_offset = (i * nf + j) * load_width_bytes;
         match ext_data_get_addr(rs1, to_bits(xlen, elem_offset), Write(Data), load_width_bytes) {
           Ext_DataAddr_Error(e)  => { ext_handle_data_check_error(e); return RETIRE_FAIL },
-          Ext_DataAddr_OK(vaddr) =>
+          Ext_DataAddr_OK(vaddr) => {
             if check_misaligned(vaddr, width_type)
-            then { handle_mem_exception(vaddr, E_SAMO_Addr_Align()); return RETIRE_FAIL }
-            else match translateAddr(vaddr, Write(Data)) {
-              TR_Failure(e, _)     => { handle_mem_exception(vaddr, e); return RETIRE_FAIL },
-              TR_Address(paddr, _) => {
-                match mem_write_ea(paddr, load_width_bytes, false, false, false) {
-                  Err(e) => { handle_mem_exception(vaddr, e); return RETIRE_FAIL },
-                  Ok(_)  => {
-                    let elem_val : bits('b * 8) = read_single_element(load_width_bytes * 8, i, vregidx_offset(vs3, to_bits(5, j * EMUL_reg)));
-                    match mem_write_value(paddr, load_width_bytes, elem_val, false, false, false) {
-                      Ok(true)  => (),
-                      Ok(false) => internal_error(__FILE__, __LINE__, "store got false from mem_write_value"),
-                      Err(e)    => { handle_mem_exception(vaddr, e); return RETIRE_FAIL }
-                    }
-                  }
-                }
-              }
+            then { handle_mem_exception(vaddr, E_SAMO_Addr_Align()); return RETIRE_FAIL };
+            let (aq, rl, res) = (false, false, false);
+            let elem_val : bits('b * 8) = read_single_element(load_width_bytes * 8, i, vregidx_offset(vs3, to_bits(5, j * EMUL_reg)));
+            match vmem_write(vaddr, load_width_bytes, elem_val, aq, rl, res) {
+              Ok(_)         => (),
+              Err(vaddr, e) => { handle_mem_exception(vaddr, e); return RETIRE_FAIL }
             }
+          }
         }
       }
     }
@@ -332,18 +306,15 @@ function process_vlsseg (nf, vm, vd, load_width_bytes, rs1, rs2, EMUL_pow, num_e
         let elem_offset = i * rs2_val + j * load_width_bytes;
         match ext_data_get_addr(rs1, to_bits(xlen, elem_offset), Read(Data), load_width_bytes) {
           Ext_DataAddr_Error(e)  => { ext_handle_data_check_error(e); return RETIRE_FAIL },
-          Ext_DataAddr_OK(vaddr) =>
+          Ext_DataAddr_OK(vaddr) => {
             if check_misaligned(vaddr, width_type)
-            then { handle_mem_exception(vaddr, E_Load_Addr_Align()); return RETIRE_FAIL }
-            else match translateAddr(vaddr, Read(Data)) {
-              TR_Failure(e, _)     => { handle_mem_exception(vaddr, e); return RETIRE_FAIL },
-              TR_Address(paddr, _) => {
-                match mem_read(Read(Data), paddr, load_width_bytes, false, false, false) {
-                  Ok(elem) => write_single_element(load_width_bytes * 8, i, vregidx_offset(vd, to_bits(5, j * EMUL_reg)), elem),
-                  Err(e)   => { handle_mem_exception(vaddr, e); return RETIRE_FAIL }
-                }
-              }
+            then { handle_mem_exception(vaddr, E_Load_Addr_Align()); return RETIRE_FAIL };
+            let (aq, rl, res) = (false, false, false);
+            match vmem_read(vaddr, load_width_bytes, aq, rl, res) {
+              Ok(elem)      => write_single_element(load_width_bytes * 8, i, vregidx_offset(vd, to_bits(5, j * EMUL_reg)), elem),
+              Err(vaddr, e) => { handle_mem_exception(vaddr, e); return RETIRE_FAIL }
             }
+          }
         }
       }
     } else { /* prestart, masked or tail segments */
@@ -401,25 +372,17 @@ function process_vssseg (nf, vm, vs3, load_width_bytes, rs1, rs2, EMUL_pow, num_
         let elem_offset = i * rs2_val + j * load_width_bytes;
         match ext_data_get_addr(rs1, to_bits(xlen, elem_offset), Write(Data), load_width_bytes) {
           Ext_DataAddr_Error(e)  => { ext_handle_data_check_error(e); return RETIRE_FAIL },
-          Ext_DataAddr_OK(vaddr) =>
+          Ext_DataAddr_OK(vaddr) => {
             if check_misaligned(vaddr, width_type)
-            then { handle_mem_exception(vaddr, E_SAMO_Addr_Align()); return RETIRE_FAIL }
-            else match translateAddr(vaddr, Write(Data)) {
-              TR_Failure(e, _)     => { handle_mem_exception(vaddr, e); return RETIRE_FAIL },
-              TR_Address(paddr, _) => {
-                match mem_write_ea(paddr, load_width_bytes, false, false, false) {
-                  Err(e) => { handle_mem_exception(vaddr, e); return RETIRE_FAIL },
-                  Ok(_)  => {
-                    let elem_val : bits('b * 8) = read_single_element(load_width_bytes * 8, i, vregidx_offset(vs3, to_bits(5, j * EMUL_reg)));
-                    match mem_write_value(paddr, load_width_bytes, elem_val, false, false, false) {
-                      Ok(true)  => (),
-                      Ok(false) => internal_error(__FILE__, __LINE__, "store got false from mem_write_value"),
-                      Err(e)    => { handle_mem_exception(vaddr, e); return RETIRE_FAIL }
-                    }
-                  }
-                }
-              }
+            then { handle_mem_exception(vaddr, E_SAMO_Addr_Align()); return RETIRE_FAIL };
+
+            let (aq, rl, res) = (false, false, false);
+            let elem_val : bits('b * 8) = read_single_element(load_width_bytes * 8, i, vregidx_offset(vs3, to_bits(5, j * EMUL_reg)));
+            match vmem_write(vaddr, load_width_bytes, elem_val, aq, rl, res) {
+              Ok(_)         => (),
+              Err(vaddr, e) => { handle_mem_exception(vaddr, e); return RETIRE_FAIL },
             }
+          }
         }
       }
     }
@@ -474,18 +437,15 @@ function process_vlxseg (nf, vm, vd, EEW_index_bytes, EEW_data_bytes, EMUL_index
         let elem_offset : int = unsigned(vs2_val[i]) + j * EEW_data_bytes;
         match ext_data_get_addr(rs1, to_bits(xlen, elem_offset), Read(Data), EEW_data_bytes) {
           Ext_DataAddr_Error(e)  => { ext_handle_data_check_error(e); return RETIRE_FAIL },
-          Ext_DataAddr_OK(vaddr) =>
+          Ext_DataAddr_OK(vaddr) => {
             if check_misaligned(vaddr, width_type)
-            then { handle_mem_exception(vaddr, E_Load_Addr_Align()); return RETIRE_FAIL }
-            else match translateAddr(vaddr, Read(Data)) {
-              TR_Failure(e, _)     => { handle_mem_exception(vaddr, e); return RETIRE_FAIL },
-              TR_Address(paddr, _) => {
-                match mem_read(Read(Data), paddr, EEW_data_bytes, false, false, false) {
-                  Ok(elem) => write_single_element(EEW_data_bytes * 8, i, vregidx_offset(vd, to_bits(5, j * EMUL_data_reg)), elem),
-                  Err(e)   => { handle_mem_exception(vaddr, e); return RETIRE_FAIL }
-                }
-              }
+            then { handle_mem_exception(vaddr, E_Load_Addr_Align()); return RETIRE_FAIL };
+            let (aq, rl, res) = (false, false, false);
+            match vmem_read(vaddr, EEW_data_bytes, aq, rl, res) {
+              Ok(elem)      => write_single_element(EEW_data_bytes * 8, i, vregidx_offset(vd, to_bits(5, j * EMUL_data_reg)), elem),
+              Err(vaddr, e) => { handle_mem_exception(vaddr, e); return RETIRE_FAIL }
             }
+          }
         }
       }
     } else { /* prestart, masked or tail segments */
@@ -571,25 +531,17 @@ function process_vsxseg (nf, vm, vs3, EEW_index_bytes, EEW_data_bytes, EMUL_inde
         let elem_offset : int = unsigned(vs2_val[i]) + j * EEW_data_bytes;
         match ext_data_get_addr(rs1, to_bits(xlen, elem_offset), Write(Data), EEW_data_bytes) {
           Ext_DataAddr_Error(e)  => { ext_handle_data_check_error(e); return RETIRE_FAIL },
-          Ext_DataAddr_OK(vaddr) =>
+          Ext_DataAddr_OK(vaddr) => {
             if check_misaligned(vaddr, width_type)
-            then { handle_mem_exception(vaddr, E_SAMO_Addr_Align()); return RETIRE_FAIL }
-            else match translateAddr(vaddr, Write(Data)) {
-              TR_Failure(e, _)     => { handle_mem_exception(vaddr, e); return RETIRE_FAIL },
-              TR_Address(paddr, _) => {
-                match mem_write_ea(paddr, EEW_data_bytes, false, false, false) {
-                  Err(e) => { handle_mem_exception(vaddr, e); return RETIRE_FAIL },
-                  Ok(_)  => {
-                    let elem_val : bits('db * 8) = read_single_element(EEW_data_bytes * 8, i, vregidx_offset(vs3, to_bits(5, j * EMUL_data_reg)));
-                    match mem_write_value(paddr, EEW_data_bytes, elem_val, false, false, false) {
-                      Ok(true)  => (),
-                      Ok(false) => internal_error(__FILE__, __LINE__, "store got false from mem_write_value"),
-                      Err(e)    => { handle_mem_exception(vaddr, e); return RETIRE_FAIL }
-                    }
-                  }
-                }
-              }
+            then { handle_mem_exception(vaddr, E_SAMO_Addr_Align()); return RETIRE_FAIL };
+
+            let (aq, rl, res) = (false, false, false);
+            let elem_val : bits('db * 8) = read_single_element(EEW_data_bytes * 8, i, vregidx_offset(vs3, to_bits(5, j * EMUL_data_reg)));
+            match vmem_write(vaddr, EEW_data_bytes, elem_val, aq, rl, res) {
+              Ok(_)         => (),
+              Err(vaddr, e) => { handle_mem_exception(vaddr, e); return RETIRE_FAIL },
             }
+          }
         }
       }
     }
@@ -668,18 +620,15 @@ function process_vlre (nf, vd, load_width_bytes, rs1, elem_per_reg) = {
       let elem_offset = cur_elem * load_width_bytes;
       match ext_data_get_addr(rs1, to_bits(xlen, elem_offset), Read(Data), load_width_bytes) {
         Ext_DataAddr_Error(e)  => { ext_handle_data_check_error(e); return RETIRE_FAIL },
-        Ext_DataAddr_OK(vaddr) =>
+        Ext_DataAddr_OK(vaddr) => {
           if check_misaligned(vaddr, width_type)
-          then { handle_mem_exception(vaddr, E_Load_Addr_Align()); return RETIRE_FAIL }
-          else match translateAddr(vaddr, Read(Data)) {
-            TR_Failure(e, _)     => { handle_mem_exception(vaddr, e); return RETIRE_FAIL },
-            TR_Address(paddr, _) => {
-              match mem_read(Read(Data), paddr, load_width_bytes, false, false, false) {
-                Ok(elem) => write_single_element(load_width_bytes * 8, i, vregidx_offset(vd, to_bits(5, cur_field)), elem),
-                Err(e)   => { handle_mem_exception(vaddr, e); return RETIRE_FAIL }
-              }
-            }
+          then { handle_mem_exception(vaddr, E_Load_Addr_Align()); return RETIRE_FAIL };
+          let (aq, rl, res) = (false, false, false);
+          match vmem_read(vaddr, load_width_bytes, aq, rl, res) {
+            Ok(elem)      => write_single_element(load_width_bytes * 8, i, vregidx_offset(vd, to_bits(5, cur_field)), elem),
+            Err(vaddr, e) => { handle_mem_exception(vaddr, e); return RETIRE_FAIL }
           }
+        }
       };
       cur_elem = cur_elem + 1
     };
@@ -692,18 +641,15 @@ function process_vlre (nf, vd, load_width_bytes, rs1, elem_per_reg) = {
       let elem_offset = cur_elem * load_width_bytes;
       match ext_data_get_addr(rs1, to_bits(xlen, elem_offset), Read(Data), load_width_bytes) {
         Ext_DataAddr_Error(e)  => { ext_handle_data_check_error(e); return RETIRE_FAIL },
-        Ext_DataAddr_OK(vaddr) =>
+        Ext_DataAddr_OK(vaddr) => {
           if check_misaligned(vaddr, width_type)
-          then { handle_mem_exception(vaddr, E_Load_Addr_Align()); return RETIRE_FAIL }
-          else match translateAddr(vaddr, Read(Data)) {
-            TR_Failure(e, _)     => { handle_mem_exception(vaddr, e); return RETIRE_FAIL },
-            TR_Address(paddr, _) => {
-              match mem_read(Read(Data), paddr, load_width_bytes, false, false, false) {
-                Ok(elem) => write_single_element(load_width_bytes * 8, i, vregidx_offset(vd, to_bits(5, j)), elem),
-                Err(e)   => { handle_mem_exception(vaddr, e); return RETIRE_FAIL }
-              }
-            }
+          then { handle_mem_exception(vaddr, E_Load_Addr_Align()); return RETIRE_FAIL };
+          let (aq, rl, res) = (false, false, false);
+          match vmem_read(vaddr, load_width_bytes, aq, rl, res) {
+            Ok(elem)      => write_single_element(load_width_bytes * 8, i, vregidx_offset(vd, to_bits(5, j)), elem),
+            Err(vaddr, e) => { handle_mem_exception(vaddr, e); return RETIRE_FAIL }
           }
+        }
       };
       cur_elem = cur_elem + 1
     }
@@ -750,25 +696,17 @@ function process_vsre (nf, load_width_bytes, rs1, vs3, elem_per_reg) = {
       let elem_offset : int = cur_elem * load_width_bytes;
       match ext_data_get_addr(rs1, to_bits(xlen, elem_offset), Write(Data), load_width_bytes) {
         Ext_DataAddr_Error(e)  => { ext_handle_data_check_error(e); return RETIRE_FAIL },
-        Ext_DataAddr_OK(vaddr) =>
+        Ext_DataAddr_OK(vaddr) => {
           if check_misaligned(vaddr, width_type)
-          then { handle_mem_exception(vaddr, E_SAMO_Addr_Align()); return RETIRE_FAIL }
-          else match translateAddr(vaddr, Write(Data)) {
-            TR_Failure(e, _)     => { handle_mem_exception(vaddr, e); return RETIRE_FAIL },
-            TR_Address(paddr, _) => {
-              match mem_write_ea(paddr, load_width_bytes, false, false, false) {
-                Err(e) => { handle_mem_exception(vaddr, e); return RETIRE_FAIL },
-                Ok(_)  => {
-                  let elem : bits('b * 8) = read_single_element(load_width_bytes * 8, i, vregidx_offset(vs3, to_bits(5, cur_field)));
-                  match mem_write_value(paddr, load_width_bytes, elem, false, false, false) {
-                    Ok(true)  => (),
-                    Ok(false) => internal_error(__FILE__, __LINE__, "store got false from mem_write_value"),
-                    Err(e)    => { handle_mem_exception(vaddr, e); return RETIRE_FAIL }
-                  }
-                }
-              }
-            }
+          then { handle_mem_exception(vaddr, E_SAMO_Addr_Align()); return RETIRE_FAIL };
+
+          let (aq, rl, res) = (false, false, false);
+          let elem : bits('b * 8) = read_single_element(load_width_bytes * 8, i, vregidx_offset(vs3, to_bits(5, cur_field)));
+          match vmem_write(vaddr, load_width_bytes, elem, aq, rl, res) {
+            Ok(_)         => (),
+            Err(vaddr, e) => { handle_mem_exception(vaddr, e); return RETIRE_FAIL },
           }
+        }
       };
       cur_elem = cur_elem + 1
     };
@@ -782,24 +720,16 @@ function process_vsre (nf, load_width_bytes, rs1, vs3, elem_per_reg) = {
       let elem_offset = cur_elem * load_width_bytes;
       match ext_data_get_addr(rs1, to_bits(xlen, elem_offset), Write(Data), load_width_bytes) {
         Ext_DataAddr_Error(e)  => { ext_handle_data_check_error(e); return RETIRE_FAIL },
-        Ext_DataAddr_OK(vaddr) =>
+        Ext_DataAddr_OK(vaddr) => {
           if check_misaligned(vaddr, width_type)
-          then { handle_mem_exception(vaddr, E_SAMO_Addr_Align()); return RETIRE_FAIL }
-          else match translateAddr(vaddr, Write(Data)) {
-            TR_Failure(e, _)     => { handle_mem_exception(vaddr, e); return RETIRE_FAIL },
-            TR_Address(paddr, _) => {
-              match mem_write_ea(paddr, load_width_bytes, false, false, false) {
-                Err(e) => { handle_mem_exception(vaddr, e); return RETIRE_FAIL },
-                Ok(_)  => {
-                  match mem_write_value(paddr, load_width_bytes, vs3_val[i], false, false, false) {
-                    Ok(true)  => (),
-                    Ok(false) => internal_error(__FILE__, __LINE__, "store got false from mem_write_value"),
-                    Err(e)    => { handle_mem_exception(vaddr, e); return RETIRE_FAIL }
-                  }
-                }
-              }
-            }
+          then { handle_mem_exception(vaddr, E_SAMO_Addr_Align()); return RETIRE_FAIL };
+
+          let (aq, rl, res) = (false, false, false);
+          match vmem_write(vaddr, load_width_bytes, vs3_val[i], aq, rl, res) {
+            Ok(_)         => (),
+            Err(vaddr, e) => { handle_mem_exception(vaddr, e); return RETIRE_FAIL },
           }
+        }
       };
       cur_elem = cur_elem + 1
     }
@@ -848,40 +778,29 @@ function process_vm(vd_or_vs3, rs1, num_elem, evl, op) = {
       if op == VLM then { /* load */
         match ext_data_get_addr(rs1, to_bits(xlen, i), Read(Data), 1) {
           Ext_DataAddr_Error(e)  => { ext_handle_data_check_error(e); return RETIRE_FAIL },
-          Ext_DataAddr_OK(vaddr) =>
+          Ext_DataAddr_OK(vaddr) => {
             if check_misaligned(vaddr, width_type)
-            then { handle_mem_exception(vaddr, E_Load_Addr_Align()); return RETIRE_FAIL }
-            else match translateAddr(vaddr, Read(Data)) {
-              TR_Failure(e, _)     => { handle_mem_exception(vaddr, e); return RETIRE_FAIL },
-              TR_Address(paddr, _) => {
-                match mem_read(Read(Data), paddr, 1, false, false, false) {
-                  Ok(elem) => write_single_element(8, i, vd_or_vs3, elem),
-                  Err(e)   => { handle_mem_exception(vaddr, e); return RETIRE_FAIL }
-                }
-              }
+            then { handle_mem_exception(vaddr, E_Load_Addr_Align()); return RETIRE_FAIL };
+            let (aq, rl, res) = (false, false, false);
+            match vmem_read(vaddr, 1, aq, rl, res) {
+              Ok(elem)      => write_single_element(8, i, vd_or_vs3, elem),
+              Err(vaddr, e) => { handle_mem_exception(vaddr, e); return RETIRE_FAIL }
             }
+          }
         }
       } else if op == VSM then { /* store */
         match ext_data_get_addr(rs1, to_bits(xlen, i), Write(Data), 1) {
           Ext_DataAddr_Error(e)  => { ext_handle_data_check_error(e); return RETIRE_FAIL },
-          Ext_DataAddr_OK(vaddr) =>
+          Ext_DataAddr_OK(vaddr) => {
             if check_misaligned(vaddr, width_type)
-            then { handle_mem_exception(vaddr, E_SAMO_Addr_Align()); return RETIRE_FAIL }
-            else match translateAddr(vaddr, Write(Data)) {
-              TR_Failure(e, _)     => { handle_mem_exception(vaddr, e); return RETIRE_FAIL },
-              TR_Address(paddr, _) => {
-                match mem_write_ea(paddr, 1, false, false, false) {
-                  Err(e) => { handle_mem_exception(vaddr, e); return RETIRE_FAIL },
-                  Ok(_)  => {
-                    match mem_write_value(paddr, 1, vd_or_vs3_val[i], false, false, false) {
-                      Ok(true)  => (),
-                      Ok(false) => internal_error(__FILE__, __LINE__, "store got false from mem_write_value"),
-                      Err(e)    => { handle_mem_exception(vaddr, e); return RETIRE_FAIL }
-                    }
-                  }
-                }
-              }
+            then { handle_mem_exception(vaddr, E_SAMO_Addr_Align()); return RETIRE_FAIL };
+
+            let (aq, rl, res) = (false, false, false);
+            match vmem_write(vaddr, 1, vd_or_vs3_val[i], aq, rl, res) {
+              Ok(_)         => (),
+              Err(vaddr, e) => { handle_mem_exception(vaddr, e); return RETIRE_FAIL }
             }
+          }
         }
       }
     } else { /* tail elements for mask load, always with agnostic policy */
