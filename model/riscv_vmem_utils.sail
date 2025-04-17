@@ -116,6 +116,30 @@ function misaligned_order(n) = {
   }
 }
 
+ /* Pointer Masking */
+
+ function transform_VA (effective_address : xlenbits, pmlen : {7, 16}) -> xlenbits = {
+   sign_extend(effective_address[xlen - pmlen - 1 .. 0])
+ }
+
+ function transform_PA (effective_address : xlenbits, pmlen : {7, 16}) -> xlenbits = {
+   zero_extend(effective_address[xlen - pmlen - 1 .. 0])
+ }
+
+ function transform_effective_address(vaddr : xlenbits) -> xlenbits = {
+  if is_pmm_active() then {
+     let pmm_bits = get_pmm();
+     let mode     = translationMode(cur_privilege);
+     match pmm_bits {
+       pmm_mode(Enabled7)  => if mode == Bare then transform_PA(vaddr, 7)  else transform_VA(vaddr, 7),
+       pmm_mode(Enabled16) => if mode == Bare then transform_PA(vaddr, 16) else transform_VA(vaddr, 16),
+     }
+   }
+   else {
+     vaddr
+   }
+ }
+
 /* External API */
 
 function check_misaligned(vaddr : virtaddr, width : word_width) -> bool = {
@@ -133,6 +157,7 @@ function vmem_read(vaddr, bytes, aq, rl, res) = {
   /* If the load is misaligned, split into `n` (single-copy-atomic) memory operations,
      each of `bytes` width. If the load is aligned, then `n` = 1 and bytes will remain
      unchanged. */
+
   let ('n, bytes) = split_misaligned(vaddr, bytes);
   var data = zeros(8 * n * bytes);
 
