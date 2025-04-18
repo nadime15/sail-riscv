@@ -16,12 +16,19 @@ function zvk_valid_reg_overlap(rs, rd, emul_pow) = {
 
 function zvk_check_encdec(EGW: int, EGS: int) -> bool = (unsigned(vl) % EGS == 0) & (unsigned(vstart) % EGS == 0) & (2 ^ get_lmul_pow() * VLEN) >= EGW
 
+enum zvkfunct6 = {ZVK_VAESDFVV, ZVK_VAESDFVS, ZVK_VAESDMVV, ZVK_VAESDMVS, ZVK_VAESEFVV, ZVK_VAESEFVS, ZVK_VAESEMVV, ZVK_VAESEMVS, ZVK_VSHA2CH, ZVK_VSHA2CL}
+
+/*
+ * Utility functions for Zvkned
+ * ----------------------------------------------------------------------
+ */
+
+function aes_rotword(x : bits(32)) -> bits(32) = x[7.. 0] @ x[31..24] @ x[23..16] @ x[15.. 8]
+
 /*
  * Utility functions for Zvknh[ab]
  * ----------------------------------------------------------------------
  */
-
-enum zvkfunct6 = {ZVK_VSHA2CH, ZVK_VSHA2CL}
 
 function zvknhab_check_encdec(vs2: vregidx, vs1: vregidx, vd: vregidx) -> bool = {
   let SEW      = get_sew();
