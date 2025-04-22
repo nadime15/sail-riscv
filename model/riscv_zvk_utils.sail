@@ -16,12 +16,17 @@ function zvk_valid_reg_overlap(rs, rd, emul_pow) = {
 
 function zvk_check_encdec(EGW: int, EGS: int) -> bool = (unsigned(vl) % EGS == 0) & (unsigned(vstart) % EGS == 0) & (2 ^ get_lmul_pow() * VLEN) >= EGW
 
+enum zvk_vaesdf_funct6 = {ZVK_VAESDF_VV, ZVK_VAESDF_VS}
+enum zvk_vaesdm_funct6 = {ZVK_VAESDM_VV, ZVK_VAESDM_VS}
+enum zvk_vaesef_funct6 = {ZVK_VAESEF_VV, ZVK_VAESEF_VS}
+enum zvk_vaesem_funct6 = {ZVK_VAESEM_VV, ZVK_VAESEM_VS}
+
+enum zvkfunct6 = {ZVK_VSHA2CH, ZVK_VSHA2CL}
+
 /*
  * Utility functions for Zvknh[ab]
  * ----------------------------------------------------------------------
  */
-
-enum zvkfunct6 = {ZVK_VAESDFVV, ZVK_VAESDFVS, ZVK_VAESDMVV, ZVK_VAESDMVS, ZVK_VAESEFVV, ZVK_VAESEFVS, ZVK_VAESEMVV, ZVK_VAESEMVS, ZVK_VSHA2CH, ZVK_VSHA2CL}
 
 function zvknhab_check_encdec(vs2: vregidx, vs1: vregidx, vd: vregidx) -> bool = {
   let SEW      = get_sew();
@@ -66,10 +71,3 @@ function zvk_ch(x, y, z) = (x & y) ^ (~(x) & z)
 
 val zvk_maj : forall 'n, 'n >= 0. (bits('n), bits('n), bits('n)) -> bits('n)
 function zvk_maj(x, y, z) = (x & y) ^ (x & z) ^ (y & z)
-
-/*
- * Utility functions for Zvkned
- * ----------------------------------------------------------------------
- */
-
-function aes_rotword(x : bits(32)) -> bits(32) = x[7.. 0] @ x[31..24] @ x[23..16] @ x[15.. 8]

@@ -8,17 +8,17 @@
 
 function clause currentlyEnabled(Ext_Zvkned) = hartSupports(Ext_Zvkned) & currentlyEnabled(Ext_V)
 
-union clause ast = ZVKVAESDFTYPE : (zvkfunct6, vregidx, vregidx)
+union clause ast = VAESDF : (zvk_vaesdf_funct6, vregidx, vregidx)
 
-mapping clause encdec = ZVKVAESDFTYPE(ZVK_VAESDFVV, vs2, vd)
+mapping clause encdec = VAESDF(ZVK_VAESDF_VV, vs2, vd)
   <-> 0b1010001 @ encdec_vreg(vs2) @ 0b00001 @ 0b010 @ encdec_vreg(vd) @ 0b1110111
   when currentlyEnabled(Ext_Zvkned) & get_sew() == 32 & zvk_check_encdec(128, 4)
 
-mapping clause encdec = ZVKVAESDFTYPE(ZVK_VAESDFVS, vs2, vd)
+mapping clause encdec = VAESDF(ZVK_VAESDF_VS, vs2, vd)
   <-> 0b1010011 @ encdec_vreg(vs2) @ 0b00001 @ 0b010 @ encdec_vreg(vd) @ 0b1110111
   when currentlyEnabled(Ext_Zvkned) & get_sew() == 32 & zvk_check_encdec(128, 4) & zvk_valid_reg_overlap(vs2, vd, get_lmul_pow())
 
-function clause execute (ZVKVAESDFTYPE(funct6, vs2, vd)) = {
+function clause execute (VAESDF(funct6, vs2, vd)) = {
   let SEW      = get_sew();
   let LMUL_pow = get_lmul_pow();
   let num_elem = get_num_elem(LMUL_pow, SEW);
@@ -35,7 +35,7 @@ function clause execute (ZVKVAESDFTYPE(funct6, vs2, vd)) = {
     assert(i * 4 + 3 < num_elem);
 
     let state = get_velem_quad(vd_val, i);
-    let rkey  = if funct6 == ZVK_VAESDFVV
+    let rkey  = if funct6 == ZVK_VAESDF_VV
                 then get_velem_quad(vs2_val, i)
                 else get_velem_quad(vs2_val, 0);
     let sr  = aes_shift_rows_inv(state);
@@ -49,25 +49,25 @@ function clause execute (ZVKVAESDFTYPE(funct6, vs2, vd)) = {
   RETIRE_SUCCESS
 }
 
-mapping vaesdf_mnemonic : zvkfunct6 <-> string = {
-  ZVK_VAESDFVV <-> "vaesdf.vv",
-  ZVK_VAESDFVS <-> "vaesdf.vs",
+mapping vaesdf_mnemonic : zvk_vaesdf_funct6 <-> string = {
+  ZVK_VAESDF_VV <-> "vaesdf.vv",
+  ZVK_VAESDF_VS <-> "vaesdf.vs",
 }
 
-mapping clause assembly = ZVKVAESDFTYPE(funct6, vs2, vd)
+mapping clause assembly = VAESDF(funct6, vs2, vd)
   <-> vaesdf_mnemonic(funct6) ^ sep() ^ vreg_name(vd) ^ sep() ^ vreg_name(vs2)
 
-union clause ast = ZVKVAESDMTYPE : (zvkfunct6, vregidx, vregidx)
+union clause ast = VAESDM : (zvk_vaesdm_funct6, vregidx, vregidx)
 
-mapping clause encdec = ZVKVAESDMTYPE(ZVK_VAESDMVV, vs2, vd)
+mapping clause encdec = VAESDM(ZVK_VAESDM_VV, vs2, vd)
   <-> 0b1010001 @ encdec_vreg(vs2) @ 0b00000 @ 0b010 @ encdec_vreg(vd) @ 0b1110111
   when currentlyEnabled(Ext_Zvkned) & get_sew() == 32 & zvk_check_encdec(128, 4)
 
-mapping clause encdec = ZVKVAESDMTYPE(ZVK_VAESDMVS, vs2, vd)
+mapping clause encdec = VAESDM(ZVK_VAESDM_VS, vs2, vd)
   <-> 0b1010011 @ encdec_vreg(vs2) @ 0b00000 @ 0b010 @ encdec_vreg(vd) @ 0b1110111
   when currentlyEnabled(Ext_Zvkned) & get_sew() == 32 & zvk_check_encdec(128, 4) & zvk_valid_reg_overlap(vs2, vd, get_lmul_pow())
 
-function clause execute (ZVKVAESDMTYPE(funct6, vs2, vd)) = {
+function clause execute (VAESDM(funct6, vs2, vd)) = {
   let SEW      = get_sew();
   let LMUL_pow = get_lmul_pow();
   let num_elem = get_num_elem(LMUL_pow, SEW);
@@ -84,7 +84,7 @@ function clause execute (ZVKVAESDMTYPE(funct6, vs2, vd)) = {
     assert(i * 4 + 3 < num_elem);
 
     let state = get_velem_quad(vd_val, i);
-    let rkey  = if funct6 == ZVK_VAESDMVV
+    let rkey  = if funct6 == ZVK_VAESDM_VV
                 then get_velem_quad(vs2_val, i)
                 else get_velem_quad(vs2_val, 0);
     let sr    = aes_shift_rows_inv(state);
@@ -99,25 +99,25 @@ function clause execute (ZVKVAESDMTYPE(funct6, vs2, vd)) = {
   RETIRE_SUCCESS
 }
 
-mapping vaesdm_mnemonic : zvkfunct6 <-> string = {
-  ZVK_VAESDMVV <-> "vaesdm.vv",
-  ZVK_VAESDMVS <-> "vaesdm.vs",
+mapping vaesdm_mnemonic : zvk_vaesdm_funct6 <-> string = {
+  ZVK_VAESDM_VV <-> "vaesdm.vv",
+  ZVK_VAESDM_VS <-> "vaesdm.vs",
 }
 
-mapping clause assembly = ZVKVAESDMTYPE(funct6, vs2, vd)
+mapping clause assembly = VAESDM(funct6, vs2, vd)
   <-> vaesdm_mnemonic(funct6) ^ spc() ^ vreg_name(vd) ^ sep() ^ vreg_name(vs2)
 
-union clause ast = ZVKVAESEFTYPE : (zvkfunct6, vregidx, vregidx)
+union clause ast = VAESEF : (zvk_vaesef_funct6, vregidx, vregidx)
 
-mapping clause encdec = ZVKVAESEFTYPE(ZVK_VAESEFVV, vs2, vd)
+mapping clause encdec = VAESEF(ZVK_VAESEF_VV, vs2, vd)
   <-> 0b1010001 @ encdec_vreg(vs2) @ 0b00011 @ 0b010 @ encdec_vreg(vd) @ 0b1110111
   when currentlyEnabled(Ext_Zvkned) & get_sew() == 32 & zvk_check_encdec(128, 4)
 
-mapping clause encdec = ZVKVAESEFTYPE(ZVK_VAESEFVS, vs2, vd)
+mapping clause encdec = VAESEF(ZVK_VAESEF_VS, vs2, vd)
   <-> 0b1010011 @ encdec_vreg(vs2) @ 0b00011 @ 0b010 @ encdec_vreg(vd) @ 0b1110111
   when currentlyEnabled(Ext_Zvkned) & get_sew() == 32 & zvk_check_encdec(128, 4) & zvk_valid_reg_overlap(vs2, vd, get_lmul_pow())
 
-function clause execute (ZVKVAESEFTYPE(funct6, vs2, vd)) = {
+function clause execute (VAESEF(funct6, vs2, vd)) = {
   let SEW = get_sew();
   let LMUL_pow = get_lmul_pow();
   let num_elem = get_num_elem(LMUL_pow, SEW);
@@ -134,7 +134,7 @@ function clause execute (ZVKVAESEFTYPE(funct6, vs2, vd)) = {
     assert(i * 4 + 3 < num_elem);
 
     let state = get_velem_quad(vd_val, i);
-    let rkey  = if funct6 == ZVK_VAESEFVV
+    let rkey  = if funct6 == ZVK_VAESEF_VV
                 then get_velem_quad(vs2_val, i)
                 else get_velem_quad(vs2_val, 0);
     let sb    = aes_subbytes_fwd(state);
@@ -148,25 +148,25 @@ function clause execute (ZVKVAESEFTYPE(funct6, vs2, vd)) = {
   RETIRE_SUCCESS
 }
 
-mapping vaesef_mnemonic : zvkfunct6 <-> string = {
-  ZVK_VAESEFVV <-> "vaesef.vv",
-  ZVK_VAESEFVS <-> "vaesef.vs",
+mapping vaesef_mnemonic : zvk_vaesef_funct6 <-> string = {
+  ZVK_VAESEF_VV <-> "vaesef.vv",
+  ZVK_VAESEF_VS <-> "vaesef.vs",
 }
 
-mapping clause assembly = ZVKVAESEFTYPE(funct6, vs2, vd)
+mapping clause assembly = VAESEF(funct6, vs2, vd)
   <-> vaesef_mnemonic(funct6) ^ spc() ^ vreg_name(vd) ^ spc() ^ vreg_name(vs2)
 
-union clause ast = ZVKVAESEMTYPE : (zvkfunct6, vregidx, vregidx)
+union clause ast = VAESEM : (zvk_vaesem_funct6, vregidx, vregidx)
 
-mapping clause encdec = ZVKVAESEMTYPE(ZVK_VAESEMVV, vs2, vd)
+mapping clause encdec = VAESEM(ZVK_VAESEM_VV, vs2, vd)
   <-> 0b1010001 @ encdec_vreg(vs2) @ 0b00010 @ 0b010 @ encdec_vreg(vd) @ 0b1110111
   when currentlyEnabled(Ext_Zvkned) & get_sew() == 32 & zvk_check_encdec(128, 4)
 
-mapping clause encdec = ZVKVAESEMTYPE(ZVK_VAESEMVS, vs2, vd)
+mapping clause encdec = VAESEM(ZVK_VAESEM_VS, vs2, vd)
   <-> 0b1010011 @ encdec_vreg(vs2) @ 0b00010 @ 0b010 @ encdec_vreg(vd) @ 0b1110111
   when currentlyEnabled(Ext_Zvkned) & get_sew() == 32 & zvk_check_encdec(128, 4) & zvk_valid_reg_overlap(vs2, vd, get_lmul_pow())
 
-function clause execute (ZVKVAESEMTYPE(funct6, vs2, vd)) = {
+function clause execute (VAESEM(funct6, vs2, vd)) = {
   let SEW = get_sew();
   let LMUL_pow = get_lmul_pow();
   let num_elem = get_num_elem(LMUL_pow, SEW);
@@ -183,7 +183,7 @@ function clause execute (ZVKVAESEMTYPE(funct6, vs2, vd)) = {
     assert(i * 4 + 3 < num_elem);
 
     let state = get_velem_quad(vd_val, i);
-    let rkey  = if funct6 == ZVK_VAESEMVV
+    let rkey  = if funct6 == ZVK_VAESEM_VV
                 then get_velem_quad(vs2_val, i)
                 else get_velem_quad(vs2_val, 0);
     let sb    = aes_subbytes_fwd(state);
@@ -198,12 +198,12 @@ function clause execute (ZVKVAESEMTYPE(funct6, vs2, vd)) = {
   RETIRE_SUCCESS
 }
 
-mapping vaesem_mnemonic : zvkfunct6 <-> string = {
-  ZVK_VAESEMVV <-> "vaesem.vv",
-  ZVK_VAESEMVS <-> "vaesem.vs",
+mapping vaesem_mnemonic : zvk_vaesem_funct6 <-> string = {
+  ZVK_VAESEM_VV <-> "vaesem.vv",
+  ZVK_VAESEM_VS <-> "vaesem.vs",
 }
 
-mapping clause assembly = ZVKVAESEMTYPE(funct6, vs2, vd)
+mapping clause assembly = VAESEM(funct6, vs2, vd)
   <-> vaesem_mnemonic(funct6) ^ spc() ^ vreg_name(vd) ^ sep() ^ vreg_name(vs2)
 
 union clause ast = VAESKF1_VI : (vregidx, bits(5), vregidx)
