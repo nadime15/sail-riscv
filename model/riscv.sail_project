@@ -31,6 +31,7 @@ core {
     core/addr_checks.sail,
     core/misa_ext.sail,
     core/softfloat_interface.sail,
+    riscv_sys_reservation.sail,
 }
 
 exceptions {
@@ -42,7 +43,7 @@ exceptions {
 }
 
 pmp {
-  requires core
+  requires riscv_core, Sdext_regs
 
   files
     pmp/pmp_regs.sail,
@@ -50,20 +51,19 @@ pmp {
 }
 
 riscv {
-  requires core, exceptions, pmp, V_core, Smcntrpmf
+  requires riscv_core, riscv_exceptions, pmp, V_core, Smcntrpmf, Sdext_regs, Sdext_control
 
   files
-    sys/sys_reservation.sail,
-    sys/sys_control.sail,
-    sys/platform.sail,
-    sys/mem.sail,
-    sys/inst_retire.sail,
-    sys/vmem_pte.sail,
-    sys/vmem_ptw.sail,
-    sys/vmem_tlb.sail,
-    sys/vmem.sail,
-    sys/vmem_utils.sail,
-    sys/insts_begin.sail,
+    riscv_sys_control.sail,
+    riscv_platform.sail,
+    riscv_mem.sail,
+    riscv_inst_retire.sail,
+    riscv_vmem_pte.sail,
+    riscv_vmem_ptw.sail,
+    riscv_vmem_tlb.sail,
+    riscv_vmem.sail,
+    riscv_vmem_utils.sail,
+    riscv_insts_begin.sail,
 }
 
 extensions {
@@ -75,7 +75,7 @@ extensions {
       files extensions/I/base_types.sail
     }
     I_insts {
-      requires exceptions, riscv, I_types
+      requires riscv_exceptions, riscv, I_types, Sdext_regs, Sdext_hooks
 
       files
         extensions/I/base_insts.sail,
@@ -324,7 +324,8 @@ extensions {
   }
 
   Zicntr {
-    files extensions/Zicntr/zicntr_control.sail
+    requires Sdext_regs
+    files riscv_zicntr_control.sail
   }
 
   Zicbom {
@@ -379,14 +380,31 @@ extensions {
     files extensions/Zihintpause/zihintpause_insts.sail
   }
 
-  bfloat16 {
-    bfloat16_core {
-      requires riscv, FD
-      files extensions/bfloat16/zfbfmin_utils.sail
+    Sdext {
+    Sdext_regs {
+      requires riscv_core
+      files
+        riscv_sdext_regs.sail
     }
-    Zfbfmin {
-      requires riscv, FD, bfloat16_core
-      files extensions/bfloat16/zfbfmin_insts.sail
+
+    Sdext_control {
+      requires riscv_core, riscv_exceptions, Sdext_regs
+      before riscv
+      files
+        riscv_sdext_control.sail
+    }
+
+    Sdext_hooks {
+      requires riscv
+      before I_insts
+      files
+        riscv_sdext_inst_hooks.sail
+    }
+
+    Sdext_instructions {
+      requires riscv, Sdext_regs
+      files
+        riscv_insts_sdext.sail
     }
   }
 
@@ -410,7 +428,7 @@ mops {
 postlude {
   after extensions, mops
 
-  requires core, riscv, exceptions, Smcntrpmf, pmp
+  requires riscv_core, riscv, riscv_exceptions, Smcntrpmf, pmp, Sdext_regs, Sdext_control
 
   files
     postlude/insts_end.sail,

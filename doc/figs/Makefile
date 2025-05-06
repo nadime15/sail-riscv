@@ -1,4 +1,4 @@
-all: riscvcsimdeps.svg
+all: riscvspecdeps.svg riscvcsimdeps.svg debug_mode_sm.svg
 
 %.pdf: %.tex
 	pdflatex $<
@@ -7,4 +7,6 @@ all: riscvcsimdeps.svg
 	dvisvgm -Z 1.5 --pdf $<
 
 clean:
-	rm riscvcsimdeps.pdf riscvcsimdeps.aux riscvcsimdeps.log
+	rm -f riscvspecdeps.pdf riscvspecdeps.aux riscvspecdeps.log
+	rm -f riscvcsimdeps.pdf riscvcsimdeps.aux riscvcsimdeps.log
+	rm -f debug_mode_sm.pdf debug_mode_sm.aux debug_mode_sm.log
