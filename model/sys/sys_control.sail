@@ -8,10 +8,17 @@
 
 // Machine-mode and supervisor-mode functionality.
 
-function effectivePrivilege(access_type : MemoryAccessType(ext_access_type), m : Mstatus, priv : Privilege) -> Privilege =
-  if   access_type != InstructionFetch() & m[MPRV] == 0b1
+function effectivePrivilege(access_type : MemoryAccessType(ext_access_type), m : Mstatus, priv : Privilege) -> Privilege = {
+  // When executing a Debug mode abstract command, whether mstatus.MPRV is
+  // active is governed by dcsr.MPRVen.
+  let mprv_active = if   in_debug_abstract_command()
+                    then dcsr[MPRVEn] == 0b1
+                    else true;
+
+  if   mprv_active & access_type != InstructionFetch() & m[MPRV] == 0b1
   then privLevel_bits(m[MPP], bitzero) // TODO: use m[MPV] if hypervisor enabled
   else priv
+}
 
 // CSR access control
 
@@ -66,6 +73,11 @@ function findPendingInterrupt(ip : xlenbits) -> option(InterruptType) = {
 //
 // TODO: check hip/hie if hypervisor enabled.
 function getPendingSet(priv : Privilege) -> option((xlenbits, Privilege)) = {
+  // All interrupts (including NMI) are masked when executing a Debug mode
+  // abstract command.
+  if   in_debug_abstract_command()
+  then return None();
+
   // mideleg can only be non-zero if we support Supervisor mode.
   assert(currentlyEnabled(Ext_S) | mideleg.bits == zeros());
 
@@ -100,7 +112,11 @@ function getPendingSet(priv : Privilege) -> option((xlenbits, Privilege)) = {
 // (i.e., implementations should avoid resuming the hart if the
 // interrupt is pending but not individually enabled)."
 function shouldWakeForInterrupt() -> bool = {
-  (mip.bits & mie.bits) != zeros()
+  // All interrupts (including NMI) are masked when executing
+  // an abstract command.
+  if   in_debug_abstract_command()
+  then false
+  else (mip.bits & mie.bits) != zeros()
 }
 
 // Examine the current interrupt state and return an interrupt to be *
@@ -154,10 +170,24 @@ function track_trap(p : Privilege) -> unit = {
 // handle exceptional ctl flow by updating nextPC and operating privilege
 function trap_handler(del_priv : Privilege, c : TrapCause, pc : xlenbits, info : option(xlenbits), ext : option(ext_exception))
                      -> xlenbits = {
+
   let is_interrupt = trapCause_is_interrupt(c);
   let cause        = trapCause_bits(c);
 
   trap_callback(is_interrupt, cause);
+
+  // In Debug Mode, code executing in an abstract command does not
+  // trap; it just ends execution of the abstract command and sets an
+  // error indicator.  According to the appendix of the Debug
+  // specification, when an exception is encountered the hart jumps to
+  // a trap handler address within the Debug Module.
+  if   in_debug_abstract_command()
+  then {
+    set_debug_abstract_command_error();
+    end_debug_abstract_command();
+    return debug_trap_vector
+  };
+
 
   if   get_config_print_exception() | get_config_print_interrupt()
   then print_log("handling " ^ to_str(c)
@@ -303,6 +333,8 @@ function handle_exception(xtval : xlenbits, e : ExceptionType) -> unit = {
   set_next_pc(exception_handler(cur_privilege, CTL_TRAP(t), PC))
 }
 
+// When executing Debug Mode abstract commands, all interrupts are disabled, so
+// the trap handler cannot be called from this function.
 function handle_interrupt(i : InterruptType, del_priv : Privilege) -> unit =
   set_next_pc(trap_handler(del_priv, Interrupt(i), PC, None(), None()))
 
@@ -401,6 +433,9 @@ function reset_sys() -> unit = {
   vtype[vta]       = 0b0;
   vtype[vsew]      = 0b000;
   vtype[vlmul]     = 0b000;
+
+  /* initialize Sdext */
+  reset_sdext();
 }
 
 // memory access exceptions, defined here for use by the platform model.

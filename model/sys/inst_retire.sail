@@ -6,26 +6,10 @@
 // SPDX-License-Identifier: BSD-2-Clause
 // =======================================================================================
 
-// Instruction declarations.
-//
-// This includes scattered declarations for decoding, execution, and assembly parsing and printing.
-// This file also defines the execution result, i.e. the return value from the `execute()` function.
-
-scattered union instruction
-
-union DebugAction = {
-  Enter_Debug_Mode            : debug_entry_cause,
-  Exit_Debug_Abstract_Command : unit,
-  Exit_Debug_Mode             : unit,
-}
-
+// Return value from `execute()` function.
 union ExecutionResult = {
   // Successfully retired.
   Retire_Success                 : unit,
-
-  // The instruction is a compressed instruction, and should be
-  // executed as an uncompressed instruction.
-  ExecuteAs                      : instruction,
 
   // An instruction such as WFI, WRS.{STO,NTO}
   // entered a wait state, which may or may not
@@ -36,8 +20,9 @@ union ExecutionResult = {
   Illegal_Instruction            : unit,
   Trap                           : (Privilege, ctl_result, xlenbits),
   Memory_Exception               : (virtaddr, ExceptionType),
-
-  Debug : DebugAction,
+  Enter_Debug_Mode               : debug_entry_cause,
+  Exit_Debug_Abstract_Command    : unit,
+  Exit_Debug_Mode                : unit,
 
   // Did not retire for custom reason.
   Ext_CSR_Check_Failure          : unit,
@@ -52,24 +37,3 @@ union ExecutionResult = {
 // update all the places RETIRE_SUCCESS was used.
 
 let RETIRE_SUCCESS : ExecutionResult = Retire_Success()
-
-
-// returns whether an instruction was retired, used for computing minstret
-val execute : instruction -> ExecutionResult
-scattered function execute
-
-val assembly : instruction <-> string
-scattered mapping assembly
-
-val encdec : instruction <-> bits(32)
-scattered mapping encdec
-
-val encdec_compressed : instruction <-> bits(16)
-scattered mapping encdec_compressed
-
-// We declare the ILLEGAL/C_ILLEGAL instruction clauses here instead of in
-// insts_end, so that model extensions can make use of them.
-// However, the encdec mapping must come last to ensure that all
-// unmatched encodings decode to an illegal instruction.
-union clause instruction = ILLEGAL : word
-union clause instruction = C_ILLEGAL : half

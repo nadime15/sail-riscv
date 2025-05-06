@@ -35,6 +35,7 @@ core {
     core/addr_checks.sail,
     core/misa_ext.sail,
     core/softfloat_interface.sail,
+    riscv_sys_reservation.sail,
 }
 
 exceptions {
@@ -46,7 +47,7 @@ exceptions {
 }
 
 pmp {
-  requires core
+  requires riscv_core, Sdext_regs
 
   files
     pmp/pmp_regs.sail,
@@ -54,12 +55,11 @@ pmp {
 }
 
 sys {
-  requires core, exceptions, pmp, V_core, Smcntrpmf, Zicfilp_regs, A_types
+  requires riscv_core, riscv_exceptions, pmp, V_core, Smcntrpmf, Sdext_regs, Sdext_control, Zicfilp_regs, A_types
 
   files
-    sys/sys_reservation.sail,
-    sys/sys_control.sail,
-    sys/platform.sail,
+    riscv_sys_control.sail,
+    riscv_platform.sail,
     sys/pma.sail,
     sys/mem.sail,
     sys/vmem_pte.sail,
@@ -79,7 +79,7 @@ extensions {
       files extensions/I/base_types.sail
     }
     I_insts {
-      requires exceptions, sys, I_types, Zicfilp_regs
+      requires riscv_exceptions, sys, I_types, Sdext_regs, Sdext_hooks, Zicfilp_regs
 
       files
         extensions/I/base_insts.sail,
@@ -331,7 +331,8 @@ extensions {
   }
 
   Zicntr {
-    files extensions/Zicntr/zicntr_control.sail
+    requires Sdext_regs
+    files riscv_zicntr_control.sail
   }
 
   Zicbom {
@@ -403,14 +404,37 @@ extensions {
     }
   }
 
-  bfloat16 {
+    Sdext {
+    Sdext_regs {
+      requires sys_core
+      files
+        riscv_sdext_regs.sail
+    }
+
+    Sdext_control {
+      requires riscv_core, riscv_exceptions, Sdext_regs
+      before riscv
+      files
+        riscv_sdext_control.sail
+    }
+
+    Sdext_hooks {
+      requires sys
+      before I_insts
+      files
+        riscv_sdext_inst_hooks.sail
+    }
+
+    Sdext_instructions {
+      requires riscv, Sdext_regs
+      files
+        riscv_insts_sdext.sail
+    }
+
+    bfloat16 {
     bfloat16_core {
       requires sys, FD
       files extensions/bfloat16/zfbfmin_utils.sail
-    }
-    Zfbfmin {
-      requires sys, FD, bfloat16_core
-      files extensions/bfloat16/zfbfmin_insts.sail
     }
     Zvfbfmin {
       requires sys, FD, V, bfloat16_core
@@ -450,7 +474,7 @@ mops {
 postlude {
   after extensions, mops
 
-  requires core, sys, exceptions, Smcntrpmf, pmp, Zicfilp_regs, Zicfilp_insts
+  requires riscv_core, sys, riscv_exceptions, Smcntrpmf, pmp, Sdext_regs, Sdext_control, Zicfilp_regs, Zicfilp_insts
 
   files
     postlude/insts_end.sail,

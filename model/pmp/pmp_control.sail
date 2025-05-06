@@ -97,6 +97,15 @@ function pmpCheck forall 'n, 0 < 'n <= max_mem_access . (
 
   if sys_pmp_count == 0 then return None();
 
+  // In debug mode, allow all access to debug memory range.
+  if currentlyEnabled(Ext_Sdext) then {
+    let Physaddr(addr) = addr;
+    let debug_base = unsigned(debug_mem_base);
+    let debug_end  = debug_base + debug_mem_size;
+    if   pmpRangeMatch(debug_base, debug_end, unsigned(addr), width) == PMP_Match
+    then return None();
+  };
+
   let width : xlenbits = to_bits(width);
 
   foreach (i from 0 to sys_pmp_count - 1) {

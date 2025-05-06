@@ -117,3 +117,13 @@ unit trap_callback(bool is_interrupt, fbits cause)
   }
   return UNIT;
 }
+
+unit debug_entry_callback(unit)
+{
+  return UNIT;
+}
+
+unit debug_exit_callback(unit)
+{
+  return UNIT;
+}
