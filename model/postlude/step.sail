@@ -229,6 +229,10 @@ function try_step(step_no : nat, exit_wait : bool, dr : debug_request) -> step_r
   /* for step extensions */
   ext_pre_step_hook();
 
+  // If enabled, advances the bitbanging protocol and sends
+  // data to the debugger (over OpenOCD) or reads from it
+  jtag_dtm_tick();
+
   // Leave Debug mode if a resume is requested.
   if   dr == DR_Resume & currentlyEnabled(Ext_Sdext)
   then {

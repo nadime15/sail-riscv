@@ -56,6 +56,9 @@ function redirect_callback(_) = ()
 val trap_callback = pure {c: "trap_callback"} : (/* is_interrupt */ bool, /* interrupt/exception cause */ exc_code) -> unit
 function trap_callback(_) = ()
 
+val jtag_dtm_tick = pure {c: "jtag_dtm_tick"} : unit -> unit
+function jtag_dtm_tick(_) = ()
+
 val debug_entry_callback = pure {c: "debug_entry_callback"} : unit -> unit
 function debug_entry_callback(_) = ()
 
