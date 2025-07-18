@@ -928,3 +928,32 @@ unit softfloat_f64roundToInt(mach_bits rm, mach_bits v, bool exact)
 
   return UNIT;
 }
+// unit softfloat_f16toi32(mach_bits rm, mach_bits v)
+
+unit softfloat_f32tobf16(mach_bits rm, mach_bits v)
+{
+  SOFTFLOAT_PRELUDE(rm);
+
+  float32_t a;
+  bfloat16_t res;
+  a.v = v;
+  res = f32_to_bf16(a);
+
+  SOFTFLOAT_POSTLUDE(res);
+
+  return UNIT;
+}
+
+unit softfloat_bf16tof32(mach_bits rm, mach_bits v)
+{
+  SOFTFLOAT_PRELUDE(rm);
+
+  bfloat16_t a;
+  float32_t res;
+  a.v = v;
+  res = bf16_to_f32(a);
+
+  SOFTFLOAT_POSTLUDE(res);
+
+  return UNIT;
+}

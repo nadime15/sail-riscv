@@ -83,3 +83,6 @@ unit softfloat_f64eq(mach_bits v1, mach_bits v2);
 unit softfloat_f16roundToInt(mach_bits rm, mach_bits v, bool exact);
 unit softfloat_f32roundToInt(mach_bits rm, mach_bits v, bool exact);
 unit softfloat_f64roundToInt(mach_bits rm, mach_bits v, bool exact);
+
+unit softfloat_f32tobf16(mach_bits rm, mach_bits v);
+unit softfloat_bf16tof32(mach_bits rm, mach_bits v);
