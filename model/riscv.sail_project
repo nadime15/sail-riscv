@@ -388,6 +388,10 @@ extensions {
       requires riscv, FD, bfloat16_core
       files riscv_insts_zfbfmin.sail
     }
+    Zvfbfmin {
+      requires riscv, FD, V, bfloat16_core
+      files riscv_insts_zvfbfmin.sail
+    }
   }
 
 }
