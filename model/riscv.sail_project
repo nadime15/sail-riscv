@@ -23,6 +23,7 @@ core {
     core/csr_begin.sail,
     core/callbacks.sail,
     core/reg_type.sail,
+    riscv_debug_module.sail,
     riscv_debug_module_interface.sail,
     core/regs.sail,
     core/pc_access.sail,
