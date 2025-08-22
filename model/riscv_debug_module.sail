@@ -8,8 +8,12 @@
 
 type dmreg = bits(8)
 
-enum HartState = {NON_EXISTENT, UNAVAILABLE, RUNNING, HALTED}
-
+// State of the Hart from the Debug Module's POV (? Double check this)
+enum DMHartState = {NON_EXISTENT, UNAVAILABLE, RUNNING, HALTED}
+// Request from the DM to the Hart
+// TODO: Add RESET etc.
+enum DMHartRequest = {HALT, RESUME}
+register dm_hart_state : DMHartState = RUNNING
 /* Mapping of Debug Module Register addresses to their names. */
 
 val dm_name_map : dmreg <-> string
@@ -117,16 +121,39 @@ bitfield Dmcontrol : bits(32) = {
   dmactive:        0
 }
 
+function request_halt(request : DMHartRequest) -> bool = match request {
+    HALT   => true,
+    RESUME => true,
+}
 function legalize_dmcontrol(d : Dmcontrol, x : bits(32)) -> Dmcontrol = {
   let x = Mk_Dmcontrol(x);
 
+  if x[ndmreset] == 0b1 then {
+    // TODO
+    print_endline("Reset Hard Platform");
+  };
+
+  if x[haltreq] == 0b1 then {
+    print_log("Received halt request");
+    let status = request_halt(HALT);
+  };
+
+  if (x[resumereq] == 0b1) then {
+    print_log("Received resume request");
+    let status = request_halt(RESUME);
+  };
+
   [d with
+    // TODO: Writing clears halt request bit for all currently selected harts.
+    // This may (!) cancel outstanding halt requests for those harts.
+    // TODO: Writes to this bit should be ignored while
+    // an abstract command is executing
     haltreq         = x[haltreq],
     resumereq       = if x[resumereq] == 0b1 then 0b1 else x[resumereq],
     haltreset       = 0b0,
     ackhavereset    = if x[ackhavereset] == 0b1 then 0b1 else x[ackhavereset],
     ackunavail      = if x[ackunavail] == 0b1 then 0b1 else x[ackunavail],
-    // Currently, we only support to hart 0
+    // Currently, we only support 1 hart
     hasel           = 0b0,
     hartsello       = 0b0000000000,
     hartselhi       = 0b0000000000,
@@ -144,8 +171,8 @@ register dmcontrol: Dmcontrol = legalize_dmcontrol(Mk_Dmcontrol(zeros()), zeros(
 mapping clause dm_name_map = 0x10  <-> "dmcontrol"
 
 function clause is_DM_reg_defined (0x10) = true
-function clause write_DM_reg(0x10, value) = { dmcontrol = legalize_dmcontrol(dmcontrol, value); 0b0 @ dmcontrol.bits[30 .. 0] }
-function clause read_DM_reg(0x10) = 0b0 @ dmcontrol.bits[30 .. 0]
+function clause write_DM_reg(0x10, value) = { dmcontrol = legalize_dmcontrol(dmcontrol, value); dmcontrol.bits }
+function clause read_DM_reg(0x10) = dmcontrol.bits
 
 bitfield Dmstatus : bits(32) = {
   ndmresetpending: 24,
@@ -170,14 +197,15 @@ bitfield Dmstatus : bits(32) = {
   version:          3 .. 0
 }
 
+// NOTE: This whole register cannot be written from outside
 function legalize_dmstatus(d : Dmstatus) -> Dmstatus = {
   [d with
-    // TODO: For now authentification is not
-    // supported but this should be optional
+    // TODO: For now authentification is not supported
+    // but this should be optional
     // NOTE: This needs to be disabled because otherwise
-    // OpenOCD will not proceed continue after failed
-    // authentification
+    // OpenOCD will not continue after failed authentification
     authenticated = 0b1,
+    // Version 1.0
     version       = 0b0011
   ]
 }
@@ -841,23 +869,3 @@ mapping clause dm_name_map = 0x40  <-> "haltsum0"
 function clause is_DM_reg_defined (0x40) = true
 // Read Only Register
 function clause read_DM_reg(0x40) = haltsum0.bits
-
-///////////////////////////////////////////////////////////////////////
-
-mapping clause dm_name_map = reg <-> hex_bits_8(reg)
-end dm_name_map
-
-function clause is_CSR_defined(_) = false
-end is_CSR_defined
-
-function clause read_DM_reg(dm_reg) = {
-   // This should be impossible because is_DM_reg_defined() should have returned false.
-   internal_error(__FILE__, __LINE__, "Read from Debug Module Register that does not exist: " ^ bits_str(dm_reg));
-}
-end read_DM_reg
-
-function clause write_DM_reg(dm_reg, _) = {
-   // This should be impossible because is_DM_reg_defined() should have returned false.
-   internal_error(__FILE__, __LINE__, "Write to Debug Module Register that does not exist: " ^ bits_str(dm_reg));
-}
-end write_DM_reg
