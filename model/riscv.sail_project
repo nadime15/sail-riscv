@@ -21,9 +21,9 @@ riscv_core {
     riscv_vmem_types.sail,
     riscv_vext_types.sail,
     riscv_csr_begin.sail,
+    riscv_debug_module_types.sail,
+    riscv_debug_module_reg_begin.sail,
     riscv_callbacks.sail,
-    riscv_debug_module.sail,
-    riscv_debug_module_interface.sail,
     riscv_reg_type.sail,
     riscv_regs.sail,
     riscv_pc_access.sail,
@@ -309,7 +309,7 @@ extensions {
       files riscv_zawrs_types.sail
     }
     Zawrs_insts {
-      requires riscv, Zawrs_types
+      requires riscv, Zawrs_types, Sdext_regs
       files riscv_insts_zawrs.sail
     }
   }
@@ -399,6 +399,18 @@ extensions {
 
 }
 
+debug_module {
+  module {
+    requires riscv_core
+
+    files
+      riscv_debug_module_utils.sail,
+      riscv_debug_module.sail,
+      riscv_debug_module_interface.sail
+  }
+
+}
+
 // May-be-operations (MOPS) defined after extensions so they can be
 // overridden by earlier extensions
 mops {
@@ -417,11 +429,12 @@ mops {
 riscv_postlude {
   after extensions, mops
 
-  requires riscv_core, riscv, riscv_exceptions, Smcntrpmf, pmp, Sdext_regs, Sdext_control
+  requires riscv_core, riscv, riscv_exceptions, Smcntrpmf, pmp, Sdext_regs, Sdext_control, debug_module
 
   files
     riscv_insts_end.sail,
     riscv_csr_end.sail,
+    riscv_debug_module_reg_end.sail,
     riscv_step_common.sail,
     riscv_step_ext.sail,
     riscv_decode_ext.sail,
@@ -430,7 +443,7 @@ riscv_postlude {
     riscv_step.sail,
     riscv_validate_config.sail,
     riscv_device_tree.sail,
-    riscv_model.sail
+    riscv_model.sail,
 }
 
 riscv_termination {

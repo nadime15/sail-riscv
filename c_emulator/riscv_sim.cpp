@@ -434,7 +434,12 @@ void run_sail(void)
         // NOTE: This is a temporary solution and needs to be redone
         // we want to avoid the simulation ending too early
         // so we keep polling to see if the debugger has sent more data
-        int max_ticks = 10000000;
+        // NOTE:(!) You have to wait until Sail executes the first instruction
+        // before we can connect OpenOCD to Sail, otherwise the core will run
+        // into a memory fault (I am not sure why yet, I need to debug this at
+        // some point)
+        // NOTE: How many ticks can I advance before OpenOCD cancels a command?
+        int max_ticks = 2000000; // 10000000;
         int ticks = 0;
         while (ticks < max_ticks) {
           remote_bitbang->tick();
@@ -444,11 +449,8 @@ void run_sail(void)
       sail_int sail_step;
       CREATE(sail_int)(&sail_step);
       CONVERT_OF(sail_int, mach_int)(&sail_step, step_no);
-
-      // If the model is in Debug mode, request an exit, else request
-      // no change.
-      zdebug_request dr = step_result.zin_debug_mode ? zDR_Resume : zDR_None;
-      step_result = ztry_step(sail_step, exit_wait, dr);
+      // TODO we might have to skip as long we are in Debug Mode?
+      step_result = ztry_step(sail_step, exit_wait);
       if (have_exception)
         goto step_exception;
       flush_logs();
