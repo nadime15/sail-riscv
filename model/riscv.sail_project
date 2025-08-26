@@ -21,10 +21,10 @@ core {
     core/vmem_types.sail,
     core/vext_types.sail,
     core/csr_begin.sail,
+    riscv_debug_module_types.sail,
+    riscv_debug_module_reg_begin.sail,
     core/callbacks.sail,
     core/reg_type.sail,
-    riscv_debug_module.sail,
-    riscv_debug_module_interface.sail,
     core/regs.sail,
     core/pc_access.sail,
     core/sys_regs.sail,
@@ -309,7 +309,7 @@ extensions {
       files extensions/Zawrs/zawrs_types.sail
     }
     Zawrs_insts {
-      requires riscv, Zawrs_types
+      requires riscv, Zawrs_types, Sdext_regs
       files extensions/Zawrs/zawrs_insts.sail
     }
   }
@@ -412,6 +412,18 @@ extensions {
 
 }
 
+debug_module {
+  module {
+    requires riscv_core
+
+    files
+      riscv_debug_module_utils.sail,
+      riscv_debug_module.sail,
+      riscv_debug_module_interface.sail
+  }
+
+}
+
 // May-be-operations (MOPS) defined after extensions so they can be
 // overridden by earlier extensions
 mops {
@@ -430,11 +442,12 @@ mops {
 postlude {
   after extensions, mops
 
-  requires riscv_core, riscv, riscv_exceptions, Smcntrpmf, pmp, Sdext_regs, Sdext_control
+  requires riscv_core, riscv, riscv_exceptions, Smcntrpmf, pmp, Sdext_regs, Sdext_control, debug_module
 
   files
     postlude/insts_end.sail,
     postlude/csr_end.sail,
+    riscv_debug_module_reg_end.sail,
     postlude/step_common.sail,
     postlude/step_ext.sail,
     postlude/decode_ext.sail,
@@ -443,7 +456,7 @@ postlude {
     postlude/step.sail,
     postlude/validate_config.sail,
     postlude/device_tree.sail,
-    postlude/model.sail
+    postlude/model.sail,
 }
 
 termination {

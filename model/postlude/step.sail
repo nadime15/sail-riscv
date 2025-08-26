@@ -136,15 +136,6 @@ function wait_is_nop(wr : WaitReason) -> bool =
     WAIT_WRS_NTO => config extensions.Zawrs.nto.is_nop,
   }
 
-// The `debug_request` argument to the `try_step` function below
-// provides a mechanism to the external harness to control entry and
-// exit into Debug Mode.  DR_Halt requests the model to enter Debug
-// Mode, while DR_Resume requests the model to exit it.  DR_Halt is
-// ignored when the model is already in Debug Mode, and DR_Resume is
-// ignored when it is not.  DR_None does not request any change to the
-// current debug mode.
-enum debug_request = {DR_None, DR_Halt, DR_Resume}
-
 // `step_result` is the type of the return value of the `try_step`
 // function.
 // `step_result.in_wait` indicates whether the hart is in a waiting
@@ -203,14 +194,25 @@ struct step_result = {
 //              `debug_request` is either `DR_Halt` or `DR_Resume`.
 //              When single-stepping is set, DR_Resume should be specified.
 
-function try_step(step_no : nat, exit_wait : bool, dr : debug_request) -> step_result = {
+// TODO: Add description
+//struct debug_module_observe_status = {
+//  allhalted    : bool,
+//  anyhalted    : bool,
+//  allrunning   : bool,
+//  anyrunning   : bool,
+//  allhavereset : bool,
+//  anyhavereset : bool,
+//  success      : bool,
+//}
+
+
+
+
+function try_step(step_no : nat, exit_wait : bool) -> step_result = {
   /* for step extensions */
   ext_pre_step_hook();
 
-  // If enabled, advances the bitbanging protocol and sends
-  // data to the debugger (over OpenOCD) or reads from it
-  jtag_dtm_tick();
-
+  let dr = debug_module_pending_request;
   // Leave Debug mode if a resume is requested.
   if   dr == DR_Resume & currentlyEnabled(Ext_Sdext)
   then {
@@ -271,7 +273,7 @@ function try_step(step_no : nat, exit_wait : bool, dr : debug_request) -> step_r
     Step_Execute(Enter_Debug_Mode(cause), _) => {
       // When entering Debug via an execution of `ebreak`, DPC is set
       // to the address of the `ebreak`.
-      enter_debug_mode(cause, zeros(), get_arch_pc())
+      enter_debug_mode(cause, zeros(), get_arch_pc());
     },
     Step_Execute(Exit_Debug_Abstract_Command(), _) => {
       end_debug_abstract_command()
@@ -326,6 +328,12 @@ function try_step(step_no : nat, exit_wait : bool, dr : debug_request) -> step_r
   if   in_single_step() & not(debug_mode_active)
   then enter_debug_mode(DBGEntry_Step, zeros(), get_arch_pc());
 
+  // Set to initial state
+  // TODO/NOTE: We potentially need to remove this, it can take up multiple cycles till the comment was handled (see debug_abstract_command_active)
+  // its probably better to switch after command_active is set to 0 (1->0)
+  debug_module_pending_request = DR_None;
+
+  // TODO: We should not increment the instruction code (on the c++ side) if we are in the HALT state
   struct { in_wait,
            in_debug_mode   = debug_mode_active,
            in_debug_cmd    = debug_abstract_command_active,
@@ -338,7 +346,7 @@ function loop () : unit -> unit = {
   while not(htif_done) do {
     // This standalone loop always exits immediately out of waiting
     // states.
-    let stepped = try_step(step_no, true, DR_None);
+    let stepped = try_step(step_no, true);
     if not(stepped.in_wait) then {
       step_no = step_no + 1;
       if get_config_print_instr() then {
