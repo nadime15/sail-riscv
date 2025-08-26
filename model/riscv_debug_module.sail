@@ -6,36 +6,11 @@
 /*  SPDX-License-Identifier: BSD-2-Clause                                                */
 /*=======================================================================================*/
 
-type dmreg = bits(8)
-
 // State of the Hart from the Debug Module's POV (? Double check this)
 enum DMHartState = {NON_EXISTENT, UNAVAILABLE, RUNNING, HALTED}
 // Request from the DM to the Hart
 // TODO: Add RESET etc.
-enum DMHartRequest = {HALT, RESUME}
 register dm_hart_state : DMHartState = RUNNING
-/* Mapping of Debug Module Register addresses to their names. */
-
-val dm_name_map : dmreg <-> string
-
-scattered mapping dm_name_map
-
-val dm_name : dmreg -> string
-function dm_name(dm_reg) = dm_name_map(dm_reg)
-
-overload to_str = {dm_name}
-
-/* Returns whether a Debug Module Register exists */
-val is_DM_reg_defined : (dmreg) -> bool
-scattered function is_DM_reg_defined
-
-/* Returns the value of the Debug Module Register if it is defined */
-val read_DM_reg : dmreg -> bits(32)
-scattered function read_DM_reg
-
-/* Returns new value (after legalisation) if the Debug Module Register is defined */
-val write_DM_reg : (dmreg, bits(32)) -> bits(32)
-scattered function write_DM_reg
 
 ///////////////////////////////////////////////////////////////////////
 
@@ -104,76 +79,6 @@ function clause read_DM_reg(0x0d) = data9
 function clause read_DM_reg(0x0e) = data10
 function clause read_DM_reg(0x0f) = data11
 
-bitfield Dmcontrol : bits(32) = {
-  haltreq :        31,
-  resumereq:       30,
-  haltreset:       29,
-  ackhavereset:    28,
-  ackunavail:      27,
-  hasel:           26,
-  hartsello:       25 .. 16,
-  hartselhi:       15 ..  6,
-  setkeepalive:    5,
-  clrkeepalive:    4,
-  setresethaltreq: 3,
-  clrresethaltreq: 2,
-  ndmreset:        1,
-  dmactive:        0
-}
-
-function request_halt(request : DMHartRequest) -> bool = match request {
-    HALT   => true,
-    RESUME => true,
-}
-function legalize_dmcontrol(d : Dmcontrol, x : bits(32)) -> Dmcontrol = {
-  let x = Mk_Dmcontrol(x);
-
-  if x[ndmreset] == 0b1 then {
-    // TODO
-    print_endline("Reset Hard Platform");
-  };
-
-  if x[haltreq] == 0b1 then {
-    print_log("Received halt request");
-    let status = request_halt(HALT);
-  };
-
-  if (x[resumereq] == 0b1) then {
-    print_log("Received resume request");
-    let status = request_halt(RESUME);
-  };
-
-  [d with
-    // TODO: Writing clears halt request bit for all currently selected harts.
-    // This may (!) cancel outstanding halt requests for those harts.
-    // TODO: Writes to this bit should be ignored while
-    // an abstract command is executing
-    haltreq         = x[haltreq],
-    resumereq       = if x[resumereq] == 0b1 then 0b1 else x[resumereq],
-    haltreset       = 0b0,
-    ackhavereset    = if x[ackhavereset] == 0b1 then 0b1 else x[ackhavereset],
-    ackunavail      = if x[ackunavail] == 0b1 then 0b1 else x[ackunavail],
-    // Currently, we only support 1 hart
-    hasel           = 0b0,
-    hartsello       = 0b0000000000,
-    hartselhi       = 0b0000000000,
-    setkeepalive    = 0b0,
-    clrkeepalive    = 0b0,
-    setresethaltreq = 0b0,
-    clrresethaltreq = 0b0,
-    ndmreset        = x[ndmreset],
-    dmactive        = x[dmactive]
-  ]
-}
-
-register dmcontrol: Dmcontrol = legalize_dmcontrol(Mk_Dmcontrol(zeros()), zeros())
-
-mapping clause dm_name_map = 0x10  <-> "dmcontrol"
-
-function clause is_DM_reg_defined (0x10) = true
-function clause write_DM_reg(0x10, value) = { dmcontrol = legalize_dmcontrol(dmcontrol, value); dmcontrol.bits }
-function clause read_DM_reg(0x10) = dmcontrol.bits
-
 bitfield Dmstatus : bits(32) = {
   ndmresetpending: 24,
   stickyunavail:   23,
@@ -188,7 +93,7 @@ bitfield Dmstatus : bits(32) = {
   anyunavail:      12,
   allrunning:      11,
   anyrunning:      10,
-  allhated:         9,
+  allhalted:         9,
   anyhalted:        8,
   authenticated:    7,
   authbusy:         6,
@@ -217,6 +122,91 @@ mapping clause dm_name_map = 0x11  <-> "dmstatus"
 function clause is_DM_reg_defined (0x11) = true
 function clause write_DM_reg(0x11, value) = { dmstatus.bits }
 function clause read_DM_reg(0x11) = dmstatus.bits
+
+bitfield Dmcontrol : bits(32) = {
+  haltreq :        31,
+  resumereq:       30,
+  haltreset:       29,
+  ackhavereset:    28,
+  ackunavail:      27,
+  hasel:           26,
+  hartsello:       25 .. 16,
+  hartselhi:       15 ..  6,
+  setkeepalive:    5,
+  clrkeepalive:    4,
+  setresethaltreq: 3,
+  clrresethaltreq: 2,
+  ndmreset:        1,
+  dmactive:        0
+}
+
+function request_hart(request : debug_request) -> bool = {
+  let s : debug_module_observe_status = match request {
+    DR_Halt   => send_request(DR_Halt),
+    DR_Resume => send_request(DR_Resume),
+    // TODO: Remove this or at least handle differently
+    DR_None => send_request(DR_None),
+    };
+  // TODO
+    dmstatus[allhalted]    = [bool_to_bit(s.allhalted)];
+    dmstatus[anyhalted]    = [bool_to_bit(s.anyhalted)];
+    dmstatus[allrunning]   = [bool_to_bit(s.allrunning)];
+    dmstatus[anyrunning]   = [bool_to_bit(s.anyrunning)];
+    dmstatus[allhavereset] = [bool_to_bit(s.allhavereset)];
+    dmstatus[anyhavereset] = [bool_to_bit(s.anyhavereset)];
+
+    s.success
+}
+
+function legalize_dmcontrol(d : Dmcontrol, x : bits(32)) -> Dmcontrol = {
+  let x = Mk_Dmcontrol(x);
+
+  if x[ndmreset] == 0b1 then {
+    // TODO
+    print_endline("Reset Hard Platform");
+  };
+
+  if x[haltreq] == 0b1 then {
+    print_log("Received halt request");
+    let status = request_hart(DR_Halt);
+  };
+
+  if (x[resumereq] == 0b1) then {
+    print_log("Received resume request");
+    let status = request_hart(DR_Resume);
+  };
+
+  [d with
+    // TODO: Writing clears halt request bit for all currently selected harts.
+    // This may (!) cancel outstanding halt requests for those harts.
+    // NOTE: Call end_debug_abstract_command(?)
+    // TODO: Writes to this bit should be ignored while
+    // an abstract command is executing
+    haltreq         = x[haltreq],
+    resumereq       = if x[resumereq] == 0b1 then 0b1 else x[resumereq],
+    haltreset       = 0b0,
+    ackhavereset    = if x[ackhavereset] == 0b1 then 0b1 else x[ackhavereset],
+    ackunavail      = if x[ackunavail] == 0b1 then 0b1 else x[ackunavail],
+    // Currently, we only support 1 hart
+    hasel           = 0b0,
+    hartsello       = 0b0000000000,
+    hartselhi       = 0b0000000000,
+    setkeepalive    = 0b0,
+    clrkeepalive    = 0b0,
+    setresethaltreq = 0b0,
+    clrresethaltreq = 0b0,
+    ndmreset        = x[ndmreset],
+    dmactive        = x[dmactive]
+  ]
+}
+
+register dmcontrol: Dmcontrol = legalize_dmcontrol(Mk_Dmcontrol(zeros()), zeros())
+
+mapping clause dm_name_map = 0x10  <-> "dmcontrol"
+
+function clause is_DM_reg_defined (0x10) = true
+function clause write_DM_reg(0x10, value) = { dmcontrol = legalize_dmcontrol(dmcontrol, value); dmcontrol.bits }
+function clause read_DM_reg(0x10) = dmcontrol.bits
 
 bitfield Hartinfo : bits(32) = {
   nscratch:   23 .. 20,
@@ -339,8 +329,113 @@ bitfield Command : bits(32) = {
   control: 23 .. 0
 }
 
+function access_reg(write : access_type, data : bits(32), regno: bits(16)) -> bool = {
+  let addr = unsigned(regno);
+
+  // TODO: We need to simplify this!
+  match addr {
+    addr if addr <= unsigned(0x0fff) => {
+      print_endline("Access CSR");
+      // TODO/NOTE: We have to read/write as we were in M-Mode.
+      match write {
+        READ => {
+          let regvalue = read_CSR(regno[11 .. 0]);
+          match xlen {
+            32 => data0 = regvalue,
+            64 => {
+              data0 = regvalue[31 .. 0];
+              data1 = regvalue[63 .. 32];
+            },
+            _ => internal_error(__FILE__, __LINE__, "Unsupported xlen"),
+          };
+        },
+        WRITE => {
+          match xlen {
+            32 => {
+              match write_CSR(regno[11 .. 0], data0) {
+                Ok(_) => (),
+                Err(_) => internal_error(__FILE__, __LINE__, "Error ")
+              }
+            },
+            64 => {
+              match write_CSR(regno[11 .. 0], data1 @ data0) {
+                Ok(_) => (),
+                Err(_) => (),
+              }
+            },
+            _ => internal_error(__FILE__, __LINE__, "Unsupported xlen"),
+          };
+        },
+      }
+
+    },      //CSR,
+    addr if addr <= unsigned(0x101f) => {
+      // NOTE/TODO: For me its not obvious whether writes from data0 to regs are always 32 bit.
+      // what happens with the remaining bits in case the reg is 64bit width?
+      // for now sign extend
+      // NOTE: What happens if E-Extension is enabled?!?
+      //let a = addr - unsigned(0x1000);
+      //assert(a >= 0 & a <=31);
+      print_endline("Access GPR");
+      let regidx = encdec_reg(regno[4 .. 0]);
+      match write {
+        READ => {
+        let regvalue = X(regidx);
+          match xlen {
+          32 => data0 = regvalue,
+          64 => {
+            data0 = regvalue[31 .. 0];
+            data1 = regvalue[63 .. 32];
+          },
+          _ => internal_error(__FILE__, __LINE__, "Unsupported xlen"),
+         };
+        },
+        WRITE => {
+          match xlen {
+            32 => X(regidx) = data0,
+            64 => X(regidx) = data1 @ data0,
+            _ => internal_error(__FILE__, __LINE__, "Unsupported xlen"),
+          };
+        }
+      };
+      print_endline("GPR")
+    },      //GPR,
+    // TODO: Add READ/WRITE for floating point regs
+    addr if addr <= unsigned(0x103f) => print_endline("FPR"),      //FPR,
+    addr if addr >= unsigned(0xc000) & addr <= unsigned(0xffff) => print_endline("RESERVED"), //RESERVED,
+    addr => print_endline("INVALID"),                              //INVALID
+  };
+  // TODO
+  true
+}
+function execute_abstract_command(aarsize : bits(3), aarpostincrement : bits(1), postexec : bits(1), transfer : bits(1), write : bits(1), regno : bits (16)) -> bool = {
+
+  let res : bool = match determine_access_type(write, transfer) {
+    READ       => access_reg(READ, data0, regno),
+    WRITE      => access_reg(WRITE, data0, regno),
+    NO_TRANFER => true,
+  };
+  res
+}
+
 function legalize_command(d : Command, x : bits(32)) -> Command = {
+
+  // TODO check if abstract command is being executed
+  // NOTE: We only support cmdtype 0 (Access Register Command)
+  let cmdtype          = x[31 .. 24];
+  let aarsize          = x[22 .. 20];
+  let aarpostincrement = x[19 .. 19];
+  let postexec         = x[18 .. 18];
+  let transfer         = x[17 .. 17];
+  let write            = x[16 .. 16];
+  let regno            = x[15 .. 0];
+
+  //abstractcs[busy] = 0b1;
+  let status = execute_abstract_command(aarsize, aarpostincrement, postexec, transfer, write, regno);
+  //abstracts[busy] = 0b0;
+
   let x = Mk_Command(x);
+
   [d with
     cmdtype = x[cmdtype],
     control = x[control],
