@@ -17,6 +17,7 @@ union Step = {
   Step_Execute            : (ExecutionResult, instbits),
   Step_Waiting            : WaitReason,
   Step_Debug_HaltReq      : unit,
+  Step_Debug_Halted       : unit,
 }
 
 function run_hart_waiting(step_no : int, wr: WaitReason, instbits : instbits, exit_wait : bool) -> Step = {
@@ -257,6 +258,8 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
   let exit_wait = exit_wait | (hartSupports(Ext_Sdext) & dr == DR_Halt);
   let step_val : Step = match hart_state {
       HART_WAITING(wr, instbits)     => run_hart_waiting(step_no, wr, instbits, exit_wait),
+      // TODO: Is HART_ACTIVE the right state? Or do we need a new state?
+      HART_ACTIVE() if dr != DR_Resume & debug_mode_active => Step_Debug_Halted(),
       HART_ACTIVE() if dr == DR_Halt => Step_Debug_HaltReq(),
       HART_ACTIVE()                  => run_hart_active(step_no),
 
@@ -293,6 +296,10 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
       // When entering Debug via a halt request, DPC is set to the address
       // of the next instruction to be executed at the time of entry.
       enter_debug_mode(DBGEntry_HaltReq, zeros(), get_arch_pc())
+    },
+    Step_Debug_Halted() => {
+      // Dont do anything...
+      ()
     },
     Step_Execute(Enter_Debug_Mode(cause), _) => {
       // When entering Debug via an execution of `ebreak`, DPC is set

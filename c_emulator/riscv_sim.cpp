@@ -494,6 +494,7 @@ void run_sail(void)
       if (config_print_step) {
         fprintf(trace_log, "\n");
       }
+      // TODO dont advance insn and step(?) why in HALT state
       step_no++;
       insn_cnt++;
       total_insns++;
