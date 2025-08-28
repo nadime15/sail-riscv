@@ -439,9 +439,19 @@ void run_sail(void)
         // into a memory fault (I am not sure why yet, I need to debug this at
         // some point)
         // NOTE: How many ticks can I advance before OpenOCD cancels a command?
-        int max_ticks = 2000000; // 10000000;
+        // NOTE: It seems like Openocd times out at some point when commands are
+        // sent so either we need to set busy in between or reduce the number of
+        // ticks
+        int max_ticks = 5000; // 10000000;
         int ticks = 0;
         while (ticks < max_ticks) {
+          // By tracking whether a request was sent from OpenOCD, we can avoid
+          // timing issues (request timing out due no responses) and no longer
+          // need to tweak 'max_ticks'. As soon as a new request is detected,
+          // we immediately exit the loop to enter try_step().
+          if (zactiv_request) {
+            break;
+          }
           remote_bitbang->tick();
           ticks++;
         }

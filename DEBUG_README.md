@@ -11,7 +11,7 @@ We have to launch the Debug Transport Hardware which communicates via the bitban
 The following command launches the the jtag modules which opens and listens on port 9842:
 
 ```bash
-$ ./sail_riscv_sim --debug 9824 ../test/2025-07-16/riscv-tests/rv64mi-p-scall --trace-all
+$ ./sail_riscv_sim --debug 9824 ../test/2025-07-16/riscv-tests/rv64uf-p-fcvt_w --trace-instr
 ```
 
 ### 2.
@@ -47,7 +47,7 @@ Telnet offers a bunch of different commands,
 
 Probably the most important for now are
 
-`halt`, `resume` and `step`
+`halt`, `resume` and `step` (The core must be in the HALT state in order to use step)
 
 In order to read and write to registers you either do for a write
 
@@ -162,4 +162,12 @@ riscv.cpu
   riscv.cpu write_memory address width data ['phys']
 ```
 
-Note: There is a bug that does not allow you to launch OpenOCD before Sail has actually executed the first instruction (You will run into a mem fault). So wait until Sail has executed the first instruction before launching OpenOCD.
+## Helpful commands (Telnet)
+
+Here are a few usuful commands:
+
+```bash
+$ poll off
+```
+
+Stops polling even when OpenOCD is in debug mode, greatly reducing unnecessary messages and log output.

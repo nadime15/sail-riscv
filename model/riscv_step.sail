@@ -207,7 +207,17 @@ struct step_result = {
 //}
 
 
-
+function dm_update_dmstatus(request: debug_request, step : bool) -> unit = {
+  // NOTE: Another problem... when openOCD runs 'step' we actually need to transit
+  // from allrunning = anyrunning = 1 to allrunning = anyrunnign = 0
+  // Right now I skip this step and jump immediatly to allresumeack
+  dmstatus[allhalted]  = bool_to_bits(request == DR_Halt | step);
+  dmstatus[anyhalted]  = bool_to_bits(request == DR_Halt | step);
+  dmstatus[allrunning] = bool_to_bits(request == DR_Resume & not(step));
+  dmstatus[anyrunning] = bool_to_bits(request == DR_Resume & not(step));
+  dmstatus[allresumeack] = bool_to_bits(request == DR_Resume);
+  dmstatus[anyresumeack] = bool_to_bits(request == DR_Resume);
+}
 
 function try_step(step_no : nat, exit_wait : bool) -> step_result = {
   /* for step extensions */
@@ -220,6 +230,7 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
     if   in_debug_abstract_command()
     then end_debug_abstract_command();
     exit_debug_mode();
+    dm_update_dmstatus(DR_Resume, false);
   };
 
   /*
@@ -272,7 +283,8 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
     Step_Debug_HaltReq() => {
       // When entering Debug via a halt request, DPC is set to the address
       // of the next instruction to be executed at the time of entry.
-      enter_debug_mode(DBGEntry_HaltReq, zeros(), get_arch_pc())
+      enter_debug_mode(DBGEntry_HaltReq, zeros(), get_arch_pc());
+      dm_update_dmstatus(DR_Halt, false);
     },
     Step_Debug_Halted() => {
       // Dont do anything...
@@ -282,12 +294,15 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
       // When entering Debug via an execution of `ebreak`, DPC is set
       // to the address of the `ebreak`.
       enter_debug_mode(cause, zeros(), get_arch_pc());
+      dm_update_dmstatus(DR_Halt, false);
     },
     Step_Execute(Exit_Debug_Abstract_Command(), _) => {
       end_debug_abstract_command()
     },
     Step_Execute(Exit_Debug_Mode(), _) => {
-      exit_debug_mode()
+      exit_debug_mode();
+      // TODO: Check whether this case (Step_Execute(...)) is actually needed and if we pass the right request (DR_Resume)
+      dm_update_dmstatus(DR_Resume, false);
     },
     // errors from extensions
     Step_Execute(Ext_CSR_Check_Failure(), _) => ext_check_CSR_fail(),
@@ -334,13 +349,17 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
   // When entering Debug via single step, DPC is set to the address of
   // the next instruction to be executed.
   if   in_single_step() & not(debug_mode_active)
-  then enter_debug_mode(DBGEntry_Step, zeros(), get_arch_pc());
+  // TODO: We know update dmstatus from 2 different places, unify them and if possible make somehow event driven and update dmstatus accordingly
+  // once the core state changes
+  then { print_endline("DEBUG: Entering debug mode via single step");
+   dm_update_dmstatus(DR_Resume, true);
+   enter_debug_mode(DBGEntry_Step, zeros(), get_arch_pc())};
 
   // Set to initial state
   // TODO/NOTE: We potentially need to remove this, it can take up multiple cycles till the comment was handled (see debug_abstract_command_active)
   // its probably better to switch after command_active is set to 0 (1->0)
   debug_module_pending_request = DR_None;
-
+  activ_request = false;
   // TODO: We should not increment the instruction code (on the c++ side) if we are in the HALT state
   struct { in_wait,
            in_debug_mode   = debug_mode_active,
