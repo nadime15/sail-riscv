@@ -147,15 +147,17 @@ function request_hart(request : debug_request) -> bool = {
     // TODO: Remove this or at least handle differently
     DR_None => send_request(DR_None),
     };
-  // TODO
-    dmstatus[allhalted]    = [bool_to_bit(s.allhalted)];
-    dmstatus[anyhalted]    = [bool_to_bit(s.anyhalted)];
-    dmstatus[allrunning]   = [bool_to_bit(s.allrunning)];
-    dmstatus[anyrunning]   = [bool_to_bit(s.anyrunning)];
-    dmstatus[allhavereset] = [bool_to_bit(s.allhavereset)];
-    dmstatus[anyhavereset] = [bool_to_bit(s.anyhavereset)];
-
-    s.success
+  // TODO: We handle this now via dm_update_status
+//    dmstatus[allhalted]    = [bool_to_bit(s.allhalted)];
+//    dmstatus[anyhalted]    = [bool_to_bit(s.anyhalted)];
+//    dmstatus[allrunning]   = [bool_to_bit(s.allrunning)];
+//    dmstatus[anyrunning]   = [bool_to_bit(s.anyrunning)];
+//    dmstatus[allhavereset] = [bool_to_bit(s.allhavereset)];
+//    dmstatus[anyhavereset] = [bool_to_bit(s.anyhavereset)];
+//    dmstatus[allresumeack] = [bool_to_bit(s.allresumeack)];
+//    dmstatus[anyresumeack] = [bool_to_bit(s.anyresumeack)];
+//    s.success
+  true
 }
 
 function legalize_dmcontrol(d : Dmcontrol, x : bits(32)) -> Dmcontrol = {
@@ -173,6 +175,9 @@ function legalize_dmcontrol(d : Dmcontrol, x : bits(32)) -> Dmcontrol = {
 
   if (x[resumereq] == 0b1) then {
     print_log("Received resume request");
+    // Clear these bits, after the request was treated, set them again to 1
+    dmstatus[allresumeack] = 0b0;
+    dmstatus[anyresumeack] = 0b0;
     let status = request_hart(DR_Resume);
   };
 

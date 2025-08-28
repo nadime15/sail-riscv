@@ -9,6 +9,8 @@ type dmreg = bits(8)
 // current debug mode.
 enum debug_request = {DR_None, DR_Halt, DR_Resume}
 
+register activ_request : bool
+
 register debug_module_pending_request : debug_request = DR_None
 
 struct debug_module_observe_status = {
@@ -16,6 +18,8 @@ struct debug_module_observe_status = {
   anyhalted    : bool,
   allrunning   : bool,
   anyrunning   : bool,
+  allresumeack : bool,
+  anyresumeack : bool,
   allhavereset : bool,
   anyhavereset : bool,
   success      : bool,
