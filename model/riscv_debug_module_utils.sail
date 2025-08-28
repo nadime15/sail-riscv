@@ -1,7 +1,12 @@
 function send_request(request : debug_request) -> debug_module_observe_status = {
   // The global variable below stores the current request from the debug module
   // which is then used in try_step()
+  // TODO: We shouldn just change states when we dont even know if we succeeded
+  // TODO: It would be better if these signals were event driven and track the state of the core
+  // instead of setting them manually
   debug_module_pending_request = request;
+  activ_request = request == DR_Halt | request == DR_Resume;
+  // TODO: Remove this (we handle this now via dm_update_status)
   let t : debug_module_observe_status = struct { allhalted  = request == DR_Halt,
                                                  anyhalted  = request == DR_Halt,
                                                  allrunning = request == DR_Resume,
@@ -9,6 +14,8 @@ function send_request(request : debug_request) -> debug_module_observe_status = 
                                                  // TODO
                                                  allhavereset = false,
                                                  anyhavereset = false,
+                                                 allresumeack = request == DR_Resume,
+                                                 anyresumeack = request == DR_Resume,
                                                  success = true };
   t
   }
