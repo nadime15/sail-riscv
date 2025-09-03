@@ -8,7 +8,7 @@ class jtag_dtm_t;
 
 class remote_bitbang_t {
 public:
-  static std::shared_ptr<remote_bitbang_t> make(uint16_t port, jtag_dtm_t *tap);
+  static std::unique_ptr<remote_bitbang_t> make(uint16_t port, jtag_dtm_t *tap);
 
   ~remote_bitbang_t();
 

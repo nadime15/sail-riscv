@@ -22,7 +22,6 @@ riscv_core {
     riscv_vext_types.sail,
     riscv_csr_begin.sail,
     riscv_debug_module_types.sail,
-    riscv_debug_module_reg_begin.sail,
     riscv_callbacks.sail,
     riscv_reg_type.sail,
     riscv_regs.sail,
@@ -432,7 +431,6 @@ riscv_postlude {
   files
     riscv_insts_end.sail,
     riscv_csr_end.sail,
-    riscv_debug_module_reg_end.sail,
     riscv_step_common.sail,
     riscv_step_ext.sail,
     riscv_decode_ext.sail,

@@ -51,11 +51,14 @@ std::string term_log;
 std::string trace_log_path;
 FILE *trace_log = NULL;
 std::string dtb_file;
-int rvfi_dii_port = 0;
-std::optional<rvfi_handler> rvfi;
 std::vector<std::string> elfs;
 
+int rvfi_dii_port = 0;
+std::optional<rvfi_handler> rvfi;
 rvfi_callbacks rvfi_cbs;
+
+int rbb_port = 0;
+std::optional<std::shared_ptr<remote_bitbang_t>> remote_bitbang;
 
 std::string sig_file;
 uint64_t mem_sig_start = 0;
@@ -73,7 +76,6 @@ bool config_print_step = false;
 bool config_use_abi_names = false;
 bool config_enable_rvfi = false;
 
-uint16_t rbb_port = 0;
 // TODO: Add command-line option to set required_rti_cycles at runtime
 uint64_t required_rti_cycles = 0;
 
@@ -212,6 +214,8 @@ static void setup_options(CLI::App &app)
       "List of ELF files to load. They will be loaded in order, possibly "
       "overwriting each other. PC will be set to the entry point of the first "
       "file. This is optional with some arguments, e.g. --print-isa-string.");
+
+  app.footer("The --debug and --rvfi-dii options are mutually exclusive.");
 }
 
 uint64_t load_sail(const std::string &filename, bool main_file)
@@ -396,10 +400,6 @@ void run_sail(void)
   bool exit_wait = true;
   bool diverged = false;
 
-  std::shared_ptr<jtag_dtm_t> jtag_dtm(new jtag_dtm_t(required_rti_cycles));
-  std::shared_ptr<remote_bitbang_t> remote_bitbang
-      = remote_bitbang_t::make(rbb_port, jtag_dtm.get());
-
   /* initialize the step number */
   mach_int step_no = 0;
   uint64_t insn_cnt = 0;
@@ -428,7 +428,7 @@ void run_sail(void)
       }
     }
     { /* run a Sail step */
-      if (rbb_port != 0) {
+      if (remote_bitbang) {
         // If enabled, advances the bit banging protocol and sends
         // data to the debugger (over OpenOCD) or reads from it
         // NOTE: This is a temporary solution and needs to be redone
@@ -452,7 +452,7 @@ void run_sail(void)
           if (zactiv_request) {
             break;
           }
-          remote_bitbang->tick();
+          remote_bitbang.value()->tick();
           ticks++;
         }
       }
@@ -583,10 +583,19 @@ int inner_main(int argc, char **argv)
     printf("%s", DEFAULT_JSON);
     exit(EXIT_SUCCESS);
   }
+  // Mark RVFI and OpenOCD as mutually exclusive.
+  if (rvfi_dii_port != 0 && rbb_port != 0) {
+    fprintf(stderr, "--debug and --rvfi-dii are mutually exclusive.\n");
+    exit(EXIT_FAILURE);
+  }
   if (rvfi_dii_port != 0) {
     config_enable_rvfi = true;
     rvfi = rvfi_handler(rvfi_dii_port);
+  } else if (rbb_port != 0) {
+    jtag_dtm_t *jtag_dtm = new jtag_dtm_t(required_rti_cycles);
+    remote_bitbang = remote_bitbang_t::make(rbb_port, jtag_dtm);
   }
+
   if (do_show_times) {
     fprintf(stderr, "will show execution times on completion.\n");
   }
