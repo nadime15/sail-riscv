@@ -52,6 +52,8 @@ std::string term_log;
 std::string trace_log_path;
 FILE *trace_log = stdout;
 std::string dtb_file;
+std::vector<std::string> elfs;
+
 int rvfi_dii_port = 0;
 std::optional<rvfi_handler> rvfi;
 std::vector<std::string> elfs;
@@ -60,6 +62,9 @@ std::vector<std::string> elfs;
 std::optional<uint64_t> htif_tohost_address;
 
 rvfi_callbacks rvfi_cbs;
+
+int rbb_port = 0;
+std::optional<std::shared_ptr<remote_bitbang_t>> remote_bitbang;
 
 std::string sig_file;
 uint64_t mem_sig_start = 0;
@@ -81,7 +86,6 @@ bool config_print_step = false;
 bool config_use_abi_names = false;
 bool config_enable_rvfi = false;
 
-uint16_t rbb_port = 0;
 // TODO: Add command-line option to set required_rti_cycles at runtime
 uint64_t required_rti_cycles = 0;
 
@@ -425,10 +429,6 @@ void run_sail(void)
   struct zstep_result step_result = {false, false, false, false};
   bool exit_wait = true;
 
-  std::shared_ptr<jtag_dtm_t> jtag_dtm(new jtag_dtm_t(required_rti_cycles));
-  std::shared_ptr<remote_bitbang_t> remote_bitbang
-      = remote_bitbang_t::make(rbb_port, jtag_dtm.get());
-
   /* initialize the step number */
   mach_int step_no = 0;
   uint64_t insn_cnt = 0;
@@ -457,7 +457,7 @@ void run_sail(void)
       }
     }
     { /* run a Sail step */
-      if (rbb_port != 0) {
+      if (remote_bitbang) {
         // If enabled, advances the bit banging protocol and sends
         // data to the debugger (over OpenOCD) or reads from it
         // NOTE: This is a temporary solution and needs to be redone
@@ -481,7 +481,7 @@ void run_sail(void)
           if (zactiv_request) {
             break;
           }
-          remote_bitbang->tick();
+          remote_bitbang.value()->tick();
           ticks++;
         }
       }
@@ -620,7 +620,11 @@ int inner_main(int argc, char **argv)
   if (rvfi_dii_port != 0) {
     config_enable_rvfi = true;
     rvfi = rvfi_handler(rvfi_dii_port);
+  } else if (rbb_port != 0) {
+    jtag_dtm_t *jtag_dtm = new jtag_dtm_t(required_rti_cycles);
+    remote_bitbang = remote_bitbang_t::make(rbb_port, jtag_dtm);
   }
+
   if (do_show_times) {
     fprintf(stderr, "will show execution times on completion.\n");
   }
