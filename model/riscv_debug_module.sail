@@ -6,6 +6,31 @@
 /*  SPDX-License-Identifier: BSD-2-Clause                                                */
 /*=======================================================================================*/
 
+/* Mapping of Debug Module Register addresses to their names. */
+val dm_name_map : dmreg <-> string
+
+// initialize scattered definitions
+
+scattered mapping dm_name_map
+
+val dm_name : dmreg -> string
+function dm_name(dm_reg) = dm_name_map(dm_reg)
+
+overload to_str = {dm_name}
+
+/* Returns whether a Debug Module Register exists */
+val is_DM_reg_defined : (dmreg) -> bool
+scattered function is_DM_reg_defined
+
+/* Returns the value of the Debug Module Register if it is defined */
+val read_DM_reg : dmreg -> bits(32)
+scattered function read_DM_reg
+
+/* Returns new value (after legalisation) if the Debug Module Register is defined */
+val write_DM_reg : (dmreg, bits(32)) -> bits(32)
+scattered function write_DM_reg
+
+
 // State of the Hart from the Debug Module's POV (? Double check this)
 enum DMHartState = {NON_EXISTENT, UNAVAILABLE, RUNNING, HALTED}
 // Request from the DM to the Hart
@@ -985,3 +1010,23 @@ mapping clause dm_name_map = 0x40  <-> "haltsum0"
 function clause is_DM_reg_defined (0x40) = true
 // Read Only Register
 function clause read_DM_reg(0x40) = haltsum0.bits
+
+// terminate scattered definitions
+
+mapping clause dm_name_map = reg <-> hex_bits_8(reg)
+end dm_name_map
+
+function clause is_DM_reg_defined(_) = false
+end is_DM_reg_defined
+
+function clause read_DM_reg(dm_reg) = {
+   // This should be impossible because is_DM_reg_defined() should have returned false.
+   internal_error(__FILE__, __LINE__, "Read from Debug Module Register that does not exist: " ^ bits_str(dm_reg));
+}
+end read_DM_reg
+
+function clause write_DM_reg(dm_reg, _) = {
+   // This should be impossible because is_DM_reg_defined() should have returned false.
+   internal_error(__FILE__, __LINE__, "Write to Debug Module Register that does not exist: " ^ bits_str(dm_reg));
+}
+end write_DM_reg
