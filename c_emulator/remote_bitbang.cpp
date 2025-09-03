@@ -27,7 +27,7 @@ remote_bitbang_t::remote_bitbang_t(uint16_t port, jtag_dtm_t *tap,
 {
 }
 
-std::shared_ptr<remote_bitbang_t> remote_bitbang_t::make(uint16_t port,
+std::unique_ptr<remote_bitbang_t> remote_bitbang_t::make(uint16_t port,
                                                          jtag_dtm_t *tap)
 {
   if (!tap)
@@ -93,7 +93,7 @@ std::shared_ptr<remote_bitbang_t> remote_bitbang_t::make(uint16_t port,
          ntohs(addr.sin_port));
   fflush(stdout);
 
-  return std::shared_ptr<remote_bitbang_t>(
+  return std::unique_ptr<remote_bitbang_t>(
       new remote_bitbang_t(port, tap, socket_fd));
 }
 
