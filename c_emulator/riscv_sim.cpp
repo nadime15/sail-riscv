@@ -592,7 +592,7 @@ int inner_main(int argc, char **argv)
     config_enable_rvfi = true;
     rvfi = rvfi_handler(rvfi_dii_port);
   } else if (rbb_port != 0) {
-    jtag_dtm_t* jtag_dtm = new jtag_dtm_t(required_rti_cycles);
+    jtag_dtm_t *jtag_dtm = new jtag_dtm_t(required_rti_cycles);
     remote_bitbang = remote_bitbang_t::make(rbb_port, jtag_dtm);
   }
 
