@@ -212,6 +212,8 @@ static void setup_options(CLI::App &app)
       "List of ELF files to load. They will be loaded in order, possibly "
       "overwriting each other. PC will be set to the entry point of the first "
       "file. This is optional with some arguments, e.g. --print-isa-string.");
+
+  app.footer("The --debug and --rvfi-dii options are mutually exclusive.");
 }
 
 uint64_t load_sail(const std::string &filename, bool main_file)
@@ -582,6 +584,11 @@ int inner_main(int argc, char **argv)
   if (do_print_default_config) {
     printf("%s", DEFAULT_JSON);
     exit(EXIT_SUCCESS);
+  }
+  // Mark RVFI and OpenOCD as mutually exclusive.
+  if (rvfi_dii_port != 0 && rbb_port != 0) {
+    fprintf(stderr, "--debug and --rvfi-dii are mutually exclusive.\n");
+    exit(EXIT_FAILURE);
   }
   if (rvfi_dii_port != 0) {
     config_enable_rvfi = true;
