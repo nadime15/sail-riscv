@@ -171,3 +171,12 @@ $ poll off
 ```
 
 Stops polling even when OpenOCD is in debug mode, greatly reducing unnecessary messages and log output.
+
+Shows information about all available harts
+
+```bash
+$ targets
+    TargetName         Type       Endian TapName            State
+--  ------------------ ---------- ------ ------------------ ------------
+ 0* riscv.cpu          riscv      little riscv.cpu          halted
+```
