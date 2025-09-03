@@ -522,7 +522,7 @@ void run_sail(void)
       fprintf(stdout, "kips: %" PRIu64 "\n",
               ((uint64_t)1000) * 0x100000 / (end_us - start_us));
     }
-
+    // TODO: Close debug mode port (rbb_port), if used
     if (zhtif_done) {
       /* check exit code */
       if (zhtif_exit_code == 0) {

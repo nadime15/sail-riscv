@@ -93,7 +93,7 @@ bitfield Dmstatus : bits(32) = {
   anyunavail:      12,
   allrunning:      11,
   anyrunning:      10,
-  allhalted:         9,
+  allhalted:        9,
   anyhalted:        8,
   authenticated:    7,
   authbusy:         6,
@@ -126,7 +126,7 @@ function clause read_DM_reg(0x11) = dmstatus.bits
 bitfield Dmcontrol : bits(32) = {
   haltreq :        31,
   resumereq:       30,
-  haltreset:       29,
+  hartreset:       29,
   ackhavereset:    28,
   ackunavail:      27,
   hasel:           26,
@@ -140,69 +140,85 @@ bitfield Dmcontrol : bits(32) = {
   dmactive:        0
 }
 
-function request_hart(request : debug_request) -> bool = {
-  let s : debug_module_observe_status = match request {
+function request_hart(request : debug_request) -> bool = match request {
     DR_Halt   => send_request(DR_Halt),
     DR_Resume => send_request(DR_Resume),
+    DR_Reset  => send_request(DR_Reset),
     // TODO: Remove this or at least handle differently
     DR_None => send_request(DR_None),
-    };
-  // TODO: We handle this now via dm_update_status
-//    dmstatus[allhalted]    = [bool_to_bit(s.allhalted)];
-//    dmstatus[anyhalted]    = [bool_to_bit(s.anyhalted)];
-//    dmstatus[allrunning]   = [bool_to_bit(s.allrunning)];
-//    dmstatus[anyrunning]   = [bool_to_bit(s.anyrunning)];
-//    dmstatus[allhavereset] = [bool_to_bit(s.allhavereset)];
-//    dmstatus[anyhavereset] = [bool_to_bit(s.anyhavereset)];
-//    dmstatus[allresumeack] = [bool_to_bit(s.allresumeack)];
-//    dmstatus[anyresumeack] = [bool_to_bit(s.anyresumeack)];
-//    s.success
-  true
-}
+  }
 
 function legalize_dmcontrol(d : Dmcontrol, x : bits(32)) -> Dmcontrol = {
   let x = Mk_Dmcontrol(x);
 
-  if x[ndmreset] == 0b1 then {
-    // TODO
-    print_endline("Reset Hard Platform");
-  };
+  // dmactive - 0 (inactive)
+  // " .. the dmactive bit is the only bit which can be written to something other than its reset value). "
+  if d[dmactive] == 0b0 then {
+    [d with dmactive = x[dmactive]]
+  } else {
+    // ndmreset resets the whole system whereas hartreset resets only the selected harts
+    if x[ndmreset] == 0b1 | x[hartreset] == 0b1 then {
+      // TODO
+      // NOTE: "Once a hart's reset is complete, havereset becomes set"
+      // We set havereset in reset(), because its driven by the core
+      let status = request_hart(DR_Reset);
+      print_endline("Received reset request");
+    };
 
-  if x[haltreq] == 0b1 then {
-    print_log("Received halt request");
-    let status = request_hart(DR_Halt);
-  };
+    if x[haltreq] == 0b1 then {
+      print_endline("Received halt request");
+      let status = request_hart(DR_Halt);
+    };
 
-  if (x[resumereq] == 0b1) then {
-    print_log("Received resume request");
-    // Clear these bits, after the request was treated, set them again to 1
-    dmstatus[allresumeack] = 0b0;
-    dmstatus[anyresumeack] = 0b0;
-    let status = request_hart(DR_Resume);
-  };
+    if (x[resumereq] == 0b1) then {
+      print_endline("Received resume request");
+      // Clear these bits, after the request was treated, set them again to 1
+      dmstatus[allresumeack] = 0b0;
+      dmstatus[anyresumeack] = 0b0;
+      let status = request_hart(DR_Resume);
+    };
 
-  [d with
-    // TODO: Writing clears halt request bit for all currently selected harts.
-    // This may (!) cancel outstanding halt requests for those harts.
-    // NOTE: Call end_debug_abstract_command(?)
-    // TODO: Writes to this bit should be ignored while
-    // an abstract command is executing
-    haltreq         = x[haltreq],
-    resumereq       = if x[resumereq] == 0b1 then 0b1 else x[resumereq],
-    haltreset       = 0b0,
-    ackhavereset    = if x[ackhavereset] == 0b1 then 0b1 else x[ackhavereset],
-    ackunavail      = if x[ackunavail] == 0b1 then 0b1 else x[ackunavail],
-    // Currently, we only support 1 hart
-    hasel           = 0b0,
-    hartsello       = 0b0000000000,
-    hartselhi       = 0b0000000000,
-    setkeepalive    = 0b0,
-    clrkeepalive    = 0b0,
-    setresethaltreq = 0b0,
-    clrresethaltreq = 0b0,
-    ndmreset        = x[ndmreset],
-    dmactive        = x[dmactive]
-  ]
+    // "The havereset bits for the selected harts can be cleared by
+    //  writing 1 to ackhavereset in dmcontrol"
+    if x[ackhavereset] == 0b1 then {
+      // TODO: It would probably better to define a setter method for havereset which is part of the core
+      havereset = false;
+      dmstatus[allhavereset] = bool_to_bits(havereset);
+      dmstatus[anyhavereset] = bool_to_bits(havereset);
+    };
+
+  //  if x[dmactive] == 0b0 then {
+      // TODO: Reset debug module
+      // TODO: we could set x to zero to clean dmcontrol
+      //print_endline("Received debug module reset request")
+  //  };
+
+    [d with
+      // TODO: Writing clears halt request bit for all currently selected harts.
+      // This may (!) cancel outstanding halt requests for those harts.
+      // NOTE: Call end_debug_abstract_command(?)
+      // TODO: Writes to this bit should be ignored while
+      // an abstract command is executing
+      haltreq         = x[haltreq],
+      resumereq       = if x[resumereq] == 0b1 then 0b1 else x[resumereq],
+      // TODO/NOTE: Hart reset is optional but we enable it by default
+      // TODO: Make this an option
+      hartreset       = x[hartreset],
+      // TODO: Writes to this bit should be ignored while an abstract command is executing
+      ackhavereset    = if x[ackhavereset] == 0b1 then 0b1 else x[ackhavereset],
+      ackunavail      = if x[ackunavail] == 0b1 then 0b1 else x[ackunavail],
+      // Currently, we only support 1 hart
+      hasel           = 0b0,
+      hartsello       = 0b0000000000,
+      hartselhi       = 0b0000000000,
+      setkeepalive    = 0b0,
+      clrkeepalive    = 0b0,
+      setresethaltreq = 0b0,
+      clrresethaltreq = 0b0,
+      ndmreset        = x[ndmreset],
+      dmactive        = x[dmactive]
+    ]
+  }
 }
 
 register dmcontrol: Dmcontrol = legalize_dmcontrol(Mk_Dmcontrol(zeros()), zeros())

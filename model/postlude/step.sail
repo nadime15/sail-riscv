@@ -8,8 +8,6 @@
 
 // The emulator fetch-execute-interrupt dispatch loop.
 
-register hart_state : HartState = HART_ACTIVE()
-
 union Step = {
   Step_Pending_Interrupt  : (InterruptType, Privilege),
   Step_Ext_Fetch_Failure  : ext_fetch_addr_error,
@@ -241,6 +239,12 @@ function dm_update_dmstatus(request: debug_request, step : bool) -> unit = {
   dmstatus[anyresumeack] = bool_to_bits(request == DR_Resume);
 }
 
+//function set_havereset(status : bool) -> unit = {
+//  havereset = status;
+//  dmstatus[allhavereset] = if havereset then 0b0 else dmstatus[allhavereset];
+//  dmstatus[anyhavereset] = if havereset then 0b0 else dmstatus[anyhavereset];
+//}
+
 function try_step(step_no : nat, exit_wait : bool) -> step_result = {
   /* for step extensions */
   ext_pre_step_hook();
@@ -378,11 +382,17 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
    dm_update_dmstatus(DR_Resume, true);
    enter_debug_mode(DBGEntry_Step, zeros(), get_arch_pc())};
 
+  if debug_module_pending_request == DR_Reset then {
+    //TOOD reset in_wait, in_debug_mode, debug_cmd_error...
+    reset();
+  };
+
   // Set to initial state
   // TODO/NOTE: We potentially need to remove this, it can take up multiple cycles till the comment was handled (see debug_abstract_command_active)
   // its probably better to switch after command_active is set to 0 (1->0)
   debug_module_pending_request = DR_None;
   activ_request = false;
+
   // TODO: We should not increment the instruction code (on the c++ side) if we are in the HALT state
   struct { in_wait,
            in_debug_mode   = debug_mode_active,
