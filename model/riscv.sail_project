@@ -402,13 +402,11 @@ extensions {
 debug_module {
   module {
     requires riscv_core
-
     files
       riscv_debug_module_utils.sail,
       riscv_debug_module.sail,
       riscv_debug_module_interface.sail
   }
-
 }
 
 // May-be-operations (MOPS) defined after extensions so they can be
@@ -440,10 +438,10 @@ riscv_postlude {
     riscv_decode_ext.sail,
     riscv_fetch_rvfi.sail,
     riscv_fetch.sail,
-    riscv_step.sail,
     riscv_validate_config.sail,
     riscv_device_tree.sail,
     riscv_model.sail,
+    riscv_step.sail,
 }
 
 riscv_termination {

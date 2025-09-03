@@ -28,7 +28,7 @@ function dmi_read(address : nat) -> (bool, nat) = {
 // Debug module interface write
 // Returns success status after writing 32-bit value to the given 32-bit address
 function dmi_write(address : nat, value : nat) -> bool = {
-  // TODO
+
   let address = to_bits_truncate(8, address);
   let value = to_bits_truncate(32, value);
   //print_log("DMI Write: Address = " ^ bits_str(address) ^ ", Write = " ^ bits_str(value) ^ ", Register = " ^ dm_name_map(address));

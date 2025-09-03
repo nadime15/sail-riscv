@@ -7,11 +7,18 @@ type dmreg = bits(8)
 // ignored when the model is already in Debug Mode, and DR_Resume is
 // ignored when it is not.  DR_None does not request any change to the
 // current debug mode.
-enum debug_request = {DR_None, DR_Halt, DR_Resume}
+enum debug_request = {DR_None, DR_Halt, DR_Resume, DR_Reset}
 
 register activ_request : bool
 
+// TODO: After reset, we need to reset debug_module_pending_request as well as havereset
 register debug_module_pending_request : debug_request = DR_None
+
+// Sticky bit for each hart
+// TODO: this needs to be set to true, in case the hart resets in any case
+register havereset : bool = false
+
+register resumeack : bool = false
 
 struct debug_module_observe_status = {
   allhalted    : bool,
@@ -20,8 +27,8 @@ struct debug_module_observe_status = {
   anyrunning   : bool,
   allresumeack : bool,
   anyresumeack : bool,
-  allhavereset : bool,
-  anyhavereset : bool,
+  //allhavereset : bool,
+  //anyhavereset : bool,
   success      : bool,
 }
 
