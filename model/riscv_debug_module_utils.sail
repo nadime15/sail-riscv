@@ -1,20 +1,19 @@
-// NOTE: ack
-
-
-//function write_havereset(status : bool) -> unit = set_havereset(status)
+/*=======================================================================================*/
+/*  This Sail RISC-V architecture model, comprising all files and                        */
+/*  directories except where otherwise noted is subject the BSD                          */
+/*  two-clause license in the LICENSE file.                                              */
+/*                                                                                       */
+/*  SPDX-License-Identifier: BSD-2-Clause                                                */
+/*=======================================================================================*/
 
 function send_request(request : debug_request) -> bool = {
   // The global variable below stores the current request from the debug module
   // which is then used in try_step()
-  // TODO: We shouldn just change states when we dont even know if we succeeded
-  // TODO: It would be better if these signals were event driven and track the state of the core
-  // instead of setting them manually
   debug_module_pending_request = request;
-  activ_request = request == DR_Halt | request == DR_Resume | request == DR_Reset;
+  activ_request = request != DR_None;
   // TODO
   true
   }
-
 
 function determine_access_type(write : bits(1), transfer : bits(1)) -> access_type = {
   match (write, transfer) {
@@ -23,6 +22,7 @@ function determine_access_type(write : bits(1), transfer : bits(1)) -> access_ty
     (_,   0b0) => NO_TRANSFER
   }
 }
+
 
 // Helper function to split a value into data registers based on xlen
 //function store_to_data_regs(value : xlenbits) -> unit = {

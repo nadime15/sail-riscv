@@ -173,6 +173,25 @@ function request_hart(request : debug_request) -> bool = match request {
     DR_None => send_request(DR_None),
   }
 
+
+function set_running(r : bool) -> unit = {
+  running = r;
+  dmstatus[allrunning] = bool_to_bits(running);
+  dmstatus[anyrunning] = bool_to_bits(running);
+}
+
+function set_halted(h : bool) -> unit = {
+  halted = h;
+  dmstatus[allhalted] = bool_to_bits(halted);
+  dmstatus[anyhalted] = bool_to_bits(halted);
+}
+
+function set_havereset(hr : bool) -> unit = {
+  havereset = hr;
+  dmstatus[allhavereset] = bool_to_bits(havereset);
+  dmstatus[anyhavereset] = bool_to_bits(havereset);
+}
+
 function legalize_dmcontrol(d : Dmcontrol, x : bits(32)) -> Dmcontrol = {
   let x = Mk_Dmcontrol(x);
 
@@ -201,15 +220,11 @@ function legalize_dmcontrol(d : Dmcontrol, x : bits(32)) -> Dmcontrol = {
       dmstatus[allresumeack] = 0b0;
       dmstatus[anyresumeack] = 0b0;
       let status = request_hart(DR_Resume);
+
     };
 
-    // "The havereset bits for the selected harts can be cleared by
-    //  writing 1 to ackhavereset in dmcontrol"
     if x[ackhavereset] == 0b1 then {
-      // TODO: It would probably better to define a setter method for havereset which is part of the core
-      havereset = false;
-      dmstatus[allhavereset] = bool_to_bits(havereset);
-      dmstatus[anyhavereset] = bool_to_bits(havereset);
+      set_havereset(false);
     };
 
   //  if x[dmactive] == 0b0 then {
@@ -253,6 +268,20 @@ mapping clause dm_name_map = 0x10  <-> "dmcontrol"
 function clause is_DM_reg_defined (0x10) = true
 function clause write_DM_reg(0x10, value) = { dmcontrol = legalize_dmcontrol(dmcontrol, value); dmcontrol.bits }
 function clause read_DM_reg(0x10) = dmcontrol.bits
+
+
+function send_debug_status(status : dm_hart_status) -> unit = {
+  set_running(status.running);
+  set_halted(status.halted);
+  set_havereset(status.havereset);
+
+  if status.resume then {
+    dmstatus[allresumeack] = 0b1;
+    dmstatus[anyresumeack] = 0b1;
+  };
+
+  assert((halted & not(running)) | (not(halted) & running), "Hart cannot be both halted and running");
+}
 
 bitfield Hartinfo : bits(32) = {
   nscratch:   23 .. 20,

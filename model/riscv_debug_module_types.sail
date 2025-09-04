@@ -1,3 +1,11 @@
+/*=======================================================================================*/
+/*  This Sail RISC-V architecture model, comprising all files and                        */
+/*  directories except where otherwise noted is subject the BSD                          */
+/*  two-clause license in the LICENSE file.                                              */
+/*                                                                                       */
+/*  SPDX-License-Identifier: BSD-2-Clause                                                */
+/*=======================================================================================*/
+
 type dmreg = bits(8)
 
 // The `debug_request` argument to the `try_step` function below
@@ -14,34 +22,47 @@ register activ_request : bool
 // TODO: After reset, we need to reset debug_module_pending_request as well as havereset
 register debug_module_pending_request : debug_request = DR_None
 
-// "For every hart, the Debug Module tracks 4 conceptual bits of state"
+// Conceptual bits of state
 // NOTE: In theory, we should have unique bits for each hart.
-// TODO
-register resumeack   : bool = false
 register haltrequest : bool = false
-register haltonreset : bool = false
-register haltreset   : bool = false
+register resumeack   : bool = false
 // Optional
-// register resethaltreq : bool = false
-// register keepalive    : bool = false
+register haltonreset  : bool = false
+register hartreset    : bool = false
+register resethaltreq : bool = false
+register keepalive    : bool = false
 
 // "The DM receives halted, running and havereset from each hart"
-// TODO:
-register running   : bool = false
+// Indicates that the hart is running
+register running   : bool = true
+// Indicates that the hart is halted
 register halted    : bool = false
-// TODO: this needs to be set to true, in case the hart resets in any case
+// Indicates that a hart has experienced a reset
 register havereset : bool = false
 
-struct debug_module_observe_status = {
-  allhalted    : bool,
-  anyhalted    : bool,
-  allrunning   : bool,
-  anyrunning   : bool,
-  allresumeack : bool,
-  anyresumeack : bool,
-  //allhavereset : bool,
-  //anyhavereset : bool,
-  success      : bool,
+struct dm_status_bits = {
+  allhavereset   : bool,
+  anyhavereset   : bool,
+  allresumeack   : bool,
+  anyresumeack   : bool,
+  allnonexistent : bool,
+  anynonexistent : bool,
+  allunavail     : bool,
+  anyunavail     : bool,
+  allrunning     : bool,
+  anyrunning     : bool,
+  allhalted      : bool,
+  anyhalted      : bool,
+  success        : bool,
+}
+
+struct dm_hart_status = {
+  running  : bool,
+  halted   : bool,
+  havereset: bool,
+  // The 'resume' bit is not part of the spec but helps us
+  // to know whether the hart received a resume request
+  resume : bool,
 }
 
 // TODO: Not used yet
