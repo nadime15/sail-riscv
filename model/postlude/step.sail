@@ -231,27 +231,28 @@ function dm_update_dmstatus(request: debug_request, step : bool) -> unit = {
   // NOTE: Another problem... when openOCD runs 'step' we actually need to transit
   // from allrunning = anyrunning = 1 to allrunning = anyrunnign = 0
   // Right now I skip this step and jump immediatly to allresumeack
-  dmstatus[allhalted]  = bool_to_bits(request == DR_Halt | step);
-  dmstatus[anyhalted]  = bool_to_bits(request == DR_Halt | step);
-  dmstatus[allrunning] = bool_to_bits(request == DR_Resume & not(step));
-  dmstatus[anyrunning] = bool_to_bits(request == DR_Resume & not(step));
+  dmstatus[allhalted]  = bool_to_bits((request == DR_Halt | step) & request != DR_Reset);
+  dmstatus[anyhalted]  = bool_to_bits((request == DR_Halt | step) & request != DR_Reset);
+  dmstatus[allrunning] = bool_to_bits(request == DR_Resume & not(step) | request == DR_Reset);
+  dmstatus[anyrunning] = bool_to_bits(request == DR_Resume & not(step) | request == DR_Reset);
   dmstatus[allresumeack] = bool_to_bits(request == DR_Resume);
   dmstatus[anyresumeack] = bool_to_bits(request == DR_Resume);
 }
-
-//function set_havereset(status : bool) -> unit = {
-//  havereset = status;
-//  dmstatus[allhavereset] = if havereset then 0b0 else dmstatus[allhavereset];
-//  dmstatus[anyhavereset] = if havereset then 0b0 else dmstatus[anyhavereset];
-//}
 
 function try_step(step_no : nat, exit_wait : bool) -> step_result = {
   /* for step extensions */
   ext_pre_step_hook();
 
   let dr = debug_module_pending_request;
+
+  if dr == DR_Reset then {
+    reset();
+    // NOTE: After a reset, the usual transitions are running → running or halt → running.
+    // TODO: Add support for running → halt and halt → halt transitions if halt-on-reset.
+    dm_update_dmstatus(DR_Reset, false)
+  }
   // Leave Debug mode if a resume is requested.
-  if   dr == DR_Resume & currentlyEnabled(Ext_Sdext)
+  else if dr == DR_Resume & currentlyEnabled(Ext_Sdext)
   then {
     if   in_debug_abstract_command()
     then end_debug_abstract_command();
@@ -273,8 +274,8 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
   let exit_wait = exit_wait | (hartSupports(Ext_Sdext) & dr == DR_Halt);
   let step_val : Step = match hart_state {
       HART_WAITING(wr, instbits)     => run_hart_waiting(step_no, wr, instbits, exit_wait),
-      // TODO: Is HART_ACTIVE the right state? Or do we need a new state?
-      HART_ACTIVE() if dr != DR_Resume & debug_mode_active => Step_Debug_Halted(),
+      // TODO: What should we do with Step_Debug_Halted
+      HART_ACTIVE() if dr != DR_Resume & dr != DR_Reset & debug_mode_active => Step_Debug_Halted(),
       HART_ACTIVE() if dr == DR_Halt => Step_Debug_HaltReq(),
       HART_ACTIVE()                  => run_hart_active(step_no),
 
@@ -311,6 +312,7 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
       // When entering Debug via a halt request, DPC is set to the address
       // of the next instruction to be executed at the time of entry.
       enter_debug_mode(DBGEntry_HaltReq, zeros(), get_arch_pc());
+
       dm_update_dmstatus(DR_Halt, false);
     },
     Step_Debug_Halted() => {
@@ -381,11 +383,6 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
   then { print_endline("DEBUG: Entering debug mode via single step");
    dm_update_dmstatus(DR_Resume, true);
    enter_debug_mode(DBGEntry_Step, zeros(), get_arch_pc())};
-
-  if debug_module_pending_request == DR_Reset then {
-    //TOOD reset in_wait, in_debug_mode, debug_cmd_error...
-    reset();
-  };
 
   // Set to initial state
   // TODO/NOTE: We potentially need to remove this, it can take up multiple cycles till the comment was handled (see debug_abstract_command_active)

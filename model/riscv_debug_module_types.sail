@@ -14,11 +14,23 @@ register activ_request : bool
 // TODO: After reset, we need to reset debug_module_pending_request as well as havereset
 register debug_module_pending_request : debug_request = DR_None
 
-// Sticky bit for each hart
+// "For every hart, the Debug Module tracks 4 conceptual bits of state"
+// NOTE: In theory, we should have unique bits for each hart.
+// TODO
+register resumeack   : bool = false
+register haltrequest : bool = false
+register haltonreset : bool = false
+register haltreset   : bool = false
+// Optional
+// register resethaltreq : bool = false
+// register keepalive    : bool = false
+
+// "The DM receives halted, running and havereset from each hart"
+// TODO:
+register running   : bool = false
+register halted    : bool = false
 // TODO: this needs to be set to true, in case the hart resets in any case
 register havereset : bool = false
-
-register resumeack : bool = false
 
 struct debug_module_observe_status = {
   allhalted    : bool,

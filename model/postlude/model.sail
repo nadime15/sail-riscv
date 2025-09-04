@@ -22,6 +22,8 @@ function reset() -> unit = {
   havereset = true;
   dmstatus[allhavereset] = bool_to_bits(havereset);
   dmstatus[anyhavereset] = bool_to_bits(havereset);
+  reset_debug_states();
+
   reset_sys();
   reset_vmem();
 
