@@ -41,6 +41,8 @@ $ Escape character is '^]'.
 $ Open On-Chip Debugger
 ```
 
+Note: Currently, the core starts executing immediately and does not wait for an OpenOCD connection to halt it. To enter debug mode, you must issue the OpenOCD command before Sail finishes execution.
+
 ## How to talk to the core
 
 Telnet offers a bunch of different commands,
@@ -164,13 +166,13 @@ riscv.cpu
 
 ## Helpful commands (Telnet)
 
-Here are a few usuful commands:
+Here are a few useful commands:
+
+Stops polling even when OpenOCD is in debug mode, greatly reducing unnecessary messages and log output.
 
 ```bash
 $ poll off
 ```
-
-Stops polling even when OpenOCD is in debug mode, greatly reducing unnecessary messages and log output.
 
 Shows information about all available harts
 
@@ -180,3 +182,11 @@ $ targets
 --  ------------------ ---------- ------ ------------------ ------------
  0* riscv.cpu          riscv      little riscv.cpu          halted
 ```
+
+## What happens under the hood (Telnet Commands)
+
+### Step
+
+Telnet sets the `step` bit in `dcsr`, causing the core to enter debug mode and halt at the end of the next instruction. When the Telnet command `step` is used, the external debugger sends a resume request, the core executes a single instruction, and then halts again. This process can be repeated by using `step` multiple times. To exit single step mode, simply use the `resume` command, which clears the stepper mode and continues normal execution.
+
+Note: To halt must be halted in order to use `step`
