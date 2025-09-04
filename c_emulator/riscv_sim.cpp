@@ -431,18 +431,7 @@ void run_sail(void)
       if (remote_bitbang) {
         // If enabled, advances the bit banging protocol and sends
         // data to the debugger (over OpenOCD) or reads from it
-        // NOTE: This is a temporary solution and needs to be redone
-        // we want to avoid the simulation ending too early
-        // so we keep polling to see if the debugger has sent more data
-        // NOTE:(!) You have to wait until Sail executes the first instruction
-        // before we can connect OpenOCD to Sail, otherwise the core will run
-        // into a memory fault (I am not sure why yet, I need to debug this at
-        // some point)
-        // NOTE: How many ticks can I advance before OpenOCD cancels a command?
-        // NOTE: It seems like Openocd times out at some point when commands are
-        // sent so either we need to set busy in between or reduce the number of
-        // ticks
-        int max_ticks = 5000; // 10000000;
+        int max_ticks = 5000;
         int ticks = 0;
         while (ticks < max_ticks) {
           // By tracking whether a request was sent from OpenOCD, we can avoid
@@ -476,7 +465,7 @@ void run_sail(void)
       if (config_print_step) {
         fprintf(trace_log, "\n");
       }
-      // TODO dont advance insn and step(?) why in HALT state
+      // TODO: Dont increment the variables when hart halted
       step_no++;
       insn_cnt++;
       total_insns++;
@@ -494,7 +483,7 @@ void run_sail(void)
       fprintf(stdout, "kips: %" PRIu64 "\n",
               ((uint64_t)1000) * 0x100000 / (end_us - start_us));
     }
-    // TODO: Close debug mode port (rbb_port), if used
+
     if (zhtif_done) {
       /* check exit code */
       if (zhtif_exit_code == 0) {
@@ -509,6 +498,13 @@ void run_sail(void)
       insn_cnt = 0;
       ztick_clock(UNIT);
     }
+  }
+  // TODO: Ports are only closed on successful simulation.
+  // We should ensure ports (and RVFI) are always closed, regardless of outcome.
+  // Consider adding an exit() (exit_sail()) wrapper to handle cleanup
+  // automatically.
+  if (remote_bitbang) {
+    remote_bitbang.value()->close_port();
   }
 
 dump_state:
