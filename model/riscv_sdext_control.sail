@@ -81,3 +81,11 @@ function reset_sdext() -> unit = {
   init_sdext();
   dcsr = reset_Dcsr();
 }
+
+// This is independant of the Sdext spec, we use this
+// function when the hart is reset from the debug module
+function reset_debug_states() -> unit = {
+  debug_abstract_command_active = false;
+  debug_abstract_command_error = false;
+  debug_mode_active = false;
+}
