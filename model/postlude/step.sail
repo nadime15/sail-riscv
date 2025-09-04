@@ -215,28 +215,13 @@ struct step_result = {
 //              `debug_request` is either `DR_Halt` or `DR_Resume`.
 //              When single-stepping is set, DR_Resume should be specified.
 
-// TODO: Add description
-//struct debug_module_observe_status = {
-//  allhalted    : bool,
-//  anyhalted    : bool,
-//  allrunning   : bool,
-//  anyrunning   : bool,
-//  allhavereset : bool,
-//  anyhavereset : bool,
-//  success      : bool,
-//}
-
-
 function dm_update_dmstatus(request: debug_request, step : bool) -> unit = {
-  // NOTE: Another problem... when openOCD runs 'step' we actually need to transit
-  // from allrunning = anyrunning = 1 to allrunning = anyrunnign = 0
-  // Right now I skip this step and jump immediatly to allresumeack
-  dmstatus[allhalted]  = bool_to_bits((request == DR_Halt | step) & request != DR_Reset);
-  dmstatus[anyhalted]  = bool_to_bits((request == DR_Halt | step) & request != DR_Reset);
-  dmstatus[allrunning] = bool_to_bits(request == DR_Resume & not(step) | request == DR_Reset);
-  dmstatus[anyrunning] = bool_to_bits(request == DR_Resume & not(step) | request == DR_Reset);
-  dmstatus[allresumeack] = bool_to_bits(request == DR_Resume);
-  dmstatus[anyresumeack] = bool_to_bits(request == DR_Resume);
+  let status : dm_hart_status = struct { halted    = request == DR_Halt  | step,
+                                         running   = request == DR_Reset | (request == DR_Resume & not(step)),
+                                         havereset = request == DR_Reset,
+                                         resume    = request == DR_Resume
+                                       };
+  send_debug_status(status);
 }
 
 function try_step(step_no : nat, exit_wait : bool) -> step_result = {
