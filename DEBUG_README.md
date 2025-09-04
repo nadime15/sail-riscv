@@ -190,3 +190,121 @@ $ targets
 Telnet sets the `step` bit in `dcsr`, causing the core to enter debug mode and halt at the end of the next instruction. When the Telnet command `step` is used, the external debugger sends a resume request, the core executes a single instruction, and then halts again. This process can be repeated by using `step` multiple times. To exit single step mode, simply use the `resume` command, which clears the stepper mode and continues normal execution.
 
 Note: To halt must be halted in order to use `step`
+
+# Flow Charts Events
+
+## Generell Reset
+
+```
+Hart experiences ANY reset (hartreset, ndmreset, power-on, etc.)
+    ↓
+Hart sets havereset signal = 1 (sticky)
+    ↓
+DM sees havereset=1 from hart
+    ↓
+DM updates dmstatus.anyhavereset/allhavereset = 1
+    ↓
+Debugger reads dmstatus and sees reset occurred
+    ↓
+Debugger writes dmcontrol.ackhavereset = 1
+    ↓
+DM clears hart's havereset signal = 0
+    ↓
+dmstatus.anyhavereset/allhavereset = 0
+```
+
+## 1. haltrequest Bit Flow
+
+```
+[Normal State]
+haltrequest = 0
+       ↓
+[Debugger writes dmcontrol.haltreq = 1]
+       ↓
+[DM sets haltrequest = 1]
+       ↓
+[DM sends halt signal to hart]
+       ↓
+[Hart enters Debug Mode]
+       ↓
+[Hart sends halted=1 signal back]
+       ↓
+[dmstatus.anyhalted = 1]
+       ↓
+[Debugger writes dmcontrol.haltreq = 0] (optional)
+       ↓
+[DM clears haltrequest = 0]
+```
+
+## 2. resumeack Bit Flow
+
+```
+[Hart Halted State]
+resumeack = 0
+       ↓
+[Debugger writes dmcontrol.resumereq = 1]
+       ↓
+[DM clears resumeack = 0]
+       ↓
+[DM sends resume signal to hart]
+       ↓
+[Hart exits Debug Mode]
+       ↓
+[Hart sends running=1 signal back]
+       ↓
+[Hart completes resume process]
+       ↓
+[DM sets resumeack = 1]
+       ↓
+[dmstatus.anyresumeack = 1]
+```
+
+## 3. resethaltreq Bit Flow (Optional)
+
+```
+[Normal State]
+resethaltreq = 0
+       ↓
+[Debugger writes dmcontrol.setresethaltreq = 1]
+       ↓
+[DM sets resethaltreq = 1]
+       ↓
+[Hart experiences ANY reset]
+       ↓
+[Hart comes out of reset]
+       ↓
+[Hart sees resethaltreq = 1]
+       ↓
+[Hart immediately enters Debug Mode]
+       ↓
+[Hart sends halted=1 signal]
+       ↓
+[To clear: debugger writes dmcontrol.clrresethaltreq = 1]
+       ↓
+[DM clears resethaltreq = 0]
+```
+
+## 4. hartreset Bit Flow (Optional)
+
+```
+[Normal State]
+hartreset = 0
+       ↓
+[Debugger writes dmcontrol.hartreset = 1]
+       ↓
+[DM sets hartreset = 1]
+       ↓
+[DM sends reset signal to hart]
+       ↓
+[Hart experiences reset]
+       ↓
+[Hart sends havereset=1 signal (sticky)]
+       ↓
+[dmstatus.anyhavereset = 1]
+       ↓
+[Debugger writes dmcontrol.hartreset = 0]
+       ↓
+[DM clears hartreset = 0]
+       ↓
+[Reset signal to hart deasserted]
+```

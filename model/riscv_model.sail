@@ -16,9 +16,6 @@ function reset() -> unit = {
   nextPC = zero_extend(0x80000000); //get_entry_point()
   print_endline(bits_str(PC) ^ " " ^ bits_str(nextPC) );
   // This is a sticky bit set to 1 by the core whenever the hart experiences a reset
-  havereset = true;
-  dmstatus[allhavereset] = bool_to_bits(havereset);
-  dmstatus[anyhavereset] = bool_to_bits(havereset);
   reset_debug_states();
 
   reset_sys();
