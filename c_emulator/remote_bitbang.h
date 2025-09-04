@@ -16,6 +16,7 @@ public:
   remote_bitbang_t &operator=(const remote_bitbang_t &) = delete;
 
   void tick();
+  void close_port();
 
 private:
   uint16_t port = 0;

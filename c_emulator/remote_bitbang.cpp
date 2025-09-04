@@ -234,3 +234,19 @@ void remote_bitbang_t::execute_commands()
     }
   }
 }
+
+void remote_bitbang_t::close_port()
+{
+  if (client_fd != -1) {
+    close(client_fd);
+    client_fd = -1;
+  }
+
+  if (socket_fd != -1) {
+    close(socket_fd);
+    socket_fd = -1;
+  }
+
+  printf("Remote bitbang port closed.\n");
+  fflush(stdout);
+}
