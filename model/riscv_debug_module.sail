@@ -135,6 +135,7 @@ function legalize_dmstatus(d : Dmstatus) -> Dmstatus = {
     // NOTE: This needs to be disabled because otherwise
     // OpenOCD will not continue after failed authentification
     authenticated = 0b1,
+    hasresethaltreq = 0b1,
     // Version 1.0
     version       = 0b0011
   ]
@@ -227,6 +228,12 @@ function legalize_dmcontrol(d : Dmcontrol, x : bits(32)) -> Dmcontrol = {
       set_havereset(false);
     };
 
+    if x[setresethaltreq] == 0b1 & x[clrresethaltreq] == 0b0  then {
+      haltonreset = true;
+    } else if x[clrresethaltreq] == 0b1 then {
+      haltonreset = false;
+    };
+
   //  if x[dmactive] == 0b0 then {
       // TODO: Reset debug module
       // TODO: we could set x to zero to clean dmcontrol
@@ -240,13 +247,12 @@ function legalize_dmcontrol(d : Dmcontrol, x : bits(32)) -> Dmcontrol = {
       // TODO: Writes to this bit should be ignored while
       // an abstract command is executing
       haltreq         = x[haltreq],
-      resumereq       = if x[resumereq] == 0b1 then 0b1 else x[resumereq],
+      resumereq       = 0b0,
       // TODO/NOTE: Hart reset is optional but we enable it by default
       // TODO: Make this an option
       hartreset       = x[hartreset],
-      // TODO: Writes to this bit should be ignored while an abstract command is executing
-      ackhavereset    = if x[ackhavereset] == 0b1 then 0b1 else x[ackhavereset],
-      ackunavail      = if x[ackunavail] == 0b1 then 0b1 else x[ackunavail],
+      ackhavereset    = 0b0,
+      ackunavail      = 0b0,
       // Currently, we only support 1 hart
       hasel           = 0b0,
       hartsello       = 0b0000000000,
@@ -267,6 +273,7 @@ mapping clause dm_name_map = 0x10  <-> "dmcontrol"
 
 function clause is_DM_reg_defined (0x10) = true
 function clause write_DM_reg(0x10, value) = { dmcontrol = legalize_dmcontrol(dmcontrol, value); dmcontrol.bits }
+// TODO: Apply masks for bitfields with W1
 function clause read_DM_reg(0x10) = dmcontrol.bits
 
 
@@ -771,7 +778,7 @@ function legalize_dmcs2(d : Dmcs2, x : bits(32)) -> Dmcs2 = {
     dmexttrigger = x[dmexttrigger],
     // TODO: Can be preset
     group = x[group],
-    hgwrite = if x[hgwrite] == 0b0 then 0b1 else x[hgwrite],
+    hgwrite = 0b0,
     // TODO
     // NOTE: Tie it to 0 for now, but can actually be set
     hgselect = 0b0

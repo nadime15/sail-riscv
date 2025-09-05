@@ -194,8 +194,8 @@ struct step_result = {
 //              When single-stepping is set, DR_Resume should be specified.
 
 function dm_update_dmstatus(request: debug_request, step : bool) -> unit = {
-  let status : dm_hart_status = struct { halted    = request == DR_Halt  | step,
-                                         running   = request == DR_Reset | (request == DR_Resume & not(step)),
+  let status : dm_hart_status = struct { halted    = request == DR_Halt  | step | (request== DR_Reset & haltonreset),
+                                         running   = (request == DR_Reset & not(haltonreset)) | (request == DR_Resume & not(step)),
                                          havereset = request == DR_Reset,
                                          resume    = request == DR_Resume
                                        };
@@ -210,8 +210,9 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
 
   if dr == DR_Reset then {
     reset();
-    // NOTE: After a reset, the usual transitions are running → running or halt → running.
-    // TODO: Add support for running → halt and halt → halt transitions if halt-on-reset.
+    if haltonreset then {
+      enter_debug_mode(DBGEntry_ResetHaltReq, zeros(), get_arch_pc());
+    };
     dm_update_dmstatus(DR_Reset, false)
   }
   // Leave Debug mode if a resume is requested.
@@ -238,7 +239,7 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
   let step_val : Step = match hart_state {
       HART_WAITING(wr, instbits)     => run_hart_waiting(step_no, wr, instbits, exit_wait),
       // TODO: What should we do with Step_Debug_Halted
-      HART_ACTIVE() if dr != DR_Resume & dr != DR_Reset & debug_mode_active => Step_Debug_Halted(),
+      HART_ACTIVE() if debug_mode_active => Step_Debug_Halted(),
       HART_ACTIVE() if dr == DR_Halt => Step_Debug_HaltReq(),
       HART_ACTIVE()                  => run_hart_active(step_no),
 
