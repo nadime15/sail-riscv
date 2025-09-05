@@ -11,10 +11,6 @@
 // These interfaces are just one of many options and can be replaced by simple handshake
 // protocols or more complex bus protocols like AMBA to simulate hardware behavior.
 
-
-
-
-
 // Debug module interface read
 // Returns success status and 32-bit data read from the given 32-bit address
 function dmi_read(address : nat) -> (bool, nat) = {

@@ -51,6 +51,36 @@ Probably the most important for now are
 
 `halt`, `resume` and `step` (The core must be in the HALT state in order to use step)
 
+### Halt-On-Request (Enter Debug Mode right after Reset)
+
+It’s possible to enter debug mode immediately after resetting the hart. Normally, when a hart is reset, it continues execution automatically, which makes it harder to step at the exact instruction you want.
+
+By setting `setresethaltreq` in dmstatus, we can instruct the hart to enter debug mode right after a reset. To use this feature, first set `setresethaltreq` by running the following telnet command:
+
+```bash
+riscv dmi_write 0x10 0x9
+```
+
+This writes the value 0x9 to `dmcontrol` (0x10), which sets `dmactive` (we need to write 1 here to avoid triggering a reset by writing 0) and `setresethaltreq` to 1.
+
+Now you can do:
+
+```bash
+reset
+```
+
+This will trigger a reset and immediately enter debug mode.
+
+To clear `setresethaltreq` (set it back to 0), write 1 to `clrresethaltreq`:
+
+```bash
+riscv dmi_write 0x10 0x5
+```
+
+This clears `setresethaltreq` and restores normal hart behavior.
+
+### Read and Write Registers
+
 In order to read and write to registers you either do for a write
 
 ```bash
