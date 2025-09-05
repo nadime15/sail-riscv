@@ -130,10 +130,10 @@ bitfield Dmstatus : bits(32) = {
 // NOTE: This whole register cannot be written from outside
 function legalize_dmstatus(d : Dmstatus) -> Dmstatus = {
   [d with
-    // TODO: For now authentification is not supported
+    // TODO: For now authentication is not supported
     // but this should be optional
     // NOTE: This needs to be disabled because otherwise
-    // OpenOCD will not continue after failed authentification
+    // OpenOCD will not continue after failed authentication
     authenticated = 0b1,
     // Version 1.0
     version       = 0b0011
@@ -476,9 +476,9 @@ function access_reg(write : access_type, data : bits(32), regno: bits(16)) -> bo
       print_endline("GPR")
     },      //GPR,
     // TODO: Add READ/WRITE for floating point regs
-    addr if addr <= unsigned(0x103f) => print_endline("FPR"),      //FPR,
-    addr if addr >= unsigned(0xc000) & addr <= unsigned(0xffff) => print_endline("RESERVED"), //RESERVED,
-    addr => print_endline("INVALID"),                              //INVALID
+    addr if addr <= unsigned(0x103f) => print_endline("FPR"),
+    addr if addr >= unsigned(0xc000) & addr <= unsigned(0xffff) => print_endline("RESERVED"),
+    addr => print_endline("INVALID"),
   };
   // TODO
   true

@@ -67,7 +67,7 @@ $ reg 1
 $ ra (/64): 0x0000000000000023
 ```
 
-or you can even specify the register name (as far as I know thats only possible for CSR's)
+or you can even specify the register name (as far as I know that's only possible for CSR's)
 
 ```bash
 $ reg mstatus
@@ -193,7 +193,7 @@ Note: To halt must be halted in order to use `step`
 
 # Flow Charts Events
 
-## Generell Reset
+## General Reset
 
 ```
 Hart experiences ANY reset (hartreset, ndmreset, power-on, etc.)

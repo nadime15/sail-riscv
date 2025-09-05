@@ -82,7 +82,7 @@ function reset_sdext() -> unit = {
   dcsr = reset_Dcsr();
 }
 
-// This is independant of the Sdext spec, we use this
+// This is independent of the Sdext spec, we use this
 // function when the hart is reset from the debug module
 function reset_debug_states() -> unit = {
   debug_abstract_command_active = false;
