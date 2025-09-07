@@ -17,10 +17,8 @@ type dmreg = bits(8)
 // current debug mode.
 enum debug_request = {DR_None, DR_Halt, DR_Resume, DR_Reset}
 
-register activ_request : bool
-
-// TODO: After reset, we need to reset debug_module_pending_request as well as havereset
-register debug_module_pending_request : debug_request = DR_None
+register debug_module_active_request : bool
+register debug_module_request : debug_request = DR_None
 
 // Conceptual bits of state
 // NOTE: In theory, we should have unique bits for each hart.
