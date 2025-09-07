@@ -15,4 +15,4 @@ mapping clause encdec = DRET()
   when currentlyEnabled(Ext_Sdext) & not(in_debug_abstract_command())
 
 function clause execute DRET() =
-  Exit_Debug_Mode()
+  Debug(Exit_Debug_Mode())
