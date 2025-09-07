@@ -610,9 +610,9 @@ function ebreak_into_debug() -> bool =
 
 function clause execute EBREAK() =
   if in_debug_abstract_command() then {
-    Exit_Debug_Abstract_Command()
+    Debug(Exit_Debug_Abstract_Command())
   } else if ebreak_into_debug() then {
-    Enter_Debug_Mode(DBGEntry_EBreak)
+    Debug(Enter_Debug_Mode(DBGEntry_EBreak))
   } else {
     Memory_Exception(Virtaddr(PC), E_Breakpoint())
   }

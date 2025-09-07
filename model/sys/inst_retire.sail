@@ -6,6 +6,12 @@
 // SPDX-License-Identifier: BSD-2-Clause
 // =======================================================================================
 
+union DebugAction = {
+  Enter_Debug_Mode            : debug_entry_cause,
+  Exit_Debug_Abstract_Command : unit,
+  Exit_Debug_Mode             : unit,
+}
+
 // Return value from `execute()` function.
 union ExecutionResult = {
   // Successfully retired.
@@ -20,10 +26,7 @@ union ExecutionResult = {
   Illegal_Instruction            : unit,
   Trap                           : (Privilege, ctl_result, xlenbits),
   Memory_Exception               : (virtaddr, ExceptionType),
-  Enter_Debug_Mode               : debug_entry_cause,
-  Exit_Debug_Abstract_Command    : unit,
-  Exit_Debug_Mode                : unit,
-
+  Debug                          : DebugAction,
   // Did not retire for custom reason.
   Ext_CSR_Check_Failure          : unit,
   Ext_ControlAddr_Check_Failure  : ext_control_addr_error,
