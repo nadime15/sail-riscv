@@ -467,7 +467,7 @@ void run_sail(void)
           // timing issues (request timing out due no responses) and no longer
           // need to tweak 'max_ticks'. As soon as a new request is detected,
           // we immediately exit the loop to enter try_step().
-          if (zactiv_request) {
+          if (zdebug_module_active_request) {
             break;
           }
           remote_bitbang.value()->tick();

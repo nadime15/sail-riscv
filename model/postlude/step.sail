@@ -14,8 +14,31 @@ union Step = {
   Step_Fetch_Failure      : (virtaddr, ExceptionType),
   Step_Execute            : (ExecutionResult, instbits),
   Step_Waiting            : WaitReason,
-  Step_Debug_HaltReq      : unit,
-  Step_Debug_Halted       : unit,
+  Step_Halt               : unit,
+}
+
+// Hmm executing some debug related instructions is still execute... maybe we shouldn define an extra step but consilidate
+// the ExecutionResults..
+//union Debug_Cause = {
+//  Enter_Debug_Mode  : debug_entry_cause,
+//  Exit_Debug_Abstract_Command : unit,
+//  Enter_Debug_Mode : unit,
+//}
+
+union DebugAction = {
+  Debug_Halt         : unit,
+  Debug_Resume       : unit,
+  Debug_HaltOnReset  : unit,
+  Debug_Reset        : unit,
+  Debug_None         : unit,
+}
+
+mapping debug_action_name : DebugAction <-> string = {
+  Debug_Halt()        <-> "Debug_Halt",
+  Debug_Resume()      <-> "Debug_Resume",
+  Debug_HaltOnReset() <-> "Debug_HaltOnReset",
+  Debug_Reset()       <-> "Debug_Reset",
+  Debug_None()        <-> "Debug_none",
 }
 
 function run_hart_waiting(step_no : int, wr: WaitReason, instbits : instbits, exit_wait : bool) -> Step = {
@@ -215,56 +238,96 @@ struct step_result = {
 //              `debug_request` is either `DR_Halt` or `DR_Resume`.
 //              When single-stepping is set, DR_Resume should be specified.
 
-function dm_update_dmstatus(request: debug_request, step : bool) -> unit = {
-  let status : dm_hart_status = struct { halted    = request == DR_Halt  | step | (request== DR_Reset & haltonreset),
+function update_debug_module_status(request: debug_request, step : bool) -> unit = {
+  let status : dm_hart_status = struct { halted    = request == DR_Halt  | step | (request == DR_Reset & haltonreset),
                                          running   = (request == DR_Reset & not(haltonreset)) | (request == DR_Resume & not(step)),
                                          havereset = request == DR_Reset,
                                          resume    = request == DR_Resume
                                        };
-  send_debug_status(status);
+  send_hart_status(status);
 }
+
+function handle_debug_module_reset_request() -> DebugAction = {
+  // Call reset() before enter_debug_mode(). If the hart is already halted,
+  // reset() ensures debug_mode_active is cleared first.
+  reset();
+  update_debug_module_status(DR_Reset, false);
+  if haltonreset then {
+    enter_debug_mode(DBGEntry_ResetHaltReq, zeros(), get_arch_pc());
+    Debug_HaltOnReset()
+  } else {
+    Debug_Reset()
+  }
+}
+
+function handle_debug_module_resume_request() -> DebugAction = {
+  if debug_mode_active then {
+    if in_debug_abstract_command() then end_debug_abstract_command();
+    exit_debug_mode();
+    update_debug_module_status(DR_Resume, false)
+  };
+  Debug_Resume()
+}
+
+function handle_debug_module_halt_request() -> DebugAction = {
+  if not(debug_mode_active) then {
+    enter_debug_mode(DBGEntry_HaltReq, zeros(), get_arch_pc());
+    update_debug_module_status(DR_Halt, false)
+  };
+  Debug_Halt()
+}
+
+function handle_debug_module_request() -> DebugAction = {
+  let status : DebugAction = match debug_module_request {
+    DR_Reset  => handle_debug_module_reset_request(),
+    DR_Resume => handle_debug_module_resume_request(),
+    DR_Halt   => handle_debug_module_halt_request(),
+    _         => Debug_None(),
+  };
+  // TODO: Consider adding a function to fetch debug_module_request / debug_module_active_request
+  // instead of accessing the global variables directly. Not fully sure if this is better.
+  debug_module_request = DR_None;
+  debug_module_active_request = false;
+  status
+}
+
+function handle_debug_single_step() -> unit = {
+  if in_single_step() & not(debug_mode_active) then {
+    print_endline("DEBUG: Entering debug mode via single step");
+    update_debug_module_status(DR_Resume, true);
+    enter_debug_mode(DBGEntry_Step, zeros(), get_arch_pc())
+  }
+}
+
+// This function only handles external requests, there are other ways to enter debug mode, through ebreak etc.
+//
 
 function try_step(step_no : nat, exit_wait : bool) -> step_result = {
   /* for step extensions */
   ext_pre_step_hook();
 
-  let dr = debug_module_pending_request;
-
-  if dr == DR_Reset then {
-    reset();
-    if haltonreset then {
-      enter_debug_mode(DBGEntry_ResetHaltReq, zeros(), get_arch_pc());
-    };
-    dm_update_dmstatus(DR_Reset, false)
-  }
-  // Leave Debug mode if a resume is requested.
-  else if dr == DR_Resume & currentlyEnabled(Ext_Sdext)
-  then {
-    if   in_debug_abstract_command()
-    then end_debug_abstract_command();
-    exit_debug_mode();
-    dm_update_dmstatus(DR_Resume, false);
-  };
-
-  // This records whether or not minstret should be incremented when
-  // the instruction is retired. Since retirement occurs before CSR
-  // writes we initialise it based on mcountinhibit here, before it is
-  // potentially changed. This is also set to false if minstret is
-  // written.  See the note near the minstret declaration for more
-  // information.
-
+  // handle_debug_module_request() processes external requests from the debug module.
+  // Internal debug requests are handled separately in the step_val match construct.
+  let debug_status : DebugAction = if hartSupports(Ext_Sdext)
+                                   then handle_debug_module_request()
+                                   else Debug_None();
+  /*
+   * This records whether or not minstret should be incremented when
+   * the instruction is retired. Since retirement occurs before CSR
+   * writes we initialise it based on mcountinhibit here, before it is
+   * potentially changed. This is also set to false if minstret is
+   * written.  See the note near the minstret declaration for more
+   * information.
+   */
   minstret_increment = should_inc_minstret(cur_privilege);
 
   // When halting to enter Debug mode, any waiting instructions should
   // complete execution, but other instructions should not execute.
-  let exit_wait = exit_wait | (hartSupports(Ext_Sdext) & dr == DR_Halt);
+  let exit_wait = exit_wait | (hartSupports(Ext_Sdext) & debug_status == Debug_Halt());
   let step_val : Step = match hart_state {
-      HART_WAITING(wr, instbits)     => run_hart_waiting(step_no, wr, instbits, exit_wait),
-      // TODO: What should we do with Step_Debug_Halted
-      HART_ACTIVE() if debug_mode_active => Step_Debug_Halted(),
-      HART_ACTIVE() if dr == DR_Halt => Step_Debug_HaltReq(),
-      HART_ACTIVE()                  => run_hart_active(step_no),
-
+      HART_WAITING(wr, instbits)         => run_hart_waiting(step_no, wr, instbits, exit_wait),
+      HART_ACTIVE() if debug_mode_active => Step_Halt(),
+      HART_ACTIVE()                      => run_hart_active(step_no),
     };
 
   match step_val {
@@ -294,22 +357,13 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
 
         hart_state = HART_WAITING(wr, instbits);
       },
-    Step_Debug_HaltReq() => {
-      // When entering Debug via a halt request, DPC is set to the address
-      // of the next instruction to be executed at the time of entry.
-      enter_debug_mode(DBGEntry_HaltReq, zeros(), get_arch_pc());
 
-      dm_update_dmstatus(DR_Halt, false);
-    },
-    Step_Debug_Halted() => {
-      // Dont do anything...
-      ()
-    },
+    // TODO: Consilidate all debug Step_Result return values into one(?) (Step_Debug())
     Step_Execute(Enter_Debug_Mode(cause), _) => {
       // When entering Debug via an execution of `ebreak`, DPC is set
       // to the address of the `ebreak`.
       enter_debug_mode(cause, zeros(), get_arch_pc());
-      dm_update_dmstatus(DR_Halt, false);
+      update_debug_module_status(DR_Halt, false);
     },
     Step_Execute(Exit_Debug_Abstract_Command(), _) => {
       end_debug_abstract_command()
@@ -317,13 +371,14 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
     Step_Execute(Exit_Debug_Mode(), _) => {
       exit_debug_mode();
       // TODO: Check whether this case (Step_Execute(...)) is actually needed and if we pass the right request (DR_Resume)
-      dm_update_dmstatus(DR_Resume, false);
+      update_debug_module_status(DR_Resume, false);
     },
     // errors from extensions
     Step_Execute(Ext_CSR_Check_Failure(), _) => ext_check_CSR_fail(),
     Step_Execute(Ext_ControlAddr_Check_Failure(e), _) => ext_handle_control_check_error(e),
     Step_Execute(Ext_DataAddr_Check_Failure(e), _) => ext_handle_data_check_error(e),
     Step_Execute(Ext_XRET_Priv_Failure(), _) => ext_fail_xret_priv(),
+    Step_Halt() => (),
   };
 
   let in_wait : bool = match hart_state {
@@ -361,20 +416,7 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
     }
   };
 
-  // When entering Debug via single step, DPC is set to the address of
-  // the next instruction to be executed.
-  if   in_single_step() & not(debug_mode_active)
-  // TODO: We know update dmstatus from 2 different places, unify them and if possible make somehow event driven and update dmstatus accordingly
-  // once the core state changes
-  then { print_endline("DEBUG: Entering debug mode via single step");
-   dm_update_dmstatus(DR_Resume, true);
-   enter_debug_mode(DBGEntry_Step, zeros(), get_arch_pc())};
-
-  // Set to initial state
-  // TODO/NOTE: We potentially need to remove this, it can take up multiple cycles till the comment was handled (see debug_abstract_command_active)
-  // its probably better to switch after command_active is set to 0 (1->0)
-  debug_module_pending_request = DR_None;
-  activ_request = false;
+  if hartSupports(Ext_Sdext) then handle_debug_single_step();
 
   // TODO: We should not increment the instruction code (on the c++ side) if we are in the HALT state
   struct { in_wait,

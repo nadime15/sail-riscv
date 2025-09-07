@@ -9,8 +9,8 @@
 function send_request(request : debug_request) -> bool = {
   // The global variable below stores the current request from the debug module
   // which is then used in try_step()
-  debug_module_pending_request = request;
-  activ_request = request != DR_None;
+  debug_module_request = request;
+  debug_module_active_request = request != DR_None;
   // TODO
   true
   }
