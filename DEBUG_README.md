@@ -97,7 +97,7 @@ $ reg 1
 $ ra (/64): 0x0000000000000023
 ```
 
-or you can even specify the register name (as far as I know thats only possible for CSR's)
+or you can even specify the register name (as far as I know that's only possible for CSR's)
 
 ```bash
 $ reg mstatus
@@ -223,7 +223,7 @@ Note: To halt must be halted in order to use `step`
 
 # Flow Charts Events
 
-## Generell Reset
+## General Reset
 
 ```
 Hart experiences ANY reset (hartreset, ndmreset, power-on, etc.)
@@ -338,3 +338,51 @@ hartreset = 0
        ↓
 [Reset signal to hart deasserted]
 ```
+
+## Supported Features (In General)
+
+### Mandatory
+
+1. All hart registers (including CSRs) can be read/written.
+
+2. Memory can be accessed either from the hart’s point of view, through the system bus directly, or both. (TODO)
+
+3. RV32, RV64, and future RV128 are all supported.
+
+4. Any hart in the hardware platform can be independently debugged.
+
+5. A debugger can discover almost [1] everything it needs to know itself, without user configuration.
+
+6. Each hart can be debugged from the very first instruction executed.
+
+7. A RISC-V hart can be halted when a software breakpoint instruction is executed.
+
+8. Hardware single-step can execute one instruction at a time.
+
+9. Debug functionality is independent of the debug transport used.
+
+10. The debugger does not need to know anything about the microarchitecture of the harts it is debugging.
+
+### Optional
+
+13. Registers can be accessed without halting.
+
+## Supported Features - Debug Module
+
+### Mandatory
+
+1. Give the debugger necessary information about the implementation.
+
+2. Allow any individual hart to be halted and resumed. (Our platform has only one hart)
+
+3. Provide status on which harts are halted.
+
+4. Provide abstract read and write access to a halted hart’s GPRs.
+
+5. Provide access to a reset signal that allows debugging from the very first instruction after reset.
+
+### Optional
+
+6. Provide a mechanism to allow debugging harts immediately out of reset (regardless of the reset cause). (Optional)
+
+7. Provide abstract access to non-GPR hart registers. (Optional)
