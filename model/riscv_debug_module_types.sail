@@ -8,6 +8,11 @@
 
 type dmreg = bits(8)
 
+// State of the Hart from the Debug Module's point of view
+enum DebugHartState = {NON_EXISTENT, UNAVAILABLE, RUNNING, HALTED}
+
+register debug_hart_state : DebugHartState = RUNNING
+
 // The `debug_request` argument to the `try_step` function below
 // provides a mechanism to the external harness to control entry and
 // exit into Debug Mode.  DR_Halt requests the model to enter Debug
@@ -20,16 +25,20 @@ enum debug_request = {DR_None, DR_Halt, DR_Resume, DR_Reset}
 register debug_module_active_request : bool
 register debug_module_request : debug_request = DR_None
 
-// Conceptual bits of state
-// NOTE: In theory, we should have unique bits for each hart.
-register haltrequest : bool = false
-register resumeack   : bool = false
+// Conceptual bits of hart state
+// NOTE: In theory, we should have individual bits for each hart.
+register haltrequest : bool = false // DONE
+register resumeack   : bool = false // DONE
+register unavail     : bool = false
 // Optional
-register haltonreset  : bool = false
-register hartreset    : bool = false
+register haltonreset  : bool = false // DONE
+// NOTE: The bit is defined but not discussed anywhere
+register hartreset    : bool = false // DONE,
+// Halt-On-Request == Resethaltreq
 register resethaltreq : bool = false
 register keepalive    : bool = false
 
+// Signals from hart to debug module
 // "The DM receives halted, running and havereset from each hart"
 // Indicates that the hart is running
 register running   : bool = true
@@ -58,9 +67,6 @@ struct dm_hart_status = {
   running  : bool,
   halted   : bool,
   havereset: bool,
-  // The 'resume' bit is not part of the spec but helps us
-  // to know whether the hart received a resume request
-  resume : bool,
 }
 
 // TODO: Not used yet

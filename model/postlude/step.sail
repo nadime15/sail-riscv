@@ -212,7 +212,6 @@ function update_debug_module_status(request: debug_request, step : bool) -> unit
   let status : dm_hart_status = struct { halted    = request == DR_Halt  | step | (request == DR_Reset & haltonreset),
                                          running   = (request == DR_Reset & not(haltonreset)) | (request == DR_Resume & not(step)),
                                          havereset = request == DR_Reset,
-                                         resume    = request == DR_Resume
                                        };
   send_hart_status(status);
 }
