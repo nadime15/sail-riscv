@@ -27,13 +27,13 @@ register debug_module_request : debug_request = DR_None
 
 // Conceptual bits of hart state
 // NOTE: In theory, we should have individual bits for each hart.
-register haltrequest : bool = false // DONE
-register resumeack   : bool = false // DONE
+register haltrequest : bool = false
+register resumeack   : bool = false
 register unavail     : bool = false
 // Optional
-register haltonreset  : bool = false // DONE
+register haltonreset  : bool = false
 // NOTE: The bit is defined but not discussed anywhere
-register hartreset    : bool = false // DONE,
+register hartreset    : bool = false
 // Halt-On-Request == Resethaltreq
 register resethaltreq : bool = false
 register keepalive    : bool = false

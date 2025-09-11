@@ -229,41 +229,43 @@ function process_hart_requests(x : Dmcontrol) -> unit = {
   let halt_requested   = bits_to_bool(x[haltreq]);
   let resume_requested = bits_to_bool(x[resumereq]);
 
-  if halt_requested then {
+  if halt_requested & not(halted) then {
     haltrequest = true;
     let _ = request_hart(DR_Halt);
-  } else if resume_requested then {
+  } else if resume_requested & not(running) then {
     set_resumeack(false);
     let _ = request_hart(DR_Resume);
     set_resumeack(true);
   } else {
     haltrequest = false;
   }
-
-
-//  if x[haltreq] == 0b1 then {
-//    haltrequest = true;
-//    let _ = request_hart(DR_Halt);
-//  } else {
-//    haltrequest = false;
-//  };
-
-//  if x[resumereq] == 0b1 & x[haltreq] == 0b0 then {
-//    set_resumeack(false);
-//    let _ = request_hart(DR_Resume);
-//    set_resumeack(true);
-//  };
 }
 
-
 function handle_reset_requests(x : Dmcontrol) -> unit = {
-  let reset_requested = bits_to_bool(x[ndmreset]) | bits_to_bool(x[hartreset]);
+  let hart_reset_requested = x[hartreset] == 0b1;
+  let hart_exists = dmstatus[allnonexistent] == 0b0;
+  let selected_hart_reset = hart_reset_requested & hart_exists;
 
-  if reset_requested then {
+  let platform_reset_requested = x[ndmreset] == 0b1;
+
+  // NOTE: ndmreset is meant to reset the entire platform (except DTM, DMI, and DM)
+  // including all harts part of the hardware platform, but since we only model
+  // a hart here, we interpret it as a hart reset.
+  // NOTE: We dont reset sticky bits like hartonreset etc.
+  if platform_reset_requested | selected_hart_reset then {
+    // NOTE: Harts can be unavailable for various reasons, especially during
+    // transitions into or out of reset. Since our reset is modeled as
+    // instantaneous, it doesn’t make sense to fully emulate this behavior.
+    // However, to avoid ignoring these bits completely, we assert them
+    // immediately before a reset and deassert them right after.
+    dmstatus[allunavail] = 0b1;
+    dmstatus[anyunavail] = 0b1;
     let _ = request_hart(DR_Reset);
+    dmstatus[allunavail] = 0b0;
+    dmstatus[anyunavail] = 0b0;
   };
 
-  if x[ackhavereset] == 0b1 then {
+  if x[ackhavereset] == 0b1 & hart_exists then {
     set_havereset(false);
   };
 }
@@ -272,7 +274,7 @@ function update_halt_on_reset_config(x : Dmcontrol) -> unit = {
   match (x[setresethaltreq], x[clrresethaltreq]) {
     (0b1, 0b0) => haltonreset = true,
     (_,   0b1) => haltonreset = false,
-    (_,   _)   => ()
+    (_, _)     => ()
   }
 }
 
@@ -286,13 +288,15 @@ function legalize_active_dmcontrol(d : Dmcontrol, x : Dmcontrol) -> Dmcontrol = 
   dmstatus[allnonexistent] = bool_to_bits(not(hart_exists));
   dmstatus[anynonexistent] = bool_to_bits(not(hart_exists));
 
+  // Handle reset requests
+  // NOTE: After a reset, the hart may still need to halt if haltreq was set.
+  // To guarantee this, we perform the reset first and then process hart requests.
+  handle_reset_requests(x);
+
   // Process hart control requests (only if hart exists and no abstract command running)
   if hart_exists & abstractcs[busy] == 0b0 then {
     process_hart_requests(x);
   };
-
-  // Handle reset requests
-  handle_reset_requests(x);
 
   // Handle halt-on-reset configuration
   update_halt_on_reset_config(x);
@@ -1107,6 +1111,19 @@ function clause write_DM_reg(dm_reg, _) = {
 end write_DM_reg
 
 function reset_debug_module() = {
+
+  // Behavior is undefined if a hart is halted when the debug module resets.
+  // For now, we check if the hart is halted and issue a resume request.
+  if halted then send_request(DR_Resume);
+
+  haltrequest = false;
+  resumeack   = false;
+  hartreset   = false;
+  haltonreset = false;
+  //resethaltreq = false;
+  //unavail      = false;
+  //keepalive    = false;
+
   dmstatus = [Mk_Dmstatus(zeros()) with
     authenticated   = 0b1,
     authbusy        = 0b0,
