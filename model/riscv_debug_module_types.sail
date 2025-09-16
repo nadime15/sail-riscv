@@ -22,6 +22,51 @@ register debug_hart_state : DebugHartState = RUNNING
 // current debug mode.
 enum debug_request = {DR_None, DR_Halt, DR_Resume, DR_Reset}
 
+enum AbstractCommand = {
+  ACCESS_REGISTER,
+  QUICK_ACCESS,
+  ACCESS_MEMORY
+}
+
+mapping abstract_command_type : bits(8) <-> AbstractCommand = {
+  0x00 <-> ACCESS_REGISTER,
+  0x01 <-> QUICK_ACCESS,
+  0x02 <-> ACCESS_MEMORY,
+}
+
+enum AbstractCommandError = {
+  NONE,
+  BUSY,
+  NOT_SUPPORTED,
+  EXCEPTION,
+  HALT_RESUME,
+  BUS,
+  RESERVED,
+  OTHER,
+}
+
+mapping abstract_command_error : bits(3) <-> AbstractCommandError = {
+  0b000 <-> NONE,
+  0b001 <-> BUSY,
+  0b010 <-> NOT_SUPPORTED,
+  0b011 <-> EXCEPTION,
+  0b100 <-> HALT_RESUME,
+  0b101 <-> BUS,
+  0b110 <-> RESERVED,
+  0b111 <-> OTHER
+}
+
+mapping abstract_command_error_name : AbstractCommandError <-> string = {
+  NONE          <-> "NONE",
+  BUSY          <-> "BUSY",
+  NOT_SUPPORTED <-> "NOT_SUPPORTED",
+  EXCEPTION     <-> "EXCEPTION",
+  HALT_RESUME   <-> "HALT_RESUME",
+  BUS           <-> "BUS",
+  RESERVED      <-> "RESERVED",
+  OTHER         <-> "OTHER",
+}
+
 register debug_module_active_request : bool
 register debug_module_request : debug_request = DR_None
 
@@ -46,22 +91,6 @@ register running   : bool = true
 register halted    : bool = false
 // Indicates that a hart has experienced a reset
 register havereset : bool = false
-
-struct dm_status_bits = {
-  allhavereset   : bool,
-  anyhavereset   : bool,
-  allresumeack   : bool,
-  anyresumeack   : bool,
-  allnonexistent : bool,
-  anynonexistent : bool,
-  allunavail     : bool,
-  anyunavail     : bool,
-  allrunning     : bool,
-  anyrunning     : bool,
-  allhalted      : bool,
-  anyhalted      : bool,
-  success        : bool,
-}
 
 struct dm_hart_status = {
   running  : bool,
