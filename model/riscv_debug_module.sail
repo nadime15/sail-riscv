@@ -279,6 +279,18 @@ function update_halt_on_reset_config(x : Dmcontrol) -> unit = {
 }
 
 function legalize_active_dmcontrol(d : Dmcontrol, x : Dmcontrol) -> Dmcontrol = {
+
+  // Ignore the bits below if abstract command is executed
+  let x = if abstractcs[busy] == 0b1 then [x with
+    haltreq         = 0b0,
+    resumereq       = 0b0,
+    ackhavereset    = 0b0,
+    hartsello       = zeros(),
+    hartselhi       = zeros(),
+    setresethaltreq = 0b0,
+    clrresethaltreq = 0b0,
+  ] else x;
+
   // Validate hart selection
   let hartsel = x[hartselhi] @ x[hartsello];
   // Only hart 0 exists in minimal implementation
@@ -294,7 +306,7 @@ function legalize_active_dmcontrol(d : Dmcontrol, x : Dmcontrol) -> Dmcontrol = 
   handle_reset_requests(x);
 
   // Process hart control requests (only if hart exists and no abstract command running)
-  if hart_exists & abstractcs[busy] == 0b0 then {
+  if hart_exists then {
     process_hart_requests(x);
   };
 
@@ -303,23 +315,12 @@ function legalize_active_dmcontrol(d : Dmcontrol, x : Dmcontrol) -> Dmcontrol = 
 
   [d with
     // Control bits - preserve written values for pulse-type operations
-    haltreq         = x[haltreq],
-    resumereq       = 0b0,
+    haltreq         = if abstractcs[busy] != 0b1 then x[haltreq] else d[haltreq],
     hartreset       = x[hartreset],
-    ackhavereset    = 0b0,
-    ackunavail      = 0b0,
-
     // Hart selection - minimal implementation supports only hart 0
     hasel           = 0b0,
     hartsello       = zeros(),
     hartselhi       = zeros(),
-
-    setkeepalive    = 0b0,
-    clrkeepalive    = 0b0,
-
-    setresethaltreq = 0b0,
-    clrresethaltreq = 0b0,
-
     // System control
     ndmreset        = x[ndmreset],
     dmactive        = x[dmactive]
@@ -449,130 +450,158 @@ bitfield Command : bits(32) = {
   control: 23 .. 0
 }
 
-function access_reg(write : access_type, data : bits(32), regno: bits(16)) -> bool = {
-  let addr = unsigned(regno);
+function write_data_regs(value: bits(128), aarsize: range(2, 4)) -> unit = {
+   match aarsize {
+    2 => data0 = value[31..0],
+    3 => { data0 = value[31..0];  data1 = value[63..32]; },
+    4 => { data0 = value[31..0];  data1 = value[63..32];
+           data2 = value[95..64]; data3 = value[127..96]; },
+  }
+}
 
-  // TODO: We need to simplify this!
+function read_data_regs(aarsize: range(2, 4)) -> bits(128) = {
+  match aarsize {
+    2 => zeros() @ data0,
+    3 => zeros() @ data1 @ data0,
+    4 => data3 @ data2 @ data1 @ data0,
+  }
+}
+
+function write_gpr(regidx: regidx, aarsize: range(2, 4)) -> AbstractCommandError = {
+  let value = read_data_regs(aarsize);
+  match (aarsize, xlen) {
+    (2, 32) => { X(regidx) = value[31..0]; NONE },
+    (2, 64) => { X(regidx) = zeros() @ value[31..0]; NONE },
+    (3, 64) => { X(regidx) = value[63..0]; NONE },
+    (_, _)  => NOT_SUPPORTED,
+  }
+}
+
+function write_fpr(fregidx: fregidx, aarsize: range(2, 4)) -> AbstractCommandError = {
+  let value = read_data_regs(aarsize);
+  match (aarsize, flen) {
+    (2, 32) => { F(fregidx) = value[31..0]; NONE },
+    (2, 64) => { F(fregidx) = zeros() @ value[31..0]; NONE },
+    (3, 64) => { F(fregidx) = value[63..0]; NONE },
+    (_, _)  => NOT_SUPPORTED,
+  }
+}
+
+function execute_access_register_command(aarsize : bits(3), transfer : bits(1), write : bits(1), regno : bits (16)) -> AbstractCommandError = {
+  let access = determine_access_type(write, transfer);
+  if access == NO_TRANSFER then return NONE;
+
+  let addr = unsigned(regno);
+  let aarsize = unsigned(aarsize);
+
+  if not(1 < aarsize & aarsize < 5) then return NOT_SUPPORTED;
+
+  assert(1 < aarsize & aarsize < 5);
+
+  // NOTE: In theory, we should check whether a register access exceeds the specified aarize value.
+  // If it does, the access must fail. The problem is that all CSRs return xlenbits and are
+  // zero-extended, so there is no reliable way to distinguish between 32-bit and 64-bit CSRs without
+  // additional metadata (e.g., a list tracking register sizes). For now, we allow access to CSRs
+  // smaller than aarize, even though this does not fully comply with the spec.
   match addr {
     addr if addr <= unsigned(0x0fff) => {
-      print_endline("Access CSR");
-      // TODO/NOTE: We have to read/write as we were in M-Mode.
-      match write {
-        READ => {
-          let regvalue = read_CSR(regno[11 .. 0]);
-          match xlen {
-            32 => data0 = regvalue,
-            64 => {
-              data0 = regvalue[31 .. 0];
-              data1 = regvalue[63 .. 32];
-            },
-            _ => internal_error(__FILE__, __LINE__, "Unsupported xlen"),
-          };
-        },
+        // TODO: Ensure CSR access is performed in M-Mode.
+        // TODO: Clarify whether we need distinct error codes for
+        //       "CSR does not exist" vs. "CSR not currently accessible."
+        //       Currently, no distinction is made.
+        //       Example: OpenOCD reads vlenb during init, but this fails
+        //       if the vector extension is currently disabled.
+      if not(is_CSR_accessible(regno[11 .. 0], Machine, true)) then return EXCEPTION;
+
+      match access {
+        READ => write_data_regs(zeros() @ read_CSR(regno[11 .. 0]), aarsize),
         WRITE => {
-          match xlen {
-            32 => {
-              match write_CSR(regno[11 .. 0], data0) {
-                Ok(_) => (),
-                Err(_) => internal_error(__FILE__, __LINE__, "Error ")
-              }
-            },
-            64 => {
-              match write_CSR(regno[11 .. 0], data1 @ data0) {
-                Ok(_) => (),
-                Err(_) => (),
-              }
-            },
-            _ => internal_error(__FILE__, __LINE__, "Unsupported xlen"),
-          };
+          let value = read_data_regs(aarsize);
+          match write_CSR(regno[11 .. 0], value[xlen - 1 ..  0]) {
+            Ok (_) => (),
+            Err(_) => return EXCEPTION,
+          }
         },
       }
-
-    },      //CSR,
+    },
     addr if addr <= unsigned(0x101f) => {
-      // NOTE/TODO: For me its not obvious whether writes from data0 to regs are always 32 bit.
-      // what happens with the remaining bits in case the reg is 64bit width?
-      // for now sign extend
-      // NOTE: What happens if E-Extension is enabled?!?
-      //let a = addr - unsigned(0x1000);
-      //assert(a >= 0 & a <=31);
-      print_endline("Access GPR");
       let regidx = encdec_reg(regno[4 .. 0]);
-      match write {
-        READ => {
-        let regvalue = X(regidx);
-          match xlen {
-          32 => data0 = regvalue,
-          64 => {
-            data0 = regvalue[31 .. 0];
-            data1 = regvalue[63 .. 32];
-          },
-          _ => internal_error(__FILE__, __LINE__, "Unsupported xlen"),
-         };
-        },
-        WRITE => {
-          match xlen {
-            32 => X(regidx) = data0,
-            64 => X(regidx) = data1 @ data0,
-            _ => internal_error(__FILE__, __LINE__, "Unsupported xlen"),
-          };
-        }
+      if base_E_enabled & unsigned(regno[4 .. 0]) > 15 then return EXCEPTION;
+      match access {
+        // TODO: Get rid of the zeros()
+        READ  => write_data_regs(zeros() @ X(regidx), aarsize),
+        WRITE => {let status = write_gpr(regidx, aarsize); return status },
       };
-      print_endline("GPR")
-    },      //GPR,
-    // TODO: Add READ/WRITE for floating point regs
-    addr if addr <= unsigned(0x103f) => print_endline("TODO: Implement Floating-Point Register Access"),
-    addr if addr >= unsigned(0xc000) & addr <= unsigned(0xffff) => print_endline("RESERVED"), //RESERVED,
-    addr => print_endline("INVALID"),                              //INVALID
+    },
+    addr if addr <= unsigned(0x103f) => {
+      if not(currentlyEnabled(Ext_F)) then return EXCEPTION;
+      // Not accessible in the current state
+      // Is this the right error code?
+      if mstatus[FS] == 0b00 then return HALT_RESUME;
+      let fregidx = encdec_freg(regno[4 .. 0]);
+      match access {
+        READ  => write_data_regs(zeros () @ F(fregidx), aarsize),
+        WRITE => { let status = write_fpr(fregidx, aarsize); return status },
+      };
+    },
+    addr => return EXCEPTION
   };
-  // TODO
-  true
-}
-function execute_abstract_command(aarsize : bits(3), aarpostincrement : bits(1), postexec : bits(1), transfer : bits(1), write : bits(1), regno : bits (16)) -> bool = {
-
-  let res : bool = match determine_access_type(write, transfer) {
-    READ       => access_reg(READ, data0, regno),
-    WRITE      => access_reg(WRITE, data0, regno),
-    NO_TRANFER => true,
-  };
-  res
+  NONE
 }
 
-function legalize_command(d : Command, x : bits(32)) -> Command = {
+function execute_abstract_command(command : bits(32)) -> AbstractCommandError = {
+  let cmdtype = command[31 .. 24];
+  let hart_exists = dmstatus[allnonexistent] == 0b0;
+  let hart_available = dmstatus[allunavail] == 0b0;
+  let abstract_command_busy = abstractcs[busy] == 0b1;
 
-  // TODO check if abstract command is being executed
-  // NOTE: We only support cmdtype 0 (Access Register Command)
-  let cmdtype          = x[31 .. 24];
-  let aarsize          = x[22 .. 20];
-  let aarpostincrement = x[19 .. 19];
-  let postexec         = x[18 .. 18];
-  let transfer         = x[17 .. 17];
-  let write            = x[16 .. 16];
-  let regno            = x[15 .. 0];
-
-  // Skip abstract command if hart 0 is not selected
-  if dmstatus[allnonexistent] == 0b1 then {
-    abstractcs[cmderr] = 0b100;
-  } else {
-    abstractcs[busy] = 0b1;
-    let status = execute_abstract_command(aarsize, aarpostincrement, postexec, transfer, write, regno);
-    abstractcs[busy] = 0b0;
-  };
-
-  let x = Mk_Command(x);
-
-  [d with
-    cmdtype = x[cmdtype],
-    control = x[control],
-  ]
+  let status =
+    if not(hart_exists) then HALT_RESUME
+    else if not(hart_available) then {
+      abstractcs[busy] = 0b0;
+      HALT_RESUME
+    }
+    // NOTE: In theory, commands may take multiple cycles, and the debugger could
+    // issue a new one before the previous finishes, overwriting its return
+    // code. Since we execute commands instantaneously, this is not an issue.
+    else if abstract_command_busy then BUSY
+    else match abstract_command_type(cmdtype) {
+      ACCESS_REGISTER => {
+        let aarsize          = command[22 .. 20];
+        let reserved         = command[23 .. 23];
+        let aarpostincrement = command[19 .. 19];
+        let postexec         = command[18 .. 18];
+        let transfer         = command[17 .. 17];
+        let write            = command[16 .. 16];
+        let regno            = command[15 .. 0];
+        var error = NONE;
+        // NOTE: aarpostincrement and postexec are not supported.
+        if reserved == 0b1 | aarpostincrement == 0b1 | postexec == 0b1 then {
+          error = NOT_SUPPORTED;
+        } else {
+          abstractcs[busy] = 0b1;
+          error = execute_access_register_command(aarsize, transfer, write, regno);
+          //print_endline("Abstract Command Error Code: " ^ abstract_command_error_name(err) ^ " Addr: " ^ bits_str(regno));
+          abstractcs[busy] = 0b0;
+        };
+        error
+      },
+      QUICK_ACCESS  => NOT_SUPPORTED,
+      ACCESS_MEMORY => NOT_SUPPORTED,
+    };
+  status
 }
 
-register command: Command = legalize_command(Mk_Command(zeros()), zeros())
+function legalize_command(d : Command, x : bits(32)) -> unit = {
+  abstractcs[cmderr] = abstract_command_error(execute_abstract_command(x))
+}
+
+register command: Command = Mk_Command(zeros())
 
 mapping clause dm_name_map = 0x17  <-> "command"
 
 function clause is_DM_reg_defined (0x17) = true
-function clause write_DM_reg(0x17, value) = { command = legalize_command(command, value); zeros() }
+function clause write_DM_reg(0x17, value) = { legalize_command(command, value); zeros() }
 function clause read_DM_reg(0x17) = zeros()
 
 bitfield Abstractauto : bits(32) = {
@@ -1112,9 +1141,12 @@ end write_DM_reg
 
 function reset_debug_module() = {
 
-  // Behavior is undefined if a hart is halted when the debug module resets.
-  // For now, we check if the hart is halted and issue a resume request.
-  if halted then send_request(DR_Resume);
+  // Behavior is undefined if a hart is halted when the
+  // debug module resets. For now, we check if the hart
+  // is halted and issue a resume request.
+  if halted then {
+    let _ = send_request(DR_Resume)
+  };
 
   haltrequest = false;
   resumeack   = false;
@@ -1137,6 +1169,7 @@ function reset_debug_module() = {
 
   abstractcs = [Mk_Abstractcs(zeros()) with
     progbufsize = zeros(),
+    busy        = 0b0,
     relaxedpriv = 0b1,
     cmderr      = zeros(),
     datacount   = if xlen == 32 then 0b0001 else 0b0010,

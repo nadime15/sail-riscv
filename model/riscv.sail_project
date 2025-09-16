@@ -472,7 +472,7 @@ debug_module {
 
 debug_module {
   module {
-    requires riscv_core
+    requires riscv_core, FD
     files
       riscv_debug_module_utils.sail,
       riscv_debug_module.sail,
