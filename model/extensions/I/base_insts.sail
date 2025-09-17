@@ -57,8 +57,8 @@ function jump_to(target : xlenbits) -> ExecutionResult = {
     Some(e) => return Ext_ControlAddr_Check_Failure(e),
     None()  => (),
   };
-   if in_debug_abstract_command() & not(debug_is_legal_ct_target(target))
-   then return Illegal_Instruction();
+  if in_debug_abstract_command() & not(debug_is_legal_ct_target(target))
+  then return Illegal_Instruction();
   // Perform standard alignment check.
   // Check target is at least 2-byte aligned (callers must ensure
   // this so it can be an assertion).
@@ -605,6 +605,8 @@ function ebreak_into_debug() -> bool =
     Supervisor => bool_bits(dcsr[EBreakS]),
     Machine    => bool_bits(dcsr[EBreakM]),
     // TODO: VS/VU modes
+    VirtualSupervisor => { internal_error(__FILE__, __LINE__, "Invalid privilege level or virtual mode"); false },
+    VirtualUser       => { internal_error(__FILE__, __LINE__, "Invalid privilege level or virtual mode"); false },
   }
   else false
 

@@ -51,8 +51,6 @@ std::string term_log;
 std::string trace_log_path;
 FILE *trace_log = NULL;
 std::string dtb_file;
-std::vector<std::string> elfs;
-
 int rvfi_dii_port = 0;
 std::optional<rvfi_handler> rvfi;
 std::vector<std::string> elfs;

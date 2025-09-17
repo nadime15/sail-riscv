@@ -13,7 +13,7 @@ function enter_debug_mode(cause : debug_entry_cause, extcause : bits(3), pc : xl
   assert(not(debug_mode_active), "enter_debug_mode: already in Debug mode.");
   dpc = pc;
   dcsr = [dcsr with
-           Prv = privLevel_bits(cur_privilege),
+           Prv = privLevel_to_bits(cur_privilege),
            // TODO: V from hypervisor mode, ELP from Zicfilp
            // TODO: intra-instruction interruption, e.g. vstart for vector instructions
            Cause    = debug_cause_bits(cause),
@@ -30,7 +30,7 @@ function enter_debug_mode(cause : debug_entry_cause, extcause : bits(3), pc : xl
 
   //if   get_config_print_platform()
   //then
-  print_log("entering Debug mode from " ^ to_str(privLevel_of_bits(dcsr[Prv])));
+  print_log("entering Debug mode from " ^ to_str(privLevel_bits(dcsr[Prv], bitzero)));
 }
 
 // The specification denotes a hart's exit from Debug mode as the hart "resuming".
@@ -38,7 +38,7 @@ function exit_debug_mode() -> unit = {
   assert(debug_mode_active, "exit_debug_mode: not in Debug mode.");
   set_next_pc(dpc);
   tick_pc();
-  cur_privilege = privLevel_of_bits(dcsr[Prv]);
+  cur_privilege = privLevel_bits(dcsr[Prv], bitzero);
   if cur_privilege != Machine then {
     mstatus = [mstatus with MPRV = 0b0];
     // TODO: If Smdbltrp is enabled, clear mstatus.MDT
@@ -82,7 +82,7 @@ function reset_sdext() -> unit = {
   dcsr = reset_Dcsr();
 }
 
-// This is independant of the Sdext spec, we use this
+// This is independent of the Sdext spec, we use this
 // function when the hart is reset from the debug module
 function reset_debug_states() -> unit = {
   debug_abstract_command_active = false;
