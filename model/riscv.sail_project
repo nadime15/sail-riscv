@@ -25,7 +25,7 @@ core {
     core/vmem_types.sail,
     core/vext_types.sail,
     core/csr_begin.sail,
-    riscv_debug_module_types.sail,
+    debug_module/debug_module_types.sail,
     core/callbacks.sail,
     core/reg_type.sail,
     core/regs.sail,
@@ -420,27 +420,27 @@ extensions {
     Sdext_regs {
       requires riscv_core
       files
-        riscv_sdext_regs.sail
+        extensions/Sdext/sdext_regs.sail
     }
 
     Sdext_control {
       requires core, exceptions, Sdext_regs
       before riscv
       files
-        riscv_sdext_control.sail
+        extensions/Sdext/sdext_control.sail
     }
 
     Sdext_hooks {
       requires sys
       before I_insts
       files
-        riscv_sdext_inst_hooks.sail
+        extensions/Sdext/sdext_hooks.sail
     }
 
     Sdext_instructions {
       requires riscv, Sdext_regs
       files
-        riscv_insts_sdext.sail
+        extensions/Sdext/sdext_insts.sail
     }
 
     bfloat16 {
@@ -484,9 +484,9 @@ debug_module {
   module {
     requires core, FD
     files
-      riscv_debug_module_utils.sail,
-      riscv_debug_module.sail,
-      riscv_debug_module_interface.sail
+      debug_module/debug_module_utils.sail,
+      debug_module/debug_module.sail,
+      debug_module/debug_module_interface.sail
   }
 }
 

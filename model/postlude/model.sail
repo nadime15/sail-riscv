@@ -11,15 +11,7 @@ function reset() -> unit = {
   // Come out of WFI/WRS.
   hart_state = HART_ACTIVE();
 
-  print_endline("Reset Chip");
-  hart_state = HART_ACTIVE();
-  // TODO: Get rid of the hardcoded addresses
-  print_endline("Reset PC and nextPC");
-  PC = zero_extend(0x80000000); //get_entry_point();
-  nextPC = zero_extend(0x80000000); //get_entry_point()
-  print_endline(bits_str(PC) ^ " " ^ bits_str(nextPC) );
-  // This is a sticky bit set to 1 by the core whenever the hart experiences a reset
-  reset_debug_states();
+  reset_debug();
 
   reset_sys();
   reset_vmem();
