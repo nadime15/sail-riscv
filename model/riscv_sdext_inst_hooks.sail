@@ -29,7 +29,7 @@ function debug_mode_sret_hook() -> ExecutionResult =
 // This checks whether a control transfer destination is a legal
 // target when executing an abstract command.  This applies to all
 // control transfer instructions.
-function debug_is_legal_ct_target(dest : virtaddr) -> bool =
+function debug_is_legal_ct_target(dest : xlenbits) -> bool =
   false
 
 // This checks whether an instruction depending on the value of PC

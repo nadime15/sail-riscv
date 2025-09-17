@@ -100,7 +100,7 @@ function reset_Dcsr() -> Dcsr = {
     MPRVEn    = bool_bits(dcsr_mprven_preset_enabled),
     NMIP      = 0b0,
     Step      = 0b0,
-    Prv       = privLevel_bits(Machine),
+    Prv       = privLevel_to_bits(Machine),
   ]
 }
 
@@ -142,7 +142,7 @@ function legalize_dcsr(d : Dcsr, v : xlenbits) -> Dcsr = {
    // V = ...
    MPRVEn    = if dcsr_mprven_writable then v[MPRVEn] else d[MPRVEn],
    Step      = v[Step],
-   Prv       = if have_privLevel(v[Prv]) then v[Prv] else d[Prv],
+   Prv       = if have_nominal_privLevel(v[Prv]) then v[Prv] else d[Prv],
   ]
 }
 

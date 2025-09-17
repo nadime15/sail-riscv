@@ -335,8 +335,8 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
     Step_Execute(ExecuteAs(_), _) => assert(false),
     // standard errors
     Step_Execute(Trap(priv, ctl, pc), _) => set_next_pc(exception_handler(priv, ctl, pc)),
-    Step_Execute(Memory_Exception(vaddr, e), _) => handle_mem_exception(vaddr, e),
-    Step_Execute(Illegal_Instruction(), instbits) => handle_illegal(instbits),
+    Step_Execute(Memory_Exception(vaddr, e), _) => handle_exception(bits_of(vaddr), e),
+    Step_Execute(Illegal_Instruction(), instbits) => handle_exception(zero_extend(instbits), E_Illegal_Instr()),
     Step_Execute(Enter_Wait(wr), instbits) =>
       if wait_is_nop(wr) then {
         // This is the same as the RETIRE_OK case.

@@ -26,7 +26,6 @@ core {
     core/vext_types.sail,
     core/csr_begin.sail,
     riscv_debug_module_types.sail,
-    riscv_debug_module_reg_begin.sail,
     core/callbacks.sail,
     core/reg_type.sail,
     core/regs.sail,
@@ -37,7 +36,7 @@ core {
     core/addr_checks.sail,
     core/misa_ext.sail,
     core/softfloat_interface.sail,
-    riscv_sys_reservation.sail,
+    sys/sys_reservation.sail,
 }
 
 exceptions {
@@ -49,7 +48,7 @@ exceptions {
 }
 
 pmp {
-  requires riscv_core, Sdext_regs
+  requires core, Sdext_regs
 
   files
     pmp/pmp_regs.sail,
@@ -57,11 +56,11 @@ pmp {
 }
 
 sys {
-  requires riscv_core, riscv_exceptions, pmp, V_core, Smcntrpmf, Sdext_regs, Sdext_control, Zicfilp_regs, A_types
+  requires core, exceptions, pmp, V_core, Smcntrpmf, Sdext_regs, Sdext_control, Zicfilp_regs, A_types
 
   files
-    riscv_sys_control.sail,
-    riscv_platform.sail,
+    sys/sys_control.sail,
+    sys/platform.sail,
     sys/pma.sail,
     sys/mem.sail,
     sys/vmem_pte.sail,
@@ -81,7 +80,7 @@ extensions {
       files extensions/I/base_types.sail
     }
     I_insts {
-      requires riscv_exceptions, sys, I_types, Sdext_regs, Sdext_hooks, Zicfilp_regs
+      requires riscv_exceptions, riscv, I_types, Sdext_regs, Sdext_hooks
 
       files
         extensions/I/base_insts.sail,
@@ -334,7 +333,7 @@ extensions {
 
   Zicntr {
     requires Sdext_regs
-    files riscv_zicntr_control.sail
+    files extensions/Zicntr/zicntr_control.sail
   }
 
   Zicbom {
@@ -406,15 +405,26 @@ extensions {
     }
   }
 
-    Sdext {
+  bfloat16 {
+    bfloat16_core {
+      requires riscv, FD
+      files extensions/bfloat16/zfbfmin_utils.sail
+    }
+    Zfbfmin {
+      requires riscv, FD, bfloat16_core
+      files extensions/bfloat16/zfbfmin_insts.sail
+    }
+  }
+
+  Sdext {
     Sdext_regs {
-      requires sys_core
+      requires riscv_core
       files
         riscv_sdext_regs.sail
     }
 
     Sdext_control {
-      requires riscv_core, riscv_exceptions, Sdext_regs
+      requires core, exceptions, Sdext_regs
       before riscv
       files
         riscv_sdext_control.sail
@@ -472,7 +482,7 @@ debug_module {
 
 debug_module {
   module {
-    requires riscv_core, FD
+    requires core, FD
     files
       riscv_debug_module_utils.sail,
       riscv_debug_module.sail,
@@ -498,12 +508,11 @@ mops {
 postlude {
   after extensions, mops
 
-  requires riscv_core, sys, riscv_exceptions, Smcntrpmf, pmp, Sdext_regs, Sdext_control, debug_module, Zicfilp_regs, Zicfilp_insts
+  requires core, sys, exceptions, Smcntrpmf, pmp, Sdext_regs, Sdext_control, debug_module, Zicfilp_regs, Zicfilp_insts
 
   files
     postlude/insts_end.sail,
     postlude/csr_end.sail,
-    riscv_debug_module_reg_end.sail,
     postlude/step_common.sail,
     postlude/step_ext.sail,
     postlude/decode_ext.sail,
