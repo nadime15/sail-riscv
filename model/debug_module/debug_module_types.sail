@@ -76,15 +76,14 @@ register haltrequest : bool = false
 register resumeack   : bool = false
 register unavail     : bool = false
 // Optional
+// Halt-On-Request == Resethaltreq
+// See: https://github.com/riscv/riscv-debug-spec/issues/1142
 register haltonreset  : bool = false
 // NOTE: The bit is defined but not discussed anywhere
 register hartreset    : bool = false
-// Halt-On-Request == Resethaltreq
-register resethaltreq : bool = false
 register keepalive    : bool = false
 
 // Signals from hart to debug module
-// "The DM receives halted, running and havereset from each hart"
 // Indicates that the hart is running
 register running   : bool = true
 // Indicates that the hart is halted
@@ -110,3 +109,9 @@ enum access_type = {
   WRITE,
   NO_TRANSFER
 }
+
+type data_count = range(0, 12)
+type progbuf_size = range(0, 16)
+
+let MAX_DATA_SIZE : data_count = 12
+let MAX_PROGBUF_SIZE : progbuf_size = 16

@@ -36,6 +36,42 @@ scattered function write_DM_reg
 
 ///////////////////////////////////////////////////////////////////////
 
+bitfield Abstractcs : bits(32) = {
+  progbufsize : 28 .. 24,
+  busy :        12,
+  relaxedpriv:  11,
+  cmderr:       10 .. 8,
+  datacount:     3 .. 0
+}
+
+function legalize_abstractcs(d : Abstractcs, x : bits(32)) -> Abstractcs = {
+  let x = Mk_Abstractcs(x);
+  [d with
+    progbufsize = to_bits(MAX_PROGBUF_SIZE),
+    relaxedpriv = 0b1,
+    cmderr      = if x[cmderr] == ones() then zeros() else x[cmderr], // R/W1C
+    datacount   = to_bits(MAX_DATA_SIZE),
+  ]
+}
+
+register abstractcs: Abstractcs = legalize_abstractcs(Mk_Abstractcs(zeros()), zeros())
+
+mapping clause dm_name_map = 0x16  <-> "abstractcs"
+
+function clause is_DM_reg_defined (0x16) = true
+function clause write_DM_reg(0x16, value) = { abstractcs = legalize_abstractcs(abstractcs, value); abstractcs.bits }
+function clause read_DM_reg(0x16) = abstractcs.bits
+
+function legalize_data(d: bits(32), x : bits(32)) -> bits(32) = {
+  if abstractcs[busy] == 0b1 then {
+    abstractcs[cmderr] = abstract_command_error(BUSY);
+    d
+  }
+  else {
+    x
+  }
+}
+
 register data0  : bits(32)
 register data1  : bits(32)
 register data2  : bits(32)
@@ -62,31 +98,32 @@ mapping clause dm_name_map = 0x0d  <-> "data9"
 mapping clause dm_name_map = 0x0e  <-> "data10"
 mapping clause dm_name_map = 0x0f  <-> "data11"
 
-function clause is_DM_reg_defined (0x04) = true
-function clause is_DM_reg_defined (0x05) = true
-function clause is_DM_reg_defined (0x06) = true
-function clause is_DM_reg_defined (0x07) = true
-function clause is_DM_reg_defined (0x08) = true
-function clause is_DM_reg_defined (0x09) = true
-function clause is_DM_reg_defined (0x0a) = true
-function clause is_DM_reg_defined (0x0b) = true
-function clause is_DM_reg_defined (0x0c) = true
-function clause is_DM_reg_defined (0x0d) = true
-function clause is_DM_reg_defined (0x0e) = true
-function clause is_DM_reg_defined (0x0f) = true
+function clause is_DM_reg_defined (0x04) = unsigned(abstractcs[datacount]) > 0
+function clause is_DM_reg_defined (0x05) = unsigned(abstractcs[datacount]) > 1
+function clause is_DM_reg_defined (0x06) = unsigned(abstractcs[datacount]) > 2
+function clause is_DM_reg_defined (0x07) = unsigned(abstractcs[datacount]) > 3
+function clause is_DM_reg_defined (0x08) = unsigned(abstractcs[datacount]) > 4
+function clause is_DM_reg_defined (0x09) = unsigned(abstractcs[datacount]) > 5
+function clause is_DM_reg_defined (0x0a) = unsigned(abstractcs[datacount]) > 6
+function clause is_DM_reg_defined (0x0b) = unsigned(abstractcs[datacount]) > 7
+function clause is_DM_reg_defined (0x0c) = unsigned(abstractcs[datacount]) > 8
+function clause is_DM_reg_defined (0x0d) = unsigned(abstractcs[datacount]) > 9
+function clause is_DM_reg_defined (0x0e) = unsigned(abstractcs[datacount]) > 10
+function clause is_DM_reg_defined (0x0f) = unsigned(abstractcs[datacount]) > 11
 
-function clause write_DM_reg(0x04, value) = { data0 = value; data0 }
-function clause write_DM_reg(0x05, value) = { data1 = value; data1 }
-function clause write_DM_reg(0x06, value) = { data2 = value; data2 }
-function clause write_DM_reg(0x07, value) = { data3 = value; data3 }
-function clause write_DM_reg(0x08, value) = { data4 = value; data4 }
-function clause write_DM_reg(0x09, value) = { data5 = value; data5 }
-function clause write_DM_reg(0x0a, value) = { data6 = value; data6 }
-function clause write_DM_reg(0x0b, value) = { data7 = value; data7 }
-function clause write_DM_reg(0x0c, value) = { data8 = value; data8 }
-function clause write_DM_reg(0x0d, value) = { data9 = value; data9 }
-function clause write_DM_reg(0x0e, value) = { data10 = value; data10 }
-function clause write_DM_reg(0x0f, value) = { data11 = value; data11 }
+function clause write_DM_reg(0x04, value) = { data0 = legalize_data(data0, value); data0 }
+function clause write_DM_reg(0x05, value) = { data1 = legalize_data(data1, value); data1 }
+function clause write_DM_reg(0x06, value) = { data2 = legalize_data(data2, value); data2 }
+function clause write_DM_reg(0x07, value) = { data4 = legalize_data(data3, value); data3 }
+function clause write_DM_reg(0x08, value) = { data4 = legalize_data(data4, value); data4 }
+function clause write_DM_reg(0x09, value) = { data5 = legalize_data(data5, value); data5 }
+function clause write_DM_reg(0x0a, value) = { data6 = legalize_data(data6, value); data6 }
+function clause write_DM_reg(0x0b, value) = { data7 = legalize_data(data7, value); data7 }
+function clause write_DM_reg(0x0c, value) = { data8 = legalize_data(data8, value); data8 }
+function clause write_DM_reg(0x0d, value) = { data9 = legalize_data(data9, value); data9 }
+function clause write_DM_reg(0x0e, value) = { data10 = legalize_data(data10, value); data10 }
+function clause write_DM_reg(0x0f, value) = { data11 = legalize_data(data11, value); data11 }
+
 
 function clause read_DM_reg(0x04) = data0
 function clause read_DM_reg(0x05) = data1
@@ -100,36 +137,6 @@ function clause read_DM_reg(0x0c) = data8
 function clause read_DM_reg(0x0d) = data9
 function clause read_DM_reg(0x0e) = data10
 function clause read_DM_reg(0x0f) = data11
-
-bitfield Abstractcs : bits(32) = {
-  progbufsize : 28 .. 24,
-  busy :        12,
-  relaxedpriv:  11,
-  cmderr:       10 .. 8,
-  datacount:     3 .. 0
-}
-
-function legalize_abstractcs(d : Abstractcs, x : bits(32)) -> Abstractcs = {
-    let x = Mk_Abstractcs(x);
-    [d with
-      progbufsize = 0b00000,
-      relaxedpriv = 0b1,
-      // NOTE: R/W1C
-      cmderr = if x[cmderr] == 0b001 then 0b000 else x[cmderr],
-      // NOTE: I think, in theory we could enable even
-      // more data* regs regardless of the value of xlen
-      datacount = if xlen == 32 then 0b0001 else 0b0010
-
-    ]
-}
-
-register abstractcs: Abstractcs = legalize_abstractcs(Mk_Abstractcs(zeros()), zeros())
-
-mapping clause dm_name_map = 0x16  <-> "abstractcs"
-
-function clause is_DM_reg_defined (0x16) = true
-function clause write_DM_reg(0x16, value) = { abstractcs = legalize_abstractcs(abstractcs, value); abstractcs.bits }
-function clause read_DM_reg(0x16) = abstractcs.bits
 
 bitfield Dmstatus : bits(32) = {
   ndmresetpending: 24,
@@ -256,8 +263,8 @@ function handle_reset_requests(x : Dmcontrol) -> unit = {
     // NOTE: Harts can be unavailable for various reasons, especially during
     // transitions into or out of reset. Since our reset is modeled as
     // instantaneous, it doesn’t make sense to fully emulate this behavior.
-    // However, to avoid ignoring these bits completely, we assert them
-    // immediately before a reset and deassert them right after.
+    // However, to avoid ignoring these bits (allunavail/anyunvail) completely,
+    // we assert them immediately before a reset and deassert them right after.
     dmstatus[allunavail] = 0b1;
     dmstatus[anyunavail] = 0b1;
     let _ = request_hart(DR_Reset);
@@ -367,14 +374,10 @@ bitfield Hartinfo : bits(32) = {
 
 function legalize_hartinfo(d : Hartinfo) -> Hartinfo = {
   [d with
-    // TODO: Needs to be set
-    nscratch   = 0b0000,
-    // TODO: I dont know what this really means yet
-    dataaccess = 0b0,
-    // TODO: I dont know what this really means yet
-    datasize   = 0b0000,
-    // TODO: I dont know what this really means yet
-    dataaddr   = 0b000000000000
+    nscratch   = zeros(),
+    dataaccess = zeros(),
+    datasize   = zeros(),
+    dataaddr   = zeros(),
   ]
 }
 
@@ -505,14 +508,8 @@ function execute_access_register_command(aarsize : bits(3), transfer : bits(1), 
   // smaller than aarize, even though this does not fully comply with the spec.
   match addr {
     addr if addr <= unsigned(0x0fff) => {
-        // TODO: Ensure CSR access is performed in M-Mode.
-        // TODO: Clarify whether we need distinct error codes for
-        //       "CSR does not exist" vs. "CSR not currently accessible."
-        //       Currently, no distinction is made.
-        //       Example: OpenOCD reads vlenb during init, but this fails
-        //       if the vector extension is currently disabled.
+      // TODO: Ensure CSR access is performed in M-Mode.
       if not(is_CSR_accessible(regno[11 .. 0], Machine, true)) then return EXCEPTION;
-
       match access {
         READ => write_data_regs(zeros() @ read_CSR(regno[11 .. 0]), aarsize),
         WRITE => {
@@ -534,10 +531,7 @@ function execute_access_register_command(aarsize : bits(3), transfer : bits(1), 
       };
     },
     addr if addr <= unsigned(0x103f) => {
-      if not(currentlyEnabled(Ext_F)) then return EXCEPTION;
-      // Not accessible in the current state
-      // Is this the right error code?
-      if mstatus[FS] == 0b00 then return HALT_RESUME;
+      if not(currentlyEnabled(Ext_F)) | mstatus[FS] == 0b00 then return EXCEPTION;
       let fregidx = encdec_freg(regno[4 .. 0]);
       match access {
         READ  => write_data_regs(zeros () @ F(fregidx), aarsize),
@@ -576,12 +570,20 @@ function execute_abstract_command(command : bits(32)) -> AbstractCommandError = 
         let regno            = command[15 .. 0];
         var error = NONE;
         // NOTE: aarpostincrement and postexec are not supported.
-        if reserved == 0b1 | aarpostincrement == 0b1 | postexec == 0b1 then {
+        if reserved == 0b1 | aarpostincrement == 0b1 then {
           error = NOT_SUPPORTED;
         } else {
           abstractcs[busy] = 0b1;
           error = execute_access_register_command(aarsize, transfer, write, regno);
           //print_endline("Abstract Command Error Code: " ^ abstract_command_error_name(err) ^ " Addr: " ^ bits_str(regno));
+          if postexec == 0b1 then {
+              // Hart needs to be halted in order to execute program buffer (This is implementation dependent behaviour)
+            //if dmstatus[allhalted] == 0b0 then error = HALT_RESUME else
+            //
+            //}
+            // TODO
+            error = NOT_SUPPORTED
+          };
           abstractcs[busy] = 0b0;
         };
         error
@@ -611,11 +613,10 @@ bitfield Abstractauto : bits(32) = {
 
 function legalize_abstractauto(d : Abstractauto, x : bits(32)) -> Abstractauto = {
   let x = Mk_Abstractauto(x);
+  // TODO
   [d with
-    // TODO
-    autoexecdata = 0b000000000000,
-    // TODO
-    autoexecdata = 0b000000000000
+    autoexecdata = zeros(),
+    autoexecdata = zeros(),
   ]
 }
 
@@ -659,7 +660,7 @@ function legalize_confstrptr1(d : Confstrptr1, x : bits(32)) -> Confstrptr1 = {
   [d with
     // TODO
     // NOTE: Part of System Bus Access
-    addr = 0x00000000
+    addr = zeros(),
   ]
 }
 
@@ -678,7 +679,7 @@ bitfield Confstrptr2 : bits(32) = {
 function legalize_confstrptr2(d : Confstrptr2, x : bits(32)) -> Confstrptr2 = {
   let x = Mk_Confstrptr2(x);
   [d with
-    addr = 0x00000000
+    addr = zeros(),
   ]
 }
 
@@ -699,7 +700,7 @@ function legalize_confstrptr3(d : Confstrptr3, x : bits(32)) -> Confstrptr3 = {
   [d with
     // TODO
     // NOTE: Part of System Bus Access
-    addr = 0x00000000
+    addr = zeros(),
   ]
 }
 
@@ -719,7 +720,7 @@ function legalize_nextdm(d : Nextdm, x : bits(32)) -> Nextdm = {
   let x = Mk_Nextdm(x);
   [d with
     // TODO
-    addr = 0x00000000
+    addr = zeros(),
   ]
 }
 
@@ -730,6 +731,16 @@ mapping clause dm_name_map = 0x1d  <-> "nextdm"
 function clause is_DM_reg_defined (0x1d) = true
 // Read Only Register
 function clause read_DM_reg(0x1d) = nextdm.bits
+
+function legalize_progbuf(d: bits(32), x : bits(32)) -> bits(32) = {
+  if abstractcs[busy] == 0b1 then {
+    abstractcs[cmderr] = abstract_command_error(BUSY);
+    d
+  }
+  else {
+    x
+  }
+}
 
 register progbuf0  : bits(32)
 register progbuf1  : bits(32)
@@ -765,39 +776,39 @@ mapping clause dm_name_map = 0x2d  <-> "progbuf13"
 mapping clause dm_name_map = 0x2e  <-> "progbuf14"
 mapping clause dm_name_map = 0x2f  <-> "progbuf15"
 
-function clause is_DM_reg_defined (0x20) = true
-function clause is_DM_reg_defined (0x21) = true
-function clause is_DM_reg_defined (0x22) = true
-function clause is_DM_reg_defined (0x23) = true
-function clause is_DM_reg_defined (0x24) = true
-function clause is_DM_reg_defined (0x25) = true
-function clause is_DM_reg_defined (0x26) = true
-function clause is_DM_reg_defined (0x27) = true
-function clause is_DM_reg_defined (0x28) = true
-function clause is_DM_reg_defined (0x29) = true
-function clause is_DM_reg_defined (0x2a) = true
-function clause is_DM_reg_defined (0x2b) = true
-function clause is_DM_reg_defined (0x2c) = true
-function clause is_DM_reg_defined (0x2d) = true
-function clause is_DM_reg_defined (0x2e) = true
-function clause is_DM_reg_defined (0x2f) = true
+function clause is_DM_reg_defined (0x20) = unsigned(abstractcs[progbufsize]) > 0
+function clause is_DM_reg_defined (0x21) = unsigned(abstractcs[progbufsize]) > 1
+function clause is_DM_reg_defined (0x22) = unsigned(abstractcs[progbufsize]) > 2
+function clause is_DM_reg_defined (0x23) = unsigned(abstractcs[progbufsize]) > 3
+function clause is_DM_reg_defined (0x24) = unsigned(abstractcs[progbufsize]) > 4
+function clause is_DM_reg_defined (0x25) = unsigned(abstractcs[progbufsize]) > 5
+function clause is_DM_reg_defined (0x26) = unsigned(abstractcs[progbufsize]) > 6
+function clause is_DM_reg_defined (0x27) = unsigned(abstractcs[progbufsize]) > 7
+function clause is_DM_reg_defined (0x28) = unsigned(abstractcs[progbufsize]) > 8
+function clause is_DM_reg_defined (0x29) = unsigned(abstractcs[progbufsize]) > 9
+function clause is_DM_reg_defined (0x2a) = unsigned(abstractcs[progbufsize]) > 10
+function clause is_DM_reg_defined (0x2b) = unsigned(abstractcs[progbufsize]) > 11
+function clause is_DM_reg_defined (0x2c) = unsigned(abstractcs[progbufsize]) > 12
+function clause is_DM_reg_defined (0x2d) = unsigned(abstractcs[progbufsize]) > 13
+function clause is_DM_reg_defined (0x2e) = unsigned(abstractcs[progbufsize]) > 14
+function clause is_DM_reg_defined (0x2f) = unsigned(abstractcs[progbufsize]) > 15
 
-function clause write_DM_reg(0x20, value) = { progbuf0 = value; progbuf0 }
-function clause write_DM_reg(0x21, value) = { progbuf1 = value; progbuf1 }
-function clause write_DM_reg(0x22, value) = { progbuf2 = value; progbuf2 }
-function clause write_DM_reg(0x23, value) = { progbuf3 = value; progbuf3 }
-function clause write_DM_reg(0x24, value) = { progbuf4 = value; progbuf4 }
-function clause write_DM_reg(0x25, value) = { progbuf5 = value; progbuf5 }
-function clause write_DM_reg(0x26, value) = { progbuf6 = value; progbuf6 }
-function clause write_DM_reg(0x27, value) = { progbuf7 = value; progbuf7 }
-function clause write_DM_reg(0x28, value) = { progbuf8 = value; progbuf8 }
-function clause write_DM_reg(0x29, value) = { progbuf9 = value; progbuf9 }
-function clause write_DM_reg(0x2a, value) = { progbuf10 = value; progbuf10 }
-function clause write_DM_reg(0x2b, value) = { progbuf11 = value; progbuf11 }
-function clause write_DM_reg(0x2c, value) = { progbuf12 = value; progbuf12 }
-function clause write_DM_reg(0x2d, value) = { progbuf13 = value; progbuf13 }
-function clause write_DM_reg(0x2e, value) = { progbuf14 = value; progbuf14 }
-function clause write_DM_reg(0x2f, value) = { progbuf15 = value; progbuf15 }
+function clause write_DM_reg(0x20, value) = { progbuf0 = legalize_progbuf(progbuf0, value); progbuf0 }
+function clause write_DM_reg(0x21, value) = { progbuf1 = legalize_progbuf(progbuf1, value); progbuf1 }
+function clause write_DM_reg(0x22, value) = { progbuf2 = legalize_progbuf(progbuf2, value); progbuf2 }
+function clause write_DM_reg(0x23, value) = { progbuf3 = legalize_progbuf(progbuf3, value); progbuf3 }
+function clause write_DM_reg(0x24, value) = { progbuf4 = legalize_progbuf(progbuf4, value); progbuf4 }
+function clause write_DM_reg(0x25, value) = { progbuf5 = legalize_progbuf(progbuf5, value); progbuf5 }
+function clause write_DM_reg(0x26, value) = { progbuf6 = legalize_progbuf(progbuf6, value); progbuf6 }
+function clause write_DM_reg(0x27, value) = { progbuf7 = legalize_progbuf(progbuf7, value); progbuf7 }
+function clause write_DM_reg(0x28, value) = { progbuf8 = legalize_progbuf(progbuf8, value); progbuf8 }
+function clause write_DM_reg(0x29, value) = { progbuf9 = legalize_progbuf(progbuf9, value); progbuf9 }
+function clause write_DM_reg(0x2a, value) = { progbuf10 = legalize_progbuf(progbuf10, value); progbuf10 }
+function clause write_DM_reg(0x2b, value) = { progbuf11 = legalize_progbuf(progbuf11, value); progbuf11 }
+function clause write_DM_reg(0x2c, value) = { progbuf12 = legalize_progbuf(progbuf12, value); progbuf12 }
+function clause write_DM_reg(0x2d, value) = { progbuf13 = legalize_progbuf(progbuf13, value); progbuf13 }
+function clause write_DM_reg(0x2e, value) = { progbuf14 = legalize_progbuf(progbuf14, value); progbuf14 }
+function clause write_DM_reg(0x2f, value) = { progbuf15 = legalize_progbuf(progbuf15, value); progbuf15 }
 
 function clause read_DM_reg(0x20) = progbuf0
 function clause read_DM_reg(0x21) = progbuf1
@@ -870,7 +881,7 @@ function legalize_haltsum2(d : Haltsum2, x : bits(32)) -> Haltsum2 = {
   let x = Mk_Haltsum2(x);
   [d with
     // TODO
-    haltsum2 = 0x00000000
+    haltsum2 = zeros(),
   ]
 }
 
@@ -890,7 +901,7 @@ function legalize_haltsum3(d : Haltsum3, x : bits(32)) -> Haltsum3 = {
   let x = Mk_Haltsum3(x);
   [d with
     // TODO
-    haltsum3 = 0x00000000
+    haltsum3 = zeros(),
   ]
 }
 
@@ -923,15 +934,15 @@ function legalize_sbcs(d : Sbcs, x : bits(32)) -> Sbcs = {
   let x = Mk_Sbcs(x);
   [d with
     sbversion       = 0b001,
-    sbbusyerror     = if x[sbbusyerror] == 0b1 then 0b0 else x[sbbusyerror],
+    sbbusyerror     = if x[sbbusyerror] == 0b1 then 0b0 else x[sbbusyerror], // R/W1C
     //sbbusy
     sbreadonaddr    = x[sbreadonaddr],
     sbaccess        = x[sbaccess],
     sbautoincrement = x[sbautoincrement],
     sbreadonaddr    = x[sbreadonaddr],
-    sberror         = if x[sberror] == 0b001 then 0b000 else x[sberror],
+    sberror         = if x[sberror] == ones() then zeros() else x[sberror], //R/W1C
     // No bus access support yet
-    sbasize     = 0b0000000,
+    sbasize     = zeros(),
     sbaccess128 = 0b0,
     sbaccess64  = 0b0,
     sbaccess32  = 0b0,
@@ -1107,7 +1118,7 @@ function legalize_haltsum0(d : Haltsum0, x : bits(32)) -> Haltsum0 = {
   let x = Mk_Haltsum0(x);
   [d with
     // TODO
-    haltsum0 = 0x00000000
+    haltsum0 = zeros(),
   ]
 }
 
@@ -1152,7 +1163,6 @@ function reset_debug_module() = {
   resumeack   = false;
   hartreset   = false;
   haltonreset = false;
-  //resethaltreq = false;
   //unavail      = false;
   //keepalive    = false;
 
@@ -1168,11 +1178,11 @@ function reset_debug_module() = {
   hawindowsel.bits = zeros();
 
   abstractcs = [Mk_Abstractcs(zeros()) with
-    progbufsize = zeros(),
+    progbufsize = to_bits(MAX_PROGBUF_SIZE),
     busy        = 0b0,
     relaxedpriv = 0b1,
     cmderr      = zeros(),
-    datacount   = if xlen == 32 then 0b0001 else 0b0010,
+    datacount   = to_bits(MAX_DATA_SIZE),
   ];
 
   command.bits = zeros();
