@@ -231,16 +231,24 @@ struct step_result = {
 //              When single-stepping is set, DR_Resume should be specified.
 
 function update_debug_module_status(request: debug_request, step : bool) -> unit = {
-  let status : dm_hart_status = struct { halted    = request == DR_Halt  | step | (request == DR_Reset & haltonreset),
-                                         running   = (request == DR_Reset & not(haltonreset)) | (request == DR_Resume & not(step)),
-                                         havereset = request == DR_Reset,
+  let status : dm_hart_status = struct { halted    = request == DR_Halt  | request == DR_HaltOnReset | step,
+                                         running   = request == DR_Reset | (request == DR_Resume & not(step)),
+                                         havereset = request == DR_Reset | request == DR_HaltOnReset,
                                        };
   send_hart_status(status);
+}
+
+function handle_debug_module_halt_on_reset_request() -> DebugRequest = {
+  reset();
+  update_debug_module_status(DR_HaltOnReset, false);
+  enter_debug_mode(DBGEntry_ResetHaltReq, zeros(), get_arch_pc());
+  Debug_HaltOnReset();
 }
 
 function handle_debug_module_reset_request() -> DebugRequest = {
   // Call reset() before enter_debug_mode(). If the hart is already halted,
   // reset() ensures debug_mode_active is cleared first.
+  print_endline("Reset Halt");
   reset();
   update_debug_module_status(DR_Reset, false);
   if haltonreset then {
@@ -270,10 +278,11 @@ function handle_debug_module_halt_request() -> DebugRequest = {
 
 function handle_debug_module_request() -> DebugRequest = {
   let request : DebugRequest = match debug_module_request {
-    DR_Reset  => handle_debug_module_reset_request(),
-    DR_Resume => handle_debug_module_resume_request(),
-    DR_Halt   => handle_debug_module_halt_request(),
-    _         => Debug_None(),
+    DR_Reset       => handle_debug_module_reset_request(),
+    DR_Resume      => handle_debug_module_resume_request(),
+    DR_Halt        => handle_debug_module_halt_request(),
+    DR_HaltOnReset => handle_debug_module_halt_on_reset_request(),
+    _              => Debug_None(),
   };
   // TODO: Consider adding a function to fetch debug_module_request / debug_module_active_request
   // instead of accessing the global variables directly. Not fully sure if this is better.

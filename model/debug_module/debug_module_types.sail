@@ -18,9 +18,9 @@ register debug_hart_state : DebugHartState = RUNNING
 // exit into Debug Mode.  DR_Halt requests the model to enter Debug
 // Mode, while DR_Resume requests the model to exit it.  DR_Halt is
 // ignored when the model is already in Debug Mode, and DR_Resume is
-// ignored when it is not.  DR_None does not request any change to the
+// ignored when it is not. DR_None does not request any change to the
 // current debug mode.
-enum debug_request = {DR_None, DR_Halt, DR_Resume, DR_Reset}
+enum debug_request = {DR_None, DR_Halt, DR_Resume, DR_Reset, DR_HaltOnReset}
 
 enum AbstractCommand = {
   ACCESS_REGISTER,
@@ -91,16 +91,13 @@ register halted    : bool = false
 // Indicates that a hart has experienced a reset
 register havereset : bool = false
 
+register platform_reset : bool = false
+register hart_reset : bool = false
+
 struct dm_hart_status = {
   running  : bool,
   halted   : bool,
   havereset: bool,
-}
-
-// TODO: Not used yet
-struct debug_data = {
-  // TODO: Make this a config option, we can have more data entries (up to 12)
-  data : vector(if xlen == 32 then 1 else 2, bits(32)),
 }
 
 // Abstract Command Access Type
@@ -115,3 +112,15 @@ type progbuf_size = range(0, 16)
 
 let MAX_DATA_SIZE : data_count = 12
 let MAX_PROGBUF_SIZE : progbuf_size = 16
+
+// TODO: Not used yet
+struct debug_data = {
+  // TODO: Make this a config option, we can have more data entries (up to 12)
+  data : vector(if xlen == 32 then 1 else 2, bits(32)),
+}
+
+struct program_buffer = {
+  // TODO
+  //program : vector(MAX_PROGBUF_SIZE, bits(32)),
+  program : vector(16, bits(32)),
+}
