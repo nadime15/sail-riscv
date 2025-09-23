@@ -174,7 +174,7 @@ function phys_access_check forall 'n, 0 < 'n <= max_mem_access . (
   }
 }
 
-// dispatches to MMIO regions or physical memory regions depending on physical memory map
+// dispatches to Program Buffer, MMIO regions or physical memory regions depending on physical memory map
 function checked_mem_read forall 'n, 0 < 'n <= max_mem_access . (
   t : MemoryAccessType(ext_access_type),
   priv : Privilege,

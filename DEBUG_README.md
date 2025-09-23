@@ -289,12 +289,51 @@ The Program Buffer can executed by setting `command[postexec]` to 1 as part of a
 Stepping through the code via `step` will trigger every time the following series of instructions:
 
 ```bash
+[393] [U]: 0x0000000080000534 (0xC0050513) addi x10, x10, -0x400                    test_25+8
+entering Debug mode from U
+Start Abstract Command
+[55550] [M]: 0x0000000000002000 (0x0000100F) fence.i              // Start of the Program Buffer
+[55551] [M]: 0x0000000000002004 (0x0000000F) fence 0, 0
+[55552] [M]: 0x0000000000002008 (0x00100073) ebreak               // End of the Program Buffer
+End Abstract Command
+exiting Debug mode to U
+[55583] [U]: 0x0000000080000538 (0x00052507) flw f10, 0x0(x10)                      test_25+12
 DEBUG: Entering debug mode via single step
 entering Debug mode from U
 Start Abstract Command
-[302244] [M]: 0x0000000000002000 (0x0000100F) fence.i
-[302245] [M]: 0x0000000000002004 (0x0000000F) fence 0, 0
-[302246] [M]: 0x0000000000002008 (0x00100073) ebreak
+[125060] [M]: 0x0000000000002000 (0x0000100F) fence.i
+[125061] [M]: 0x0000000000002004 (0x0000000F) fence 0, 0
+[125062] [M]: 0x0000000000002008 (0x00100073) ebreak
 End Abstract Command
 exiting Debug mode to U
+[125090] [U]: 0x000000008000053C (0x00452587) flw f11, 0x4(x10)                     test_25+16
+DEBUG: Entering debug mode via single step
+entering Debug mode from U
+```
+
+## Exception handling during Program Buffer execution
+
+If an exception occurs while executing the Program Buffer, the hart halts at the instruction that triggered the exception. At this point, the Abstract Command terminates with abstractcs.busy = 0 and abstractcs.cmderr = EXCEPTION. Any remaining instructions in the Program Buffer are skipped. Execution can then be resumed or single-stepped, starting from the address stored in DPC.
+
+```bash
+[17878907] [U]: 0x0000000080000668 (0xC0351553) fcvt.lu.s x10, f10, rtz             test_35+28
+[17890363] [U]: 0x000000008000066C (0x001015F3) csrrw x11, fflags, x0               test_35+32
+[17897836] [U]: 0x0000000080000670 (0x00100613) addi x12, x0, 0x1                   test_35+36
+entering Debug mode from U
+Start Abstract Command
+[17962234] [M]: 0x0000000000002000 (0x0000) c.illegal 0x0  // Program Buffer (progbuf0)
+End Abstract Command
+exiting Debug mode to U
+[17962270] [U]: 0x0000000080000674 (0x28D51263) bne x10, x13, 0x284                 test_35+40
+[17986384] [U]: 0x0000000080000678 (0x28C59063) bne x11, x12, 0x280                 test_35+44
+[17991086] [U]: 0x000000008000067C (0x02400193) addi x3, x0, 0x24                   test_36+0
+[17995797] [U]: 0x0000000080000680 (0x00002517) auipc x10, 0x2                      test_36+4
+```
+
+## How to trigger the Program Buffer manually
+
+The following command will set postexec to 1 and will execute the Program Buffer
+
+```bash
+riscv dmi_write 0x17 0x00040000
 ```

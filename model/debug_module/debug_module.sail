@@ -599,6 +599,7 @@ function execute_abstract_command(command : bits(32)) -> AbstractCommandError = 
                 error = HALT_RESUME;
               } else {
                 execute_program_buffer(dmstatus[impebreak] == 0b1, MAX_PROGBUF_SIZE);
+                // Hart sets potential error
               };
             }
           } else {

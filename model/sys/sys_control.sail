@@ -148,6 +148,7 @@ function tval(excinfo : option(xlenbits)) -> xlenbits = {
   }
 }
 
+
 function track_trap(p : Privilege) -> unit = {
   long_csr_write_callback("mstatus", "mstatush", mstatus.bits);
   match (p) {
@@ -167,6 +168,8 @@ function track_trap(p : Privilege) -> unit = {
   };
 }
 
+register execute_program_buffer_active : bool = false
+
 // handle exceptional ctl flow by updating nextPC and operating privilege
 function trap_handler(del_priv : Privilege, c : TrapCause, pc : xlenbits, info : option(xlenbits), ext : option(ext_exception))
                      -> xlenbits = {
@@ -181,11 +184,18 @@ function trap_handler(del_priv : Privilege, c : TrapCause, pc : xlenbits, info :
   // error indicator.  According to the appendix of the Debug
   // specification, when an exception is encountered the hart jumps to
   // a trap handler address within the Debug Module.
+  // TODO: I am not sure about what the note above, if we execute the program buffer
+  // we actually stop the abstract command and stop executing, we dont modify the PC
   if   in_debug_abstract_command()
   then {
-    set_debug_abstract_command_error();
-    end_debug_abstract_command();
-    return debug_trap_vector
+    //set_debug_abstract_command_error();
+    if execute_program_buffer_active then {
+      abstractcs[cmderr] = 0b011;
+      abstractcs[busy] = 0b0;
+      end_debug_abstract_command();
+      execute_program_buffer_active = false;
+    };
+    return pc//debug_trap_vector
   };
 
 
