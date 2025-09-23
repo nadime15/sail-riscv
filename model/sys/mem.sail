@@ -101,7 +101,7 @@ function phys_access_check (t, p, paddr, width) = {
   pmpError
 }
 
-// dispatches to MMIO regions or physical memory regions depending on physical memory map
+// dispatches to Program Buffer, MMIO regions or physical memory regions depending on physical memory map
 function checked_mem_read forall 'n, 0 < 'n <= max_mem_access . (
   t : AccessType(ext_access_type),
   priv : Privilege,

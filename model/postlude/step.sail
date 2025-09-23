@@ -240,6 +240,8 @@ function handle_debug_module_reset_request() -> DebugRequest = {
 
 function handle_debug_module_resume_request() -> DebugRequest = {
   if debug_mode_active then {
+    // TODO: writes to resumereq should be ignored while a abstract command is executed
+    // so we should remove the if statement down below.
     if in_debug_abstract_command() then end_debug_abstract_command();
     exit_debug_mode();
     update_debug_module_status(DR_Resume, false)
@@ -255,7 +257,6 @@ function handle_debug_module_halt_request() -> DebugRequest = {
   Debug_Halt()
 }
 
-register execute_program_buffer_active : bool = false
 
 function handle_debug_module_execute_program_buffer() -> DebugRequest = {
   PC = trunc(plat_program_buffer_base);
