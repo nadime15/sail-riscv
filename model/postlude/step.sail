@@ -22,6 +22,7 @@ union DebugRequest = {
   Debug_Resume       : unit,
   Debug_HaltOnReset  : unit,
   Debug_Reset        : unit,
+  Debug_ExecuteProgramBuffer: unit,
   Debug_None         : unit,
 }
 
@@ -30,6 +31,7 @@ mapping debug_request_name : DebugRequest <-> string = {
   Debug_Resume()      <-> "Debug_Resume",
   Debug_HaltOnReset() <-> "Debug_HaltOnReset",
   Debug_Reset()       <-> "Debug_Reset",
+  Debug_ExecuteProgramBuffer() <-> "Debug_ExecuteProgramBuffer",
   Debug_None()        <-> "Debug_none",
 }
 
@@ -248,7 +250,6 @@ function handle_debug_module_halt_on_reset_request() -> DebugRequest = {
 function handle_debug_module_reset_request() -> DebugRequest = {
   // Call reset() before enter_debug_mode(). If the hart is already halted,
   // reset() ensures debug_mode_active is cleared first.
-  print_endline("Reset Halt");
   reset();
   update_debug_module_status(DR_Reset, false);
   if haltonreset then {
@@ -276,12 +277,23 @@ function handle_debug_module_halt_request() -> DebugRequest = {
   Debug_Halt()
 }
 
+register execute_program_buffer_active : bool = false
+
+function handle_debug_module_execute_program_buffer() -> DebugRequest = {
+  PC = trunc(plat_program_buffer_base);
+  nextPC = PC;
+  execute_program_buffer_active = true;
+  start_debug_abstract_command();
+  Debug_ExecuteProgramBuffer()
+}
+
 function handle_debug_module_request() -> DebugRequest = {
   let request : DebugRequest = match debug_module_request {
-    DR_Reset       => handle_debug_module_reset_request(),
-    DR_Resume      => handle_debug_module_resume_request(),
-    DR_Halt        => handle_debug_module_halt_request(),
-    DR_HaltOnReset => handle_debug_module_halt_on_reset_request(),
+    DR_Reset                => handle_debug_module_reset_request(),
+    DR_Resume               => handle_debug_module_resume_request(),
+    DR_Halt                 => handle_debug_module_halt_request(),
+    DR_HaltOnReset          => handle_debug_module_halt_on_reset_request(),
+    DR_ExecuteProgramBuffer => handle_debug_module_execute_program_buffer(),
     _              => Debug_None(),
   };
   // TODO: Consider adding a function to fetch debug_module_request / debug_module_active_request
@@ -326,6 +338,7 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
   let exit_wait = exit_wait | (hartSupports(Ext_Sdext) & debug_request == Debug_Halt());
   let step_val : Step = match hart_state {
       HART_WAITING(wr, instbits)         => run_hart_waiting(step_no, wr, instbits, exit_wait),
+      HART_ACTIVE() if execute_program_buffer_active => run_hart_active(step_no),
       HART_ACTIVE() if debug_mode_active => Step_Halt(),
       HART_ACTIVE()                      => run_hart_active(step_no),
     };
@@ -362,7 +375,7 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
         // When entering Debug via an execution of `ebreak`, DPC is set
         // to the address of the `ebreak`.
         Enter_Debug_Mode(cause)       => { enter_debug_mode(cause, zeros(), get_arch_pc()); update_debug_module_status(DR_Halt, false) },
-        Exit_Debug_Abstract_Command() => end_debug_abstract_command(),
+        Exit_Debug_Abstract_Command() => { if execute_program_buffer_active then execute_program_buffer_active = false; abstractcs[busy] = 0b0; end_debug_abstract_command()},
         // TODO: Check whether this case (Step_Execute(...)) is actually needed and if we pass the right request (DR_Resume)
         Exit_Debug_Mode()             => { exit_debug_mode(); update_debug_module_status(DR_Resume, false) }
       };

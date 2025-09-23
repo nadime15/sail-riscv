@@ -56,7 +56,7 @@ pmp {
 }
 
 sys {
-  requires core, exceptions, pmp, V_core, Smcntrpmf, Sdext_regs, Sdext_control, Zicfilp_regs, A_types
+  requires core, exceptions, pmp, V_core, Smcntrpmf, Sdext_regs, Sdext_control, debug_module, Zicfilp_regs, A_types
 
   files
     sys/sys_control.sail,
@@ -482,7 +482,7 @@ debug_module {
 
 debug_module {
   module {
-    requires core, FD
+    requires core, FD_core
     files
       debug_module/debug_module_utils.sail,
       debug_module/debug_module.sail,
