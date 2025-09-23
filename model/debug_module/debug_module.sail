@@ -164,6 +164,7 @@ bitfield Dmstatus : bits(32) = {
 // NOTE: This whole register cannot be written from outside
 function legalize_dmstatus(d : Dmstatus) -> Dmstatus = {
   [d with
+    impebreak = if unsigned(MAX_PROGBUF_SIZE) == 1 | (config platform.debug_module.impebreak : bool) then 0b1 else 0b0,
     // TODO: For now authentication is not supported
     // but this should be optional
     // NOTE: This needs to be disabled because otherwise
@@ -1187,6 +1188,7 @@ function reset_debug_module() = {
   //keepalive    = false;
 
   dmstatus = [Mk_Dmstatus(zeros()) with
+    impebreak       = if unsigned(MAX_PROGBUF_SIZE) == 1 | (config platform.debug_module.impebreak : bool) then 0b1 else 0b0,
     authenticated   = 0b1,
     authbusy        = 0b0,
     hasresethaltreq = 0b1,
