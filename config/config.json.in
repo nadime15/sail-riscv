@@ -152,6 +152,7 @@
     "debug_module": {
       "num_data_reg": 12,
       "num_prog_reg": 16,
+      "impebreak": true,
       "program_buffer": {
         "supported": true,
         "base": 8192,

@@ -337,3 +337,65 @@ The following command will set postexec to 1 and will execute the Program Buffer
 ```bash
 riscv dmi_write 0x17 0x00040000
 ```
+
+## Impebreak
+
+The `impebreak` setting is enabled either when only one program buffer register is available (num_prog_reg == 1) or when it is explicitly set to true in the config file. As described above, the debugger attempts to execute the program buffer after each `step`. If `num_prog_reg == 2` and `impebreak` is set to true, the debugger will still execute the program buffer.
+
+However, if the debugger cannot emit the required sequence of three instructions (`step`):
+
+```bash
+[125060] [M]: 0x0000000000002000 (0x0000100F) fence.i
+[125061] [M]: 0x0000000000002004 (0x0000000F) fence 0, 0
+[125062] [M]: 0x0000000000002008 (0x00100073) ebrea
+```
+
+because the program buffer is too small (0 or 1 register), or because only two registers are available but impebreak is not supported, then the debugger will not use the program buffer.
+
+The spec says the following
+
+```If 1, then there is an implicit ebreak instruction at the
+non-existent word immediately after the Program Buffer.
+This saves the debugger from having to write the ebreak
+itself, and allows the Program Buffer to be one word
+smaller.
+```
+
+and
+
+```
+An implementation may support an implicit ebreak that is executed when a hart runs off the end of the Program Buffer
+```
+
+My interpretation is that once the program buffer is executed but runs out of available program buffer registers, the debugger steps outside the buffer and encounters a (C.)EBREAK instruction. This instruction is not part of any real memory region.
+
+Currently, we handle this case by detecting if the access occurs while the program buffer is being executed:
+
+```bash
+if addr == (plat_program_buffer_base + plat_program_buffer_size) & (config platform.debug_module.num_prog_reg : int == 1 | config platform.debug_module.impebreak : bool) then {
+```
+
+In this situation, we simply return a fixed encoding:
+
+```bash
+let ebreak_32 : bits(32) = 0x00100073;  // ebreak
+let ebreak_16 : bits(16) = 0x9002;      // c.ebreak
+```
+
+So depending on whether the access is 2 or 4 bytes wide, we return the corresponding encoding.
+
+For example, with num_prog_reg = 2 and impebreak set to true:
+
+```bash
+entering Debug mode from U
+Start Abstract Command
+[65348] [M]: 0x0000000000002000 (0x0000100F) fence.i
+[65349] [M]: 0x0000000000002004 (0x0000000F) fence 0, 0
+[65350] [M]: 0x0000000000002008 (0x9002) c.ebreak
+End Abstract Command
+exiting Debug mode to U
+```
+
+NOTE: We need to be careful in cases where another memory region (RAM, ROM, MMIO, etc.) is located immediately after the debug module. If the maximum number of program buffer registers is used with impebreak = 1, execution may appear to access one address beyond the allocated program buffer (implicit ebreak). With the current handling, this results in a log message indicating an access to an address that actually belongs to a different memory region.
+
+Internally, this is handled correctly since we track whether execution is within the program buffer. However, for an external observer, it can misleadingly appear as though the injected (C.)EBREAK instruction resides in that neighboring memory region.
