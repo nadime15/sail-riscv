@@ -610,7 +610,7 @@ function ebreak_into_debug() -> bool =
   }
   else false
 
-function clause execute EBREAK() =
+function clause execute EBREAK() = {
   if in_debug_abstract_command() then {
     Debug(Exit_Debug_Abstract_Command())
   } else if ebreak_into_debug() then {
@@ -618,6 +618,7 @@ function clause execute EBREAK() =
   } else {
     Memory_Exception(Virtaddr(PC), E_Breakpoint())
   }
+}
 
 mapping clause assembly = EBREAK() <-> "ebreak"
 

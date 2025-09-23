@@ -20,7 +20,7 @@ register debug_hart_state : DebugHartState = RUNNING
 // ignored when the model is already in Debug Mode, and DR_Resume is
 // ignored when it is not. DR_None does not request any change to the
 // current debug mode.
-enum debug_request = {DR_None, DR_Halt, DR_Resume, DR_Reset, DR_HaltOnReset}
+enum debug_request = {DR_None, DR_Halt, DR_Resume, DR_Reset, DR_HaltOnReset, DR_ExecuteProgramBuffer}
 
 enum AbstractCommand = {
   ACCESS_REGISTER,
@@ -107,11 +107,8 @@ enum access_type = {
   NO_TRANSFER
 }
 
-type data_count = range(0, 12)
-type progbuf_size = range(0, 16)
-
-let MAX_DATA_SIZE : data_count = 12
-let MAX_PROGBUF_SIZE : progbuf_size = 16
+let MAX_DATA_SIZE : bits(4) = to_bits_truncate(config platform.debug_module.num_data_reg : int )
+let MAX_PROGBUF_SIZE : bits(5) = to_bits_truncate(config platform.debug_module.num_prog_reg : int)
 
 // TODO: Not used yet
 struct debug_data = {

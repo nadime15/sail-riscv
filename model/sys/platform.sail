@@ -50,6 +50,9 @@ let htif_tohost_size = 8
 // This is called externally. bits(64) is used because it's easier to deal with from C.
 function enable_htif(tohost_addr : bits(64)) -> unit = htif_tohost_base = Some(trunc(tohost_addr))
 
+register plat_program_buffer_base : physaddrbits = to_bits_checked(config platform.debug_module.program_buffer.base : int)
+register plat_program_buffer_size : physaddrbits = to_bits_checked(config platform.debug_module.program_buffer.size : int)
+
 // Physical memory map predicates
 
 function within_phys_mem forall 'n, 'n <= max_mem_access. (Physaddr(addr) : physaddr, width : int('n)) -> bool = {
@@ -100,6 +103,14 @@ function within_htif_writable forall 'n, 0 < 'n <= max_mem_access . (Physaddr(ad
 
 function within_htif_readable forall 'n, 0 < 'n <= max_mem_access . (addr : physaddr, width : int('n)) -> bool =
   within_htif_writable(addr, width)
+
+// Program Buffer (part of the Debug Module)
+function within_program_buffer forall 'n, 0 < 'n <= max_mem_access . (Physaddr(addr) : physaddr, width : int('n)) -> bool = {
+  let addr_int = unsigned(addr);
+  let program_buffer_base_int = unsigned(plat_program_buffer_base);
+  let program_buffer_size_int = unsigned(plat_program_buffer_size);
+  program_buffer_size_int <= addr_int & (addr_int + sizeof('n)) <= (program_buffer_base_int + program_buffer_size_int)
+}
 
 // CLINT (Core Local Interruptor), based on Spike.
 
@@ -444,3 +455,44 @@ function init_platform() -> unit = {
 
 // Platform-specific wait-for-interrupt
 function platform_wfi() -> unit = ()
+
+
+function program_buffer_read forall 'n, 0 < 'n <= max_mem_access . (t : AccessType(ext_access_type), paddr : physaddr, width : int('n)) -> MemoryOpResult(bits(8 * 'n)) = {
+  match t {
+    InstructionFetch() =>
+      if within_program_buffer(paddr, width) then {
+        let Physaddr(addr) = paddr;
+
+        // Calculate relative address within the program buffer
+        let relative_addr = addr - plat_program_buffer_base;
+        // Which progbuf register (0-15)
+        let word_addr = unsigned(relative_addr) / 4;
+        // Offset within that register
+        let byte_offset = unsigned(relative_addr) % 4;
+
+        // Get the appropriate progbuf register
+        let progbuf_data : bits(32) = match word_addr {
+          0  => progbuf0,   1  => progbuf1,   2  => progbuf2,   3  => progbuf3,
+          4  => progbuf4,   5  => progbuf5,   6  => progbuf6,   7  => progbuf7,
+          8  => progbuf8,   9  => progbuf9,   10 => progbuf10,  11 => progbuf11,
+          12 => progbuf12,  13 => progbuf13,  14 => progbuf14,  15 => progbuf15,
+        // Out of Range
+          _  => return Err(E_Fetch_Access_Fault())
+        };
+
+        if width == 4 then {
+          if byte_offset == 0 then Ok(progbuf_data)
+          else Err(E_Fetch_Addr_Align())
+        }
+        else if width == 2 then {
+          if byte_offset == 0 then Ok(progbuf_data[15..0])
+          else if byte_offset == 2 then Ok(progbuf_data[31..16])
+          else Err(E_Fetch_Addr_Align())
+        }
+        else Err(E_Fetch_Access_Fault())
+      }
+      else Err(E_Fetch_Access_Fault()),
+    Read(Data) => Err(E_Load_Access_Fault()),
+    _          => Err(E_SAMO_Access_Fault())
+  }
+}

@@ -51,6 +51,24 @@ Probably the most important for now are
 
 `halt`, `resume` and `step` (The core must be in the HALT state in order to use step)
 
+### Halt and Reset (Enter Debug Mode right after Reset)
+
+According to the specification, it is also possible to enter debug mode immediately after reset is deasserted, provided that either `hartreset` or `haltonreset` is set.
+
+One way to achieve this is by using `hartreset` (`ndmreset` works as well but with different encoding). First, we initiate a reset by setting hartreset = 1 (while keeping dmactive set):
+
+```bash
+0x20000001
+```
+
+At this point, the debugger asserts the reset signal and the hart becomes unavailable. Next, we deassert `hartreset` and assert haltreq:
+
+```bash
+0x80000001
+```
+
+When `hartreset` is deasserted, the reset process completes. Execution begins at the reset vector, but before the first instruction is executed, the hart enters debug mode.
+
 ### Halt-On-Request (Enter Debug Mode right after Reset)
 
 It’s possible to enter debug mode immediately after resetting the hart. Normally, when a hart is reset, it continues execution automatically, which makes it harder to step at the exact instruction you want.
@@ -221,168 +239,62 @@ Telnet sets the `step` bit in `dcsr`, causing the core to enter debug mode and h
 
 Note: To halt must be halted in order to use `step`
 
-# Flow Charts Events
+# Program Buffer
 
-## General Reset
+The Debug Module registers `progbuf0`–`progbuf15` are accessed by the hart through memory, since they are memory-mapped. They reside at:
 
-```
-Hart experiences ANY reset (hartreset, ndmreset, power-on, etc.)
-    ↓
-Hart sets havereset signal = 1 (sticky)
-    ↓
-DM sees havereset=1 from hart
-    ↓
-DM updates dmstatus.anyhavereset/allhavereset = 1
-    ↓
-Debugger reads dmstatus and sees reset occurred
-    ↓
-Debugger writes dmcontrol.ackhavereset = 1
-    ↓
-DM clears hart's havereset signal = 0
-    ↓
-dmstatus.anyhavereset/allhavereset = 0
+```bash
+"debug_module:" {
+  ...
+  "num_prog_reg": 16,
+  program_buffer: {
+    "supported" true,
+    "base": 8192,
+    "size": 64
+  }
+}
 ```
 
-## 1. haltrequest Bit Flow
+Right after the ROM. In total, there are 16 registers available, which can be programmed via the debug module. For now the hart has only read access to these Registers (the debugger can still read/write these registers).
 
-```
-[Normal State]
-haltrequest = 0
-       ↓
-[Debugger writes dmcontrol.haltreq = 1]
-       ↓
-[DM sets haltrequest = 1]
-       ↓
-[DM sends halt signal to hart]
-       ↓
-[Hart enters Debug Mode]
-       ↓
-[Hart sends halted=1 signal back]
-       ↓
-[dmstatus.anyhalted = 1]
-       ↓
-[Debugger writes dmcontrol.haltreq = 0] (optional)
-       ↓
-[DM clears haltrequest = 0]
+`size` specifies the number of bytes allocated for the program buffer (`progbuf0-progbuf15`) memory-mapped registers. Valid values range from 0 to 64, and must be multiples of 4.
+
+The `num_prog_buf` parameter defines how many progbuf registers are implemented in total (up to 16). It is possible to implement all 16 registers but expose only a subset through memory mapping, for example, setting num_prog_buf = 16 but size = 32 maps only 8 registers to memory. Which means the debugger has access to all `progbuf*` registers but the hart only can access `probuf0` - `progbuf7`
+
+It is recommended to keep the number of available progbuf registers consistent with the number of memory-mapped registers.
+
+OpenOCD will print out the number of available `progbuf` registers:
+
+```bash
+Info : datacount=12 progbufsize=16
 ```
 
-## 2. resumeack Bit Flow
+## OpenOCD and the Program Buffer
 
-```
-[Hart Halted State]
-resumeack = 0
-       ↓
-[Debugger writes dmcontrol.resumereq = 1]
-       ↓
-[DM clears resumeack = 0]
-       ↓
-[DM sends resume signal to hart]
-       ↓
-[Hart exits Debug Mode]
-       ↓
-[Hart sends running=1 signal back]
-       ↓
-[Hart completes resume process]
-       ↓
-[DM sets resumeack = 1]
-       ↓
-[dmstatus.anyresumeack = 1]
+It seems like that OpenOCD makes use of the program buffer and writes into progbuf0 and progbuf1 the following code:
+
+```bash
+[265] [M]: 0x0000000000002000 (0xC2202473) csrrs x8, vlenb, x0
+[266] [M]: 0x0000000000002004 (0x00100073) ebreak
 ```
 
-## 3. resethaltreq Bit Flow (Optional)
+The code above is part of OpenOCD's initialization step and determines VLEN in bytes.
 
-```
-[Normal State]
-resethaltreq = 0
-       ↓
-[Debugger writes dmcontrol.setresethaltreq = 1]
-       ↓
-[DM sets resethaltreq = 1]
-       ↓
-[Hart experiences ANY reset]
-       ↓
-[Hart comes out of reset]
-       ↓
-[Hart sees resethaltreq = 1]
-       ↓
-[Hart immediately enters Debug Mode]
-       ↓
-[Hart sends halted=1 signal]
-       ↓
-[To clear: debugger writes dmcontrol.clrresethaltreq = 1]
-       ↓
-[DM clears resethaltreq = 0]
+```bash
+Info : Vector support with vlenb=32
 ```
 
-## 4. hartreset Bit Flow (Optional)
+The Program Buffer can executed by setting `command[postexec]` to 1 as part of an abstract command.
 
+Stepping through the code via `step` will trigger every time the following series of instructions:
+
+```bash
+DEBUG: Entering debug mode via single step
+entering Debug mode from U
+Start Abstract Command
+[302244] [M]: 0x0000000000002000 (0x0000100F) fence.i
+[302245] [M]: 0x0000000000002004 (0x0000000F) fence 0, 0
+[302246] [M]: 0x0000000000002008 (0x00100073) ebreak
+End Abstract Command
+exiting Debug mode to U
 ```
-[Normal State]
-hartreset = 0
-       ↓
-[Debugger writes dmcontrol.hartreset = 1]
-       ↓
-[DM sets hartreset = 1]
-       ↓
-[DM sends reset signal to hart]
-       ↓
-[Hart experiences reset]
-       ↓
-[Hart sends havereset=1 signal (sticky)]
-       ↓
-[dmstatus.anyhavereset = 1]
-       ↓
-[Debugger writes dmcontrol.hartreset = 0]
-       ↓
-[DM clears hartreset = 0]
-       ↓
-[Reset signal to hart deasserted]
-```
-
-## Supported Features (In General)
-
-### Mandatory
-
-1. All hart registers (including CSRs) can be read/written.
-
-2. Memory can be accessed either from the hart’s point of view, through the system bus directly, or both. (TODO)
-
-3. RV32, RV64, and future RV128 are all supported.
-
-4. Any hart in the hardware platform can be independently debugged.
-
-5. A debugger can discover almost [1] everything it needs to know itself, without user configuration.
-
-6. Each hart can be debugged from the very first instruction executed.
-
-7. A RISC-V hart can be halted when a software breakpoint instruction is executed.
-
-8. Hardware single-step can execute one instruction at a time.
-
-9. Debug functionality is independent of the debug transport used.
-
-10. The debugger does not need to know anything about the microarchitecture of the harts it is debugging.
-
-### Optional
-
-13. Registers can be accessed without halting.
-
-## Supported Features - Debug Module
-
-### Mandatory
-
-1. Give the debugger necessary information about the implementation.
-
-2. Allow any individual hart to be halted and resumed. (Our platform has only one hart)
-
-3. Provide status on which harts are halted.
-
-4. Provide abstract read and write access to a halted hart’s GPRs.
-
-5. Provide access to a reset signal that allows debugging from the very first instruction after reset.
-
-### Optional
-
-6. Provide a mechanism to allow debugging harts immediately out of reset (regardless of the reset cause). (Optional)
-
-7. Provide abstract access to non-GPR hart registers. (Optional)

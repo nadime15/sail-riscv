@@ -436,7 +436,7 @@ void run_sail(void)
       if (remote_bitbang) {
         // If enabled, advances the bit banging protocol and sends
         // data to the debugger (over OpenOCD) or reads from it
-        int max_ticks = 5000;
+        int max_ticks = 100;
         int ticks = 0;
         while (ticks < max_ticks) {
           // By tracking whether a request was sent from OpenOCD, we can avoid

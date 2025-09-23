@@ -52,7 +52,7 @@ pmp {
 }
 
 riscv {
-  requires core, exceptions, pmp, V_core, Smcntrpmf, Sdext_regs, Sdext_control
+  requires core, exceptions, pmp, V_core, Smcntrpmf, Sdext_regs, Sdext_control, debug_module
 
   files
     sys/sys_control.sail,
@@ -424,7 +424,7 @@ extensions {
 
 debug_module {
   module {
-    requires core, FD
+    requires core, FD_core
     files
       debug_module/debug_module_utils.sail,
       debug_module/debug_module.sail,

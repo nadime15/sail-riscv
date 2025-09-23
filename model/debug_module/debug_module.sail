@@ -47,10 +47,10 @@ bitfield Abstractcs : bits(32) = {
 function legalize_abstractcs(d : Abstractcs, x : bits(32)) -> Abstractcs = {
   let x = Mk_Abstractcs(x);
   [d with
-    progbufsize = to_bits(MAX_PROGBUF_SIZE),
+    progbufsize = MAX_PROGBUF_SIZE,
     relaxedpriv = 0b1,
     cmderr      = if x[cmderr] == ones() then zeros() else x[cmderr], // R/W1C
-    datacount   = to_bits(MAX_DATA_SIZE),
+    datacount   = MAX_DATA_SIZE,
   ]
 }
 
@@ -201,10 +201,11 @@ bitfield Dmcontrol : bits(32) = {
 }
 
 function request_hart(request : debug_request) -> bool = match request {
-    DR_Halt        => send_request(DR_Halt),
-    DR_Resume      => send_request(DR_Resume),
-    DR_Reset       => send_request(DR_Reset),
-    DR_HaltOnReset => send_request(DR_HaltOnReset),
+    DR_Halt                 => send_request(DR_Halt),
+    DR_Resume               => send_request(DR_Resume),
+    DR_Reset                => send_request(DR_Reset),
+    DR_HaltOnReset          => send_request(DR_HaltOnReset),
+    DR_ExecuteProgramBuffer => send_request(DR_ExecuteProgramBuffer),
     // TODO: Remove this or at least handle differently
     DR_None => send_request(DR_None),
   }
@@ -554,6 +555,10 @@ function execute_access_register_command(aarsize : bits(3), transfer : bits(1), 
   NONE
 }
 
+function execute_program_buffer(impebreak : bool, progbuf_size : bits(5)) -> unit = {
+  let _ = send_request(DR_ExecuteProgramBuffer);
+}
+
 function execute_abstract_command(command : bits(32)) -> AbstractCommandError = {
   let cmdtype = command[31 .. 24];
   let hart_exists = dmstatus[allnonexistent] == 0b0;
@@ -565,11 +570,6 @@ function execute_abstract_command(command : bits(32)) -> AbstractCommandError = 
       abstractcs[busy] = 0b0;
       HALT_RESUME
     }
-    // NOTE: In theory, commands may take multiple cycles, and the debugger could
-    // issue a new one before the previous finishes, overwriting its return
-    // code. Since we execute commands instantaneously, this is not an issue.
-    // NOTE: Additionally we would finish the old command and THEN set abstracts[busy] == 0b0
-    // but as described above, we can't run into these issues.
     else if abstract_command_busy then {if abstractcs[cmderr] == abstract_command_error(NONE) then BUSY else NONE}
     else match abstract_command_type(cmdtype) {
       ACCESS_REGISTER => {
@@ -587,16 +587,23 @@ function execute_abstract_command(command : bits(32)) -> AbstractCommandError = 
         } else {
           abstractcs[busy] = 0b1;
           error = execute_access_register_command(aarsize, transfer, write, regno);
-          //print_endline("Abstract Command Error Code: " ^ abstract_command_error_name(err) ^ " Addr: " ^ bits_str(regno));
+
           if postexec == 0b1 then {
-              // Hart needs to be halted in order to execute program buffer (This is implementation dependent behaviour)
-            //if dmstatus[allhalted] == 0b0 then error = HALT_RESUME else
-            //
-            //}
-            // TODO
-            error = NOT_SUPPORTED
-          };
-          abstractcs[busy] = 0b0;
+            if not(config platform.debug_module.program_buffer.supported : bool) then {
+              abstractcs[busy] = 0b0;
+              error = NOT_SUPPORTED;
+            } else {
+              // Hart must be halted to execute program buffer (implementation dependent)
+              if dmstatus[allhalted] == 0b0 then {
+                abstractcs[busy] = 0b0;
+                error = HALT_RESUME;
+              } else {
+                execute_program_buffer(dmstatus[impebreak] == 0b1, MAX_PROGBUF_SIZE);
+              };
+            }
+          } else {
+            abstractcs[busy] = 0b0;
+          }
         };
         error
       },
@@ -1190,11 +1197,11 @@ function reset_debug_module() = {
   hawindowsel.bits = zeros();
 
   abstractcs = [Mk_Abstractcs(zeros()) with
-    progbufsize = to_bits(MAX_PROGBUF_SIZE),
+    progbufsize = MAX_PROGBUF_SIZE,
     busy        = 0b0,
     relaxedpriv = 0b1,
     cmderr      = zeros(),
-    datacount   = to_bits(MAX_DATA_SIZE),
+    datacount   = MAX_DATA_SIZE,
   ];
 
   command.bits = zeros();
