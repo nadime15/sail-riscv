@@ -37,7 +37,8 @@ class jtag_dtm_t;
 
 class remote_bitbang_t {
 public:
-  static std::unique_ptr<remote_bitbang_t> make(uint16_t port, jtag_dtm_t *tap);
+  static std::unique_ptr<remote_bitbang_t> make(uint16_t port,
+                                                uint64_t required_rti_cycles);
 
   ~remote_bitbang_t();
 
@@ -62,6 +63,8 @@ private:
 
   // Check for a client connecting, and accept if there is one.
   void accept_connection();
+
+  void close_sockets();
 
   // Execute any commands the client has for us.
   void execute_commands();

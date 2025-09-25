@@ -56,12 +56,9 @@ remote_bitbang_t::remote_bitbang_t(uint16_t port, jtag_dtm_t *tap,
 {
 }
 
-std::unique_ptr<remote_bitbang_t> remote_bitbang_t::make(uint16_t port,
-                                                         jtag_dtm_t *tap)
+std::unique_ptr<remote_bitbang_t>
+remote_bitbang_t::make(uint16_t port, uint64_t required_rti_cycles)
 {
-  if (!tap)
-    throw std::invalid_argument("tap cannot be null");
-
   // Create socket
   int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
   if (socket_fd == -1) {
@@ -122,16 +119,23 @@ std::unique_ptr<remote_bitbang_t> remote_bitbang_t::make(uint16_t port,
          ntohs(addr.sin_port));
   fflush(stdout);
 
+  jtag_dtm_t *tap = new jtag_dtm_t(required_rti_cycles);
   return std::unique_ptr<remote_bitbang_t>(
       new remote_bitbang_t(port, tap, socket_fd));
 }
 
-remote_bitbang_t::~remote_bitbang_t()
+void remote_bitbang_t::close_sockets()
 {
   if (socket_fd != -1)
     close(socket_fd);
   if (client_fd != -1)
     close(client_fd);
+}
+
+remote_bitbang_t::~remote_bitbang_t()
+{
+  close_sockets();
+  delete tap;
 }
 
 void remote_bitbang_t::accept_connection()
@@ -266,15 +270,7 @@ void remote_bitbang_t::execute_commands()
 
 void remote_bitbang_t::close_port()
 {
-  if (client_fd != -1) {
-    close(client_fd);
-    client_fd = -1;
-  }
-
-  if (socket_fd != -1) {
-    close(socket_fd);
-    socket_fd = -1;
-  }
+  close_sockets();
 
   printf("Remote bitbang port closed.\n");
   fflush(stdout);
