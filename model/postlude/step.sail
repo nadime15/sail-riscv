@@ -17,24 +17,6 @@ union Step = {
   Step_Halt               : unit,
 }
 
-union DebugRequest = {
-  Debug_Halt         : unit,
-  Debug_Resume       : unit,
-  Debug_HaltOnReset  : unit,
-  Debug_Reset        : unit,
-  Debug_ExecuteProgramBuffer: unit,
-  Debug_None         : unit,
-}
-
-mapping debug_request_name : DebugRequest <-> string = {
-  Debug_Halt()        <-> "Debug_Halt",
-  Debug_Resume()      <-> "Debug_Resume",
-  Debug_HaltOnReset() <-> "Debug_HaltOnReset",
-  Debug_Reset()       <-> "Debug_Reset",
-  Debug_ExecuteProgramBuffer() <-> "Debug_ExecuteProgramBuffer",
-  Debug_None()        <-> "Debug_none",
-}
-
 function run_hart_waiting(step_no : int, wr: WaitReason, instbits : instbits, exit_wait : bool) -> Step = {
   // successfully interrupted waits
   if shouldWakeForInterrupt() then {
@@ -232,82 +214,87 @@ struct step_result = {
 //              `debug_request` is either `DR_Halt` or `DR_Resume`.
 //              When single-stepping is set, DR_Resume should be specified.
 
-function update_debug_module_status(request: debug_request, step : bool) -> unit = {
-  let status : dm_hart_status = struct { halted    = request == DR_Halt  | request == DR_HaltOnReset | step,
-                                         running   = request == DR_Reset | (request == DR_Resume & not(step)),
-                                         havereset = request == DR_Reset | request == DR_HaltOnReset,
-                                       };
+function update_debug_module_status(request: DebugRequest, step : bool) -> unit = {
+  let resume = request == Resume();
+  let halt   = request == Halt();
+  let (to_reset, halt_on_reset) : (bool, bool) = match request {
+    Reset(hor) => (true, hor),
+    _          => (false, false),
+  };
+  // TODO change name of to_reset
+  let status : debug_module_hart_status = struct { halted    = halt     | halt_on_reset | step,
+                                                   running   = (to_reset & not(halt_on_reset)) | resume & not(step),
+                                                   havereset = to_reset,
+                                                 };
+
   send_hart_status(status);
 }
 
-function handle_debug_module_halt_on_reset_request() -> DebugRequest = {
+function handle_debug_module_halt_on_reset_request(request : DebugRequest) -> unit = {
   reset();
-  update_debug_module_status(DR_HaltOnReset, false);
+  update_debug_module_status(request, false);
   enter_debug_mode(DBGEntry_ResetHaltReq, zeros(), get_arch_pc());
-  Debug_HaltOnReset();
 }
 
-function handle_debug_module_reset_request() -> DebugRequest = {
+function handle_debug_module_reset_request(request : DebugRequest) -> unit = {
   // Call reset() before enter_debug_mode(). If the hart is already halted,
   // reset() ensures debug_mode_active is cleared first.
   reset();
-  update_debug_module_status(DR_Reset, false);
-  if haltonreset then {
-    enter_debug_mode(DBGEntry_ResetHaltReq, zeros(), get_arch_pc());
-    Debug_HaltOnReset()
-  } else {
-    Debug_Reset()
-  }
+  update_debug_module_status(request, false);
 }
 
-function handle_debug_module_resume_request() -> DebugRequest = {
+function handle_debug_module_resume_request(request : DebugRequest) -> unit = {
   if debug_mode_active then {
     // TODO: writes to resumereq should be ignored while a abstract command is executed
     // so we should remove the if statement down below.
     if in_debug_abstract_command() then end_debug_abstract_command();
     exit_debug_mode();
-    update_debug_module_status(DR_Resume, false)
+    update_debug_module_status(request, false)
   };
-  Debug_Resume()
 }
 
-function handle_debug_module_halt_request() -> DebugRequest = {
+function handle_debug_module_halt_request(request : DebugRequest) -> unit = {
   if not(debug_mode_active) then {
     enter_debug_mode(DBGEntry_HaltReq, zeros(), get_arch_pc());
-    update_debug_module_status(DR_Halt, false)
+    update_debug_module_status(request, false)
   };
-  Debug_Halt()
 }
 
-
-function handle_debug_module_execute_program_buffer() -> DebugRequest = {
+function handle_debug_module_execute_program_buffer(request : DebugRequest) -> unit = {
   PC = trunc(plat_program_buffer_base);
   nextPC = PC;
   execute_program_buffer_active = true;
   start_debug_abstract_command();
-  Debug_ExecuteProgramBuffer()
 }
 
-function handle_debug_module_request() -> DebugRequest = {
-  let request : DebugRequest = match debug_module_request {
-    DR_Reset                => handle_debug_module_reset_request(),
-    DR_Resume               => handle_debug_module_resume_request(),
-    DR_Halt                 => handle_debug_module_halt_request(),
-    DR_HaltOnReset          => handle_debug_module_halt_on_reset_request(),
-    DR_ExecuteProgramBuffer => handle_debug_module_execute_program_buffer(),
-    _              => Debug_None(),
-  };
+function handle_debug_module_request() -> option(DebugRequest) = {
+  if debug_module_active_request then {
+    match debug_module_request {
+      Halt()               => handle_debug_module_halt_request(debug_module_request),
+      Resume()             => handle_debug_module_resume_request(debug_module_request),
+      Reset(halt_on_reset) => {
+        if halt_on_reset
+        then handle_debug_module_halt_on_reset_request(debug_module_request)
+        else handle_debug_module_reset_request(debug_module_request);
+      },
+      ExecuteProgramBuffer(resume) => /* TODO handle resume */ handle_debug_module_execute_program_buffer(debug_module_request),
+    };
+    debug_module_active_request = false;
+    return Some(debug_module_request);
+  } else {
+    return None()
+  }
   // TODO: Consider adding a function to fetch debug_module_request / debug_module_active_request
   // instead of accessing the global variables directly. Not fully sure if this is better.
-  debug_module_request = DR_None;
-  debug_module_active_request = false;
-  request
+  //debug_module_request = DR_None;
+  //debug_module_active_request = false;
+  //request
 }
 
 function handle_debug_single_step() -> unit = {
   if in_single_step() & not(debug_mode_active) then {
     print_endline("DEBUG: Entering debug mode via single step");
-    update_debug_module_status(DR_Resume, true);
+    update_debug_module_status(Resume(), true);
     enter_debug_mode(DBGEntry_Step, zeros(), get_arch_pc())
   }
 }
@@ -321,9 +308,9 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
 
   // handle_debug_module_request() processes external requests from the debug module.
   // Internal debug requests are handled separately in the step_val match construct.
-  let debug_request : DebugRequest = if hartSupports(Ext_Sdext)
-                                   then handle_debug_module_request()
-                                   else Debug_None();
+
+  let debug_request = if hartSupports(Ext_Sdext) then handle_debug_module_request() else None();
+
   /*
    * This records whether or not minstret should be incremented when
    * the instruction is retired. Since retirement occurs before CSR
@@ -336,7 +323,12 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
 
   // When halting to enter Debug mode, any waiting instructions should
   // complete execution, but other instructions should not execute.
-  let exit_wait = exit_wait | (hartSupports(Ext_Sdext) & debug_request == Debug_Halt());
+  let halt_request : bool = match debug_request {
+    Some(Halt()) => true,
+    _            => false,
+  };
+
+  let exit_wait = exit_wait | (hartSupports(Ext_Sdext) & halt_request);
   let step_val : Step = match hart_state {
       HART_WAITING(wr, instbits)         => run_hart_waiting(step_no, wr, instbits, exit_wait),
       HART_ACTIVE() if execute_program_buffer_active => run_hart_active(step_no),
@@ -375,10 +367,10 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
       match action {
         // When entering Debug via an execution of `ebreak`, DPC is set
         // to the address of the `ebreak`.
-        Enter_Debug_Mode(cause)       => { enter_debug_mode(cause, zeros(), get_arch_pc()); update_debug_module_status(DR_Halt, false) },
+        Enter_Debug_Mode(cause)       => { enter_debug_mode(cause, zeros(), get_arch_pc()); update_debug_module_status(Halt(), false) },
         Exit_Debug_Abstract_Command() => { if execute_program_buffer_active then execute_program_buffer_active = false; abstractcs[busy] = 0b0; end_debug_abstract_command()},
         // TODO: Check whether this case (Step_Execute(...)) is actually needed and if we pass the right request (DR_Resume)
-        Exit_Debug_Mode()             => { exit_debug_mode(); update_debug_module_status(DR_Resume, false) }
+        Exit_Debug_Mode()             => { exit_debug_mode(); update_debug_module_status(Resume(), false) }
       };
     },
     // errors from extensions

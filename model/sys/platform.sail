@@ -43,7 +43,7 @@ function within_htif_writable forall 'n, 0 < 'n <= max_mem_access . (Physaddr(ad
 function within_htif_readable forall 'n, 0 < 'n <= max_mem_access . (addr : physaddr, width : int('n)) -> bool =
   within_htif_writable(addr, width)
 
-// Program Buffer (part of the Debug Module)
+// Program Buffer
 function within_program_buffer forall 'n, 0 < 'n <= max_mem_access . (Physaddr(addr) : physaddr, width : int('n)) -> bool = {
   let addr_int = unsigned(addr);
   let program_buffer_base_int = unsigned(plat_program_buffer_base);
@@ -399,11 +399,9 @@ function init_platform() -> unit = {
 // Platform-specific wait-for-interrupt
 function platform_wfi() -> unit = ()
 
-
 function program_buffer_read forall 'n, 0 < 'n <= max_mem_access . (t : AccessType(ext_access_type), paddr : physaddr, width : int('n)) -> MemoryOpResult(bits(8 * 'n)) = {
   match t {
     InstructionFetch() => {
-      //
       let Physaddr(addr) = paddr;
 
       // Calculate relative address within the program buffer

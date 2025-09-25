@@ -13,14 +13,15 @@ enum DebugHartState = {NON_EXISTENT, UNAVAILABLE, RUNNING, HALTED}
 
 register debug_hart_state : DebugHartState = RUNNING
 
-// The `debug_request` argument to the `try_step` function below
-// provides a mechanism to the external harness to control entry and
-// exit into Debug Mode.  DR_Halt requests the model to enter Debug
-// Mode, while DR_Resume requests the model to exit it.  DR_Halt is
-// ignored when the model is already in Debug Mode, and DR_Resume is
-// ignored when it is not. DR_None does not request any change to the
-// current debug mode.
-enum debug_request = {DR_None, DR_Halt, DR_Resume, DR_Reset, DR_HaltOnReset, DR_ExecuteProgramBuffer}
+union DebugRequest = {
+  Resume : unit,
+  Halt   : unit,
+  Reset  : bool,               // Halt on reset
+  ExecuteProgramBuffer : bool, // Resume after
+}
+
+register debug_module_active_request : bool = false
+register debug_module_request : DebugRequest = Resume()
 
 enum AbstractCommand = {
   ACCESS_REGISTER,
@@ -67,8 +68,12 @@ mapping abstract_command_error_name : AbstractCommandError <-> string = {
   OTHER         <-> "OTHER",
 }
 
-register debug_module_active_request : bool
-register debug_module_request : debug_request = DR_None
+// Abstract Command Access Type
+enum access_type = {
+  READ,
+  WRITE,
+  NO_TRANSFER
+}
 
 // Conceptual bits of hart state
 // NOTE: In theory, we should have individual bits for each hart.
@@ -91,33 +96,11 @@ register halted    : bool = false
 // Indicates that a hart has experienced a reset
 register havereset : bool = false
 
-register platform_reset : bool = false
-register hart_reset : bool = false
-
-struct dm_hart_status = {
+struct debug_module_hart_status = {
   running  : bool,
   halted   : bool,
   havereset: bool,
 }
 
-// Abstract Command Access Type
-enum access_type = {
-  READ,
-  WRITE,
-  NO_TRANSFER
-}
-
 let MAX_DATA_SIZE : bits(4) = to_bits_truncate(config platform.debug_module.num_data_reg : int )
 let MAX_PROGBUF_SIZE : bits(5) = to_bits_truncate(config platform.debug_module.num_prog_reg : int)
-
-// TODO: Not used yet
-struct debug_data = {
-  // TODO: Make this a config option, we can have more data entries (up to 12)
-  data : vector(if xlen == 32 then 1 else 2, bits(32)),
-}
-
-struct program_buffer = {
-  // TODO
-  //program : vector(MAX_PROGBUF_SIZE, bits(32)),
-  program : vector(16, bits(32)),
-}

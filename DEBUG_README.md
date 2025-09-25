@@ -399,3 +399,8 @@ exiting Debug mode to U
 NOTE: We need to be careful in cases where another memory region (RAM, ROM, MMIO, etc.) is located immediately after the debug module. If the maximum number of program buffer registers is used with impebreak = 1, execution may appear to access one address beyond the allocated program buffer (implicit ebreak). With the current handling, this results in a log message indicating an access to an address that actually belongs to a different memory region.
 
 Internally, this is handled correctly since we track whether execution is within the program buffer. However, for an external observer, it can misleadingly appear as though the injected (C.)EBREAK instruction resides in that neighboring memory region.
+
+# TODO's
+
+- Add `progbuf0` - `progbuf15` to device tree as `/reserved-memory` (assuming we keep the current approach)
+- Check that RAM, ROM, MMIO, does not overlap with `progbuf0`
