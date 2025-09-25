@@ -201,16 +201,6 @@ bitfield Dmcontrol : bits(32) = {
   dmactive:        0
 }
 
-function request_hart(request : debug_request) -> bool = match request {
-    DR_Halt                 => send_request(DR_Halt),
-    DR_Resume               => send_request(DR_Resume),
-    DR_Reset                => send_request(DR_Reset),
-    DR_HaltOnReset          => send_request(DR_HaltOnReset),
-    DR_ExecuteProgramBuffer => send_request(DR_ExecuteProgramBuffer),
-    // TODO: Remove this or at least handle differently
-    DR_None => send_request(DR_None),
-  }
-
 function set_running(r : bool) -> unit = {
   running = r;
   dmstatus[allrunning] = bool_to_bits(running);
@@ -250,11 +240,7 @@ function update_halt_on_reset_config(x : Dmcontrol) -> unit = {
 }
 
 function handle_halt_or_reset(x : Dmcontrol, halt_on_reset : bool) -> unit = {
-  if (x[haltreq] == 0b1 | halt_on_reset) then {
-    let _ = request_hart(DR_HaltOnReset);
-  } else {
-    let _ = request_hart(DR_Reset);
-  };
+  send_debug_request(Reset(x[haltreq] == 0b1 | halt_on_reset));
 }
 
 function legalize_active_dmcontrol(d : Dmcontrol, x : Dmcontrol) -> Dmcontrol = {
@@ -298,7 +284,6 @@ function legalize_active_dmcontrol(d : Dmcontrol, x : Dmcontrol) -> Dmcontrol = 
 
     // NDM reset assert
     (0b0, 0b1, _, _) => {
-      platform_reset = true;
       set_unavail(true);
     },
 
@@ -319,12 +304,12 @@ function legalize_active_dmcontrol(d : Dmcontrol, x : Dmcontrol) -> Dmcontrol = 
 
       if haltrequest & not(halted) then {
         haltrequest = true;
-        let _ = request_hart(DR_Halt);
+        send_debug_request(Halt());
       };
 
       if x[resumereq] == 0b1 & not(running) then {
         set_resumeack(false);
-        let _ = request_hart(DR_Resume);
+        send_debug_request(Resume());
         set_resumeack(true);
       };
     },
@@ -370,7 +355,7 @@ function clause is_DM_reg_defined (0x10) = true
 function clause write_DM_reg(0x10, value) = { dmcontrol = legalize_dmcontrol(dmcontrol, value); dmcontrol.bits }
 function clause read_DM_reg(0x10) = dmcontrol.bits
 
-function send_hart_status(status : dm_hart_status) -> unit = {
+function send_hart_status(status : debug_module_hart_status) -> unit = {
   set_running(status.running);
   set_halted(status.halted);
   set_havereset(status.havereset);
@@ -410,7 +395,7 @@ function legalize_haltsum1(d : Haltsum1, x : bits(32)) -> Haltsum1 = {
   let x = Mk_Haltsum1(x);
   [d with
     // TODO
-    haltsum1 = 0x00000000
+    haltsum1 = zeros(),
   ]
 }
 register haltsum1: Haltsum1 = legalize_haltsum1(Mk_Haltsum1(zeros()), zeros())
@@ -428,7 +413,7 @@ function legalize_hawindowsel(d : Hawindowsel, x : bits(32)) -> Hawindowsel = {
 
   [d with
     // Currently, we only support one hart
-    hawindowsel = 0b000000000000000
+    hawindowsel = zeros(),
   ]
 }
 
@@ -450,7 +435,7 @@ function legalize_hawindow(d : Hawindow, x : bits(32)) -> Hawindow = {
 
   [d with
     // Currently, we only support one hart
-    maskdata = 0x00000000
+    maskdata = zeros()
   ]
 }
 register hawindow: Hawindow = legalize_hawindow(Mk_Hawindow(zeros()), zeros())
@@ -557,7 +542,7 @@ function execute_access_register_command(aarsize : bits(3), transfer : bits(1), 
 }
 
 function execute_program_buffer(impebreak : bool, progbuf_size : bits(5)) -> unit = {
-  let _ = send_request(DR_ExecuteProgramBuffer);
+  send_debug_request(ExecuteProgramBuffer(false));
 }
 
 function execute_abstract_command(command : bits(32)) -> AbstractCommandError = {
@@ -609,7 +594,17 @@ function execute_abstract_command(command : bits(32)) -> AbstractCommandError = 
         };
         error
       },
-      QUICK_ACCESS  => NOT_SUPPORTED,
+      QUICK_ACCESS  => {
+        if command[23 .. 0] != zeros() then {
+          return NOT_SUPPORTED;
+        } else if dmstatus[allhalted] == 0b1 then {
+          return HALT_RESUME;
+        } else {
+          //Halt the hart
+          // TODO
+          return NOT_SUPPORTED;
+        }
+      },
       ACCESS_MEMORY => NOT_SUPPORTED,
     };
   status
@@ -659,7 +654,7 @@ function legalize_confstrptr0(d : Confstrptr0, x : bits(32)) -> Confstrptr0 = {
   [d with
     // TODO
     // NOTE: Part of System Bus Access
-    addr = 0x00000000
+    addr = zeros()
   ]
 }
 
@@ -1176,9 +1171,7 @@ function reset_debug_module() = {
   // Behavior is undefined if a hart is halted when the
   // debug module resets. For now, we check if the hart
   // is halted and issue a resume request.
-  if halted then {
-    let _ = send_request(DR_Resume)
-  };
+  if halted then send_debug_request(Resume());
 
   haltrequest = false;
   resumeack   = false;
