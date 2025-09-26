@@ -541,10 +541,6 @@ function execute_access_register_command(aarsize : bits(3), transfer : bits(1), 
   NONE
 }
 
-function execute_program_buffer(impebreak : bool, progbuf_size : bits(5)) -> unit = {
-  send_debug_request(ExecuteProgramBuffer(false));
-}
-
 function execute_abstract_command(command : bits(32)) -> AbstractCommandError = {
   let cmdtype = command[31 .. 24];
   let hart_exists = dmstatus[allnonexistent] == 0b0;
@@ -567,7 +563,7 @@ function execute_abstract_command(command : bits(32)) -> AbstractCommandError = 
         let write            = command[16 .. 16];
         let regno            = command[15 .. 0];
         var error = NONE;
-        // NOTE: aarpostincrement and postexec are not supported.
+        // NOTE: aarpostincrement
         if reserved == 0b1 | aarpostincrement == 0b1 then {
           error = NOT_SUPPORTED;
         } else {
@@ -584,8 +580,8 @@ function execute_abstract_command(command : bits(32)) -> AbstractCommandError = 
                 abstractcs[busy] = 0b0;
                 error = HALT_RESUME;
               } else {
-                execute_program_buffer(dmstatus[impebreak] == 0b1, MAX_PROGBUF_SIZE);
-                // Hart sets potential error
+                send_debug_request(ExecuteProgramBuffer(false));
+                // Hart sets potential error and busy
               };
             }
           } else {
@@ -595,14 +591,16 @@ function execute_abstract_command(command : bits(32)) -> AbstractCommandError = 
         error
       },
       QUICK_ACCESS  => {
+        // Check if any reserved bits are set in command[23:0]
         if command[23 .. 0] != zeros() then {
-          return NOT_SUPPORTED;
-        } else if dmstatus[allhalted] == 0b1 then {
-          return HALT_RESUME;
+          NOT_SUPPORTED
+        } else if dmstatus[allhalted] != 0b1 then {
+          // All harts must be halted before quick access
+          HALT_RESUME
         } else {
-          //Halt the hart
-          // TODO
-          return NOT_SUPPORTED;
+          // Execute program buffer and return success
+          send_debug_request(ExecuteProgramBuffer(true));
+          NONE
         }
       },
       ACCESS_MEMORY => NOT_SUPPORTED,

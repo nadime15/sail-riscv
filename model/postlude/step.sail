@@ -225,7 +225,8 @@ function handle_debug_module_resume_request(request : DebugRequest) -> unit = {
   if debug_mode_active then {
     // TODO: writes to resumereq should be ignored while a abstract command is executed
     // so we should remove the if statement down below.
-    if in_debug_abstract_command() then end_debug_abstract_command();
+    // TODO: Lets revisit the line below
+    //if in_debug_abstract_command() then end_debug_abstract_command();
     exit_debug_mode();
     update_debug_module_status(request, false)
   };
@@ -241,7 +242,13 @@ function handle_debug_module_halt_request(request : DebugRequest) -> unit = {
 function handle_debug_module_execute_program_buffer(request : DebugRequest) -> unit = {
   PC = trunc(plat_program_buffer_base);
   nextPC = PC;
-  execute_program_buffer_active = true;
+  progbuf_active = true;
+
+  resume_after_progbuf = match request {
+    ExecuteProgramBuffer(resume) => resume,
+    _ => false,
+  };
+
   start_debug_abstract_command();
 }
 
@@ -309,7 +316,7 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
   let exit_wait = exit_wait | (hartSupports(Ext_Sdext) & halt_request);
   let step_val : Step = match hart_state {
       HART_WAITING(wr, instbits)         => run_hart_waiting(step_no, wr, instbits, exit_wait),
-      HART_ACTIVE() if execute_program_buffer_active => run_hart_active(step_no),
+      HART_ACTIVE() if progbuf_active => run_hart_active(step_no),
       HART_ACTIVE() if debug_mode_active => Step_Halt(),
       HART_ACTIVE()                      => run_hart_active(step_no),
     };
@@ -343,10 +350,25 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
       match action {
         // When entering Debug via an execution of `ebreak`, DPC is set
         // to the address of the `ebreak`.
-        Enter_Debug_Mode(cause)       => { enter_debug_mode(cause, zeros(), get_arch_pc()); update_debug_module_status(Halt(), false) },
-        Exit_Debug_Abstract_Command() => { if execute_program_buffer_active then execute_program_buffer_active = false; abstractcs[busy] = 0b0; end_debug_abstract_command()},
+        Enter_Debug_Mode(cause)       => {
+          enter_debug_mode(cause, zeros(), get_arch_pc());
+          update_debug_module_status(Halt(), false)
+        },
+        Exit_Debug_Abstract_Command() => {
+          progbuf_active = false;
+          abstractcs[busy] = 0b0;
+          end_debug_abstract_command();
+
+          if resume_after_progbuf then {
+            handle_debug_module_resume_request(Resume());
+            resume_after_progbuf = false;
+          };
+        },
         // TODO: Check whether this case (Step_Execute(...)) is actually needed and if we pass the right request (DR_Resume)
-        Exit_Debug_Mode()             => { exit_debug_mode(); update_debug_module_status(Resume(), false) }
+        Exit_Debug_Mode() => {
+          exit_debug_mode();
+          update_debug_module_status(Resume(), false)
+        },
       };
     },
     // errors from extensions

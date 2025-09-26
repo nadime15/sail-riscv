@@ -400,6 +400,18 @@ NOTE: We need to be careful in cases where another memory region (RAM, ROM, MMIO
 
 Internally, this is handled correctly since we track whether execution is within the program buffer. However, for an external observer, it can misleadingly appear as though the injected (C.)EBREAK instruction resides in that neighboring memory region.
 
+# Abstract Command
+
+## Quick Access
+
+There are a few interesting edge cases, for example, what happens if a quick access command is triggered and successfully executed while we are in single-step mode? One key detail from the spec is the following:
+
+```bash
+  If step is set when a hart resumes then it will single step, regardless of the reason for resuming.
+```
+
+The model handles this the following way: we execute the program buffer and resume the hart, but immediately re-enter debug mode and halt execution again, because single-step mode is active.
+
 # TODO's
 
 - Add `progbuf0` - `progbuf15` to device tree as `/reserved-memory` (assuming we keep the current approach)

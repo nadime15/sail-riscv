@@ -168,7 +168,8 @@ function track_trap(p : Privilege) -> unit = {
   };
 }
 
-register execute_program_buffer_active : bool = false
+register progbuf_active : bool = false
+register resume_after_progbuf : bool = false
 
 // handle exceptional ctl flow by updating nextPC and operating privilege
 function trap_handler(del_priv : Privilege, intr : bool, c : exc_code, pc : xlenbits, info : option(xlenbits), ext : option(ext_exception))
@@ -186,11 +187,11 @@ function trap_handler(del_priv : Privilege, intr : bool, c : exc_code, pc : xlen
   if   in_debug_abstract_command()
   then {
     //set_debug_abstract_command_error();
-    if execute_program_buffer_active then {
+    if progbuf_active then {
       abstractcs[cmderr] = 0b011;
       abstractcs[busy] = 0b0;
       end_debug_abstract_command();
-      execute_program_buffer_active = false;
+      progbuf_active = false;
     };
     return pc//debug_trap_vector
   };
