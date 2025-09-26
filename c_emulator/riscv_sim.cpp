@@ -35,7 +35,6 @@
 #include "riscv_callbacks_if.h"
 #include "riscv_callbacks_log.h"
 #include "riscv_callbacks_rvfi.h"
-#include "jtag_dtm.h"
 #include "remote_bitbang.h"
 
 bool do_show_times = false;
@@ -593,8 +592,7 @@ int inner_main(int argc, char **argv)
     config_enable_rvfi = true;
     rvfi = rvfi_handler(rvfi_dii_port);
   } else if (rbb_port != 0) {
-    jtag_dtm_t *jtag_dtm = new jtag_dtm_t(required_rti_cycles);
-    remote_bitbang = remote_bitbang_t::make(rbb_port, jtag_dtm);
+    remote_bitbang = remote_bitbang_t::make(rbb_port, required_rti_cycles);
   }
 
   if (do_show_times) {
