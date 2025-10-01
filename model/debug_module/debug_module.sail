@@ -161,9 +161,8 @@ bitfield Dmstatus : bits(32) = {
   version:          3 .. 0
 }
 
-// NOTE: This whole register cannot be written from outside
-function legalize_dmstatus(d : Dmstatus) -> Dmstatus = {
-  [d with
+function initial_dmstatus() -> Dmstatus = {
+  [Mk_Dmstatus(zeros()) with
     impebreak = if unsigned(MAX_PROGBUF_SIZE) == 1 | (config platform.debug_module.impebreak : bool) then 0b1 else 0b0,
     // TODO: For now authentication is not supported
     // but this should be optional
@@ -176,7 +175,7 @@ function legalize_dmstatus(d : Dmstatus) -> Dmstatus = {
   ]
 }
 
-register dmstatus: Dmstatus = legalize_dmstatus(Mk_Dmstatus(zeros()))
+register dmstatus: Dmstatus = initial_dmstatus()
 
 mapping clause dm_name_map = 0x11  <-> "dmstatus"
 
@@ -375,8 +374,8 @@ bitfield Hartinfo : bits(32) = {
   dataaddr:   11 .. 0
 }
 
-function legalize_hartinfo(d : Hartinfo) -> Hartinfo = {
-  [d with
+function initial_hartinfo() -> Hartinfo = {
+  [Mk_Hartinfo(zeros()) with
     nscratch   = zeros(),
     dataaccess = zeros(),
     datasize   = zeros(),
@@ -384,7 +383,7 @@ function legalize_hartinfo(d : Hartinfo) -> Hartinfo = {
   ]
 }
 
-register hartinfo: Hartinfo = legalize_hartinfo(Mk_Hartinfo(zeros()))
+register hartinfo: Hartinfo = initial_hartinfo()
 
 mapping clause dm_name_map = 0x12  <-> "hartinfo"
 
@@ -652,16 +651,15 @@ bitfield Confstrptr0 : bits(32) = {
   addr : 31 .. 0
 }
 
-function legalize_confstrptr0(d : Confstrptr0, x : bits(32)) -> Confstrptr0 = {
-  let x = Mk_Confstrptr0(x);
-  [d with
+function initial_confstrptr0() -> Confstrptr0 = {
+  [Mk_Confstrptr0(zeros()) with
     // TODO
     // NOTE: Part of System Bus Access
     addr = zeros()
   ]
 }
 
-register confstrptr0: Confstrptr0 = legalize_confstrptr0(Mk_Confstrptr0(zeros()), zeros())
+register confstrptr0: Confstrptr0 = initial_confstrptr0()
 
 mapping clause dm_name_map = 0x19  <-> "confstrptr0"
 
@@ -674,16 +672,15 @@ bitfield Confstrptr1 : bits(32) = {
   addr: 31 .. 0
 }
 
-function legalize_confstrptr1(d : Confstrptr1, x : bits(32)) -> Confstrptr1 = {
-  let x = Mk_Confstrptr1(x);
-  [d with
+function initial_confstrptr1() -> Confstrptr1 = {
+  [Mk_Confstrptr1(zeros()) with
     // TODO
     // NOTE: Part of System Bus Access
     addr = zeros(),
   ]
 }
 
-register confstrptr1: Confstrptr1 = legalize_confstrptr1(Mk_Confstrptr1(zeros()), zeros())
+register confstrptr1: Confstrptr1 = initial_confstrptr1()
 
 mapping clause dm_name_map = 0x1a  <-> "confstrptr1"
 
@@ -695,14 +692,13 @@ bitfield Confstrptr2 : bits(32) = {
   addr: 31 .. 0
 }
 
-function legalize_confstrptr2(d : Confstrptr2, x : bits(32)) -> Confstrptr2 = {
-  let x = Mk_Confstrptr2(x);
-  [d with
+function initial_confstrptr2() -> Confstrptr2 = {
+  [Mk_Confstrptr2(zeros()) with
     addr = zeros(),
   ]
 }
 
-register confstrptr2: Confstrptr2 = legalize_confstrptr2(Mk_Confstrptr2(zeros()), zeros())
+register confstrptr2: Confstrptr2 = initial_confstrptr2()
 
 mapping clause dm_name_map = 0x1b  <-> "confstrptr2"
 
@@ -714,16 +710,15 @@ bitfield Confstrptr3 : bits(32) = {
   addr: 31 .. 0
 }
 
-function legalize_confstrptr3(d : Confstrptr3, x : bits(32)) -> Confstrptr3 = {
-  let x = Mk_Confstrptr3(x);
-  [d with
+function initial_confstrptr3() -> Confstrptr3 = {
+  [Mk_Confstrptr3(zeros()) with
     // TODO
     // NOTE: Part of System Bus Access
     addr = zeros(),
   ]
 }
 
-register confstrptr3: Confstrptr3 = legalize_confstrptr3(Mk_Confstrptr3(zeros()), zeros())
+register confstrptr3: Confstrptr3 = initial_confstrptr3()
 
 mapping clause dm_name_map = 0x1c  <-> "confstrptr3"
 
@@ -736,14 +731,13 @@ bitfield Nextdm : bits(32) = {
 }
 
 // NOT IMPLEMENTED
-function legalize_nextdm(d : Nextdm, x : bits(32)) -> Nextdm = {
-  let x = Mk_Nextdm(x);
-  [d with
+function initial_nextdm() -> Nextdm = {
+  [Mk_Nextdm(zeros()) with
     addr = zeros(),
   ]
 }
 
-register nextdm: Nextdm = legalize_nextdm(Mk_Nextdm(zeros()), zeros())
+register nextdm: Nextdm = initial_nextdm()
 
 mapping clause dm_name_map = 0x1d  <-> "nextdm"
 
