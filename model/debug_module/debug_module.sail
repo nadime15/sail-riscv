@@ -30,8 +30,8 @@ scattered function is_DM_reg_defined
 val read_DM_reg : dmreg -> bits(32)
 scattered function read_DM_reg
 
-/* Returns new value (after legalisation) if the Debug Module Register is defined */
-val write_DM_reg : (dmreg, bits(32)) -> bits(32)
+/* if the Debug Module Register is defined, writes the legalized value to it */
+val write_DM_reg : (dmreg, bits(32)) -> unit
 scattered function write_DM_reg
 
 ///////////////////////////////////////////////////////////////////////
@@ -59,7 +59,7 @@ register abstractcs: Abstractcs = legalize_abstractcs(Mk_Abstractcs(zeros()), ze
 mapping clause dm_name_map = 0x16  <-> "abstractcs"
 
 function clause is_DM_reg_defined (0x16) = true
-function clause write_DM_reg(0x16, value) = { abstractcs = legalize_abstractcs(abstractcs, value); abstractcs.bits }
+function clause write_DM_reg(0x16, value) = { abstractcs = legalize_abstractcs(abstractcs, value); }
 function clause read_DM_reg(0x16) = abstractcs.bits
 
 function legalize_data(d: bits(32), x : bits(32)) -> bits(32) = {
@@ -111,18 +111,18 @@ function clause is_DM_reg_defined (0x0d) = unsigned(abstractcs[datacount]) > 9
 function clause is_DM_reg_defined (0x0e) = unsigned(abstractcs[datacount]) > 10
 function clause is_DM_reg_defined (0x0f) = unsigned(abstractcs[datacount]) > 11
 
-function clause write_DM_reg(0x04, value) = { data0 = legalize_data(data0, value); data0 }
-function clause write_DM_reg(0x05, value) = { data1 = legalize_data(data1, value); data1 }
-function clause write_DM_reg(0x06, value) = { data2 = legalize_data(data2, value); data2 }
-function clause write_DM_reg(0x07, value) = { data4 = legalize_data(data3, value); data3 }
-function clause write_DM_reg(0x08, value) = { data4 = legalize_data(data4, value); data4 }
-function clause write_DM_reg(0x09, value) = { data5 = legalize_data(data5, value); data5 }
-function clause write_DM_reg(0x0a, value) = { data6 = legalize_data(data6, value); data6 }
-function clause write_DM_reg(0x0b, value) = { data7 = legalize_data(data7, value); data7 }
-function clause write_DM_reg(0x0c, value) = { data8 = legalize_data(data8, value); data8 }
-function clause write_DM_reg(0x0d, value) = { data9 = legalize_data(data9, value); data9 }
-function clause write_DM_reg(0x0e, value) = { data10 = legalize_data(data10, value); data10 }
-function clause write_DM_reg(0x0f, value) = { data11 = legalize_data(data11, value); data11 }
+function clause write_DM_reg(0x04, value) = { data0 = legalize_data(data0, value); }
+function clause write_DM_reg(0x05, value) = { data1 = legalize_data(data1, value); }
+function clause write_DM_reg(0x06, value) = { data2 = legalize_data(data2, value); }
+function clause write_DM_reg(0x07, value) = { data4 = legalize_data(data3, value); }
+function clause write_DM_reg(0x08, value) = { data4 = legalize_data(data4, value); }
+function clause write_DM_reg(0x09, value) = { data5 = legalize_data(data5, value); }
+function clause write_DM_reg(0x0a, value) = { data6 = legalize_data(data6, value); }
+function clause write_DM_reg(0x0b, value) = { data7 = legalize_data(data7, value); }
+function clause write_DM_reg(0x0c, value) = { data8 = legalize_data(data8, value); }
+function clause write_DM_reg(0x0d, value) = { data9 = legalize_data(data9, value); }
+function clause write_DM_reg(0x0e, value) = { data10 = legalize_data(data10, value); }
+function clause write_DM_reg(0x0f, value) = { data11 = legalize_data(data11, value); }
 
 
 function clause read_DM_reg(0x04) = data0
@@ -161,9 +161,8 @@ bitfield Dmstatus : bits(32) = {
   version:          3 .. 0
 }
 
-// NOTE: This whole register cannot be written from outside
-function legalize_dmstatus(d : Dmstatus) -> Dmstatus = {
-  [d with
+function initial_dmstatus() -> Dmstatus = {
+  [Mk_Dmstatus(zeros()) with
     impebreak = if unsigned(MAX_PROGBUF_SIZE) == 1 | (config platform.debug_module.impebreak : bool) then 0b1 else 0b0,
     // TODO: For now authentication is not supported
     // but this should be optional
@@ -176,12 +175,12 @@ function legalize_dmstatus(d : Dmstatus) -> Dmstatus = {
   ]
 }
 
-register dmstatus: Dmstatus = legalize_dmstatus(Mk_Dmstatus(zeros()))
+register dmstatus: Dmstatus = initial_dmstatus()
 
 mapping clause dm_name_map = 0x11  <-> "dmstatus"
 
 function clause is_DM_reg_defined (0x11) = true
-function clause write_DM_reg(0x11, value) = { dmstatus.bits }
+function clause write_DM_reg(0x11, value) = ()
 function clause read_DM_reg(0x11) = dmstatus.bits
 
 bitfield Dmcontrol : bits(32) = {
@@ -244,6 +243,11 @@ function handle_halt_or_reset(x : Dmcontrol, halt_on_reset : bool) -> unit = {
 }
 
 function legalize_active_dmcontrol(d : Dmcontrol, x : Dmcontrol) -> Dmcontrol = {
+
+  // TODO: On any given write, a debugger may only write 1 to at most
+  // one of the following bits: resumereq, hartreset, ackhavereset,
+  // setresethaltreq, and clrresethaltreq. The others must be written
+  // 0.
 
   // Ignore the bits below if abstract command is executed
   let x = if abstractcs[busy] == 0b1 then [x with
@@ -352,7 +356,7 @@ register dmcontrol: Dmcontrol = legalize_dmcontrol(Mk_Dmcontrol(zeros()), zeros(
 mapping clause dm_name_map = 0x10  <-> "dmcontrol"
 
 function clause is_DM_reg_defined (0x10) = true
-function clause write_DM_reg(0x10, value) = { dmcontrol = legalize_dmcontrol(dmcontrol, value); dmcontrol.bits }
+function clause write_DM_reg(0x10, value) = { dmcontrol = legalize_dmcontrol(dmcontrol, value); }
 function clause read_DM_reg(0x10) = dmcontrol.bits
 
 function send_hart_status(status : debug_module_hart_status) -> unit = {
@@ -370,8 +374,8 @@ bitfield Hartinfo : bits(32) = {
   dataaddr:   11 .. 0
 }
 
-function legalize_hartinfo(d : Hartinfo) -> Hartinfo = {
-  [d with
+function initial_hartinfo() -> Hartinfo = {
+  [Mk_Hartinfo(zeros()) with
     nscratch   = zeros(),
     dataaccess = zeros(),
     datasize   = zeros(),
@@ -379,12 +383,12 @@ function legalize_hartinfo(d : Hartinfo) -> Hartinfo = {
   ]
 }
 
-register hartinfo: Hartinfo = legalize_hartinfo(Mk_Hartinfo(zeros()))
+register hartinfo: Hartinfo = initial_hartinfo()
 
 mapping clause dm_name_map = 0x12  <-> "hartinfo"
 
 function clause is_DM_reg_defined (0x12) = true
-function clause write_DM_reg(0x12, value) = { hartinfo.bits }
+function clause write_DM_reg(0x12, value) = ()
 function clause read_DM_reg(0x12) = hartinfo.bits
 
 bitfield Haltsum1 : bits(32) = {
@@ -408,22 +412,13 @@ bitfield Hawindowsel : bits(32) = {
   hawindowsel : 14 ..0,
 }
 
-function legalize_hawindowsel(d : Hawindowsel, x : bits(32)) -> Hawindowsel = {
-  let x = Mk_Hawindowsel(x);
-
-  [d with
-    // Currently, we only support one hart
-    hawindowsel = zeros(),
-  ]
-}
-
-register hawindowsel: Hawindowsel = legalize_hawindowsel(Mk_Hawindowsel(zeros()), zeros())
+register hawindowsel: Hawindowsel = Mk_Hawindowsel(zeros())
 
 mapping clause dm_name_map = 0x14  <-> "hawindowsel"
 
 // Optional Register
 function clause is_DM_reg_defined (0x14) = false
-function clause write_DM_reg(0x14, value) = { hawindowsel = legalize_hawindowsel(hawindowsel, value); hawindowsel.bits }
+function clause write_DM_reg(0x14, value) = ()
 function clause read_DM_reg(0x14) = hawindowsel.bits
 
 bitfield Hawindow : bits(32) = {
@@ -443,7 +438,7 @@ register hawindow: Hawindow = legalize_hawindow(Mk_Hawindow(zeros()), zeros())
 mapping clause dm_name_map = 0x15  <-> "hawindow"
 
 function clause is_DM_reg_defined (0x15) = true
-function clause write_DM_reg(0x15, value) = { hawindow = legalize_hawindow(hawindow, value); hawindow.bits }
+function clause write_DM_reg(0x15, value) = { hawindow = legalize_hawindow(hawindow, value); }
 function clause read_DM_reg(0x15) = hawindow.bits
 
 bitfield Command : bits(32) = {
@@ -617,7 +612,7 @@ register command: Command = Mk_Command(zeros())
 mapping clause dm_name_map = 0x17  <-> "command"
 
 function clause is_DM_reg_defined (0x17) = true
-function clause write_DM_reg(0x17, value) = { legalize_command(command, value); zeros() }
+function clause write_DM_reg(0x17, value) = { legalize_command(command, value); }
 function clause read_DM_reg(0x17) = zeros()
 
 bitfield Abstractauto : bits(32) = {
@@ -640,23 +635,22 @@ mapping clause dm_name_map = 0x18  <-> "abstractauto"
 
 // Optional Register
 function clause is_DM_reg_defined (0x18) = false
-function clause write_DM_reg(0x18, value) = { abstractauto = legalize_abstractauto(abstractauto, value); abstractauto.bits }
+function clause write_DM_reg(0x18, value) = { abstractauto = legalize_abstractauto(abstractauto, value); }
 function clause read_DM_reg(0x18) = abstractauto.bits
 
 bitfield Confstrptr0 : bits(32) = {
   addr : 31 .. 0
 }
 
-function legalize_confstrptr0(d : Confstrptr0, x : bits(32)) -> Confstrptr0 = {
-  let x = Mk_Confstrptr0(x);
-  [d with
+function initial_confstrptr0() -> Confstrptr0 = {
+  [Mk_Confstrptr0(zeros()) with
     // TODO
     // NOTE: Part of System Bus Access
     addr = zeros()
   ]
 }
 
-register confstrptr0: Confstrptr0 = legalize_confstrptr0(Mk_Confstrptr0(zeros()), zeros())
+register confstrptr0: Confstrptr0 = initial_confstrptr0()
 
 mapping clause dm_name_map = 0x19  <-> "confstrptr0"
 
@@ -669,16 +663,15 @@ bitfield Confstrptr1 : bits(32) = {
   addr: 31 .. 0
 }
 
-function legalize_confstrptr1(d : Confstrptr1, x : bits(32)) -> Confstrptr1 = {
-  let x = Mk_Confstrptr1(x);
-  [d with
+function initial_confstrptr1() -> Confstrptr1 = {
+  [Mk_Confstrptr1(zeros()) with
     // TODO
     // NOTE: Part of System Bus Access
     addr = zeros(),
   ]
 }
 
-register confstrptr1: Confstrptr1 = legalize_confstrptr1(Mk_Confstrptr1(zeros()), zeros())
+register confstrptr1: Confstrptr1 = initial_confstrptr1()
 
 mapping clause dm_name_map = 0x1a  <-> "confstrptr1"
 
@@ -690,14 +683,13 @@ bitfield Confstrptr2 : bits(32) = {
   addr: 31 .. 0
 }
 
-function legalize_confstrptr2(d : Confstrptr2, x : bits(32)) -> Confstrptr2 = {
-  let x = Mk_Confstrptr2(x);
-  [d with
+function initial_confstrptr2() -> Confstrptr2 = {
+  [Mk_Confstrptr2(zeros()) with
     addr = zeros(),
   ]
 }
 
-register confstrptr2: Confstrptr2 = legalize_confstrptr2(Mk_Confstrptr2(zeros()), zeros())
+register confstrptr2: Confstrptr2 = initial_confstrptr2()
 
 mapping clause dm_name_map = 0x1b  <-> "confstrptr2"
 
@@ -709,16 +701,15 @@ bitfield Confstrptr3 : bits(32) = {
   addr: 31 .. 0
 }
 
-function legalize_confstrptr3(d : Confstrptr3, x : bits(32)) -> Confstrptr3 = {
-  let x = Mk_Confstrptr3(x);
-  [d with
+function initial_confstrptr3() -> Confstrptr3 = {
+  [Mk_Confstrptr3(zeros()) with
     // TODO
     // NOTE: Part of System Bus Access
     addr = zeros(),
   ]
 }
 
-register confstrptr3: Confstrptr3 = legalize_confstrptr3(Mk_Confstrptr3(zeros()), zeros())
+register confstrptr3: Confstrptr3 = initial_confstrptr3()
 
 mapping clause dm_name_map = 0x1c  <-> "confstrptr3"
 
@@ -731,14 +722,13 @@ bitfield Nextdm : bits(32) = {
 }
 
 // NOT IMPLEMENTED
-function legalize_nextdm(d : Nextdm, x : bits(32)) -> Nextdm = {
-  let x = Mk_Nextdm(x);
-  [d with
+function initial_nextdm() -> Nextdm = {
+  [Mk_Nextdm(zeros()) with
     addr = zeros(),
   ]
 }
 
-register nextdm: Nextdm = legalize_nextdm(Mk_Nextdm(zeros()), zeros())
+register nextdm: Nextdm = initial_nextdm()
 
 mapping clause dm_name_map = 0x1d  <-> "nextdm"
 
@@ -807,22 +797,22 @@ function clause is_DM_reg_defined (0x2d) = unsigned(abstractcs[progbufsize]) > 1
 function clause is_DM_reg_defined (0x2e) = unsigned(abstractcs[progbufsize]) > 14
 function clause is_DM_reg_defined (0x2f) = unsigned(abstractcs[progbufsize]) > 15
 
-function clause write_DM_reg(0x20, value) = { progbuf0 = legalize_progbuf(progbuf0, value); progbuf0 }
-function clause write_DM_reg(0x21, value) = { progbuf1 = legalize_progbuf(progbuf1, value); progbuf1 }
-function clause write_DM_reg(0x22, value) = { progbuf2 = legalize_progbuf(progbuf2, value); progbuf2 }
-function clause write_DM_reg(0x23, value) = { progbuf3 = legalize_progbuf(progbuf3, value); progbuf3 }
-function clause write_DM_reg(0x24, value) = { progbuf4 = legalize_progbuf(progbuf4, value); progbuf4 }
-function clause write_DM_reg(0x25, value) = { progbuf5 = legalize_progbuf(progbuf5, value); progbuf5 }
-function clause write_DM_reg(0x26, value) = { progbuf6 = legalize_progbuf(progbuf6, value); progbuf6 }
-function clause write_DM_reg(0x27, value) = { progbuf7 = legalize_progbuf(progbuf7, value); progbuf7 }
-function clause write_DM_reg(0x28, value) = { progbuf8 = legalize_progbuf(progbuf8, value); progbuf8 }
-function clause write_DM_reg(0x29, value) = { progbuf9 = legalize_progbuf(progbuf9, value); progbuf9 }
-function clause write_DM_reg(0x2a, value) = { progbuf10 = legalize_progbuf(progbuf10, value); progbuf10 }
-function clause write_DM_reg(0x2b, value) = { progbuf11 = legalize_progbuf(progbuf11, value); progbuf11 }
-function clause write_DM_reg(0x2c, value) = { progbuf12 = legalize_progbuf(progbuf12, value); progbuf12 }
-function clause write_DM_reg(0x2d, value) = { progbuf13 = legalize_progbuf(progbuf13, value); progbuf13 }
-function clause write_DM_reg(0x2e, value) = { progbuf14 = legalize_progbuf(progbuf14, value); progbuf14 }
-function clause write_DM_reg(0x2f, value) = { progbuf15 = legalize_progbuf(progbuf15, value); progbuf15 }
+function clause write_DM_reg(0x20, value) = { progbuf0 = legalize_progbuf(progbuf0, value); }
+function clause write_DM_reg(0x21, value) = { progbuf1 = legalize_progbuf(progbuf1, value); }
+function clause write_DM_reg(0x22, value) = { progbuf2 = legalize_progbuf(progbuf2, value); }
+function clause write_DM_reg(0x23, value) = { progbuf3 = legalize_progbuf(progbuf3, value); }
+function clause write_DM_reg(0x24, value) = { progbuf4 = legalize_progbuf(progbuf4, value); }
+function clause write_DM_reg(0x25, value) = { progbuf5 = legalize_progbuf(progbuf5, value); }
+function clause write_DM_reg(0x26, value) = { progbuf6 = legalize_progbuf(progbuf6, value); }
+function clause write_DM_reg(0x27, value) = { progbuf7 = legalize_progbuf(progbuf7, value); }
+function clause write_DM_reg(0x28, value) = { progbuf8 = legalize_progbuf(progbuf8, value); }
+function clause write_DM_reg(0x29, value) = { progbuf9 = legalize_progbuf(progbuf9, value); }
+function clause write_DM_reg(0x2a, value) = { progbuf10 = legalize_progbuf(progbuf10, value); }
+function clause write_DM_reg(0x2b, value) = { progbuf11 = legalize_progbuf(progbuf11, value); }
+function clause write_DM_reg(0x2c, value) = { progbuf12 = legalize_progbuf(progbuf12, value); }
+function clause write_DM_reg(0x2d, value) = { progbuf13 = legalize_progbuf(progbuf13, value); }
+function clause write_DM_reg(0x2e, value) = { progbuf14 = legalize_progbuf(progbuf14, value); }
+function clause write_DM_reg(0x2f, value) = { progbuf15 = legalize_progbuf(progbuf15, value); }
 
 function clause read_DM_reg(0x20) = progbuf0
 function clause read_DM_reg(0x21) = progbuf1
@@ -857,7 +847,7 @@ register authdata: Authdata = legalize_authdata(Mk_Authdata(zeros()), zeros())
 mapping clause dm_name_map = 0x30  <-> "authdata"
 
 function clause is_DM_reg_defined (0x30) = true
-function clause write_DM_reg(0x30, value) = { authdata = legalize_authdata(authdata, value); authdata.bits }
+function clause write_DM_reg(0x30, value) = { authdata = legalize_authdata(authdata, value); }
 function clause read_DM_reg(0x30) = authdata.bits
 
 bitfield Dmcs2 : bits(32) = {
@@ -884,7 +874,7 @@ function legalize_dmcs2(d : Dmcs2, x : bits(32)) -> Dmcs2 = {
 register dmcs2: Dmcs2 = legalize_dmcs2(Mk_Dmcs2(zeros()), zeros())
 mapping clause dm_name_map = 0x32  <-> "dmcs2"
 function clause is_DM_reg_defined (0x32) = true
-function clause write_DM_reg(0x32, value) = { dmcs2 = legalize_dmcs2(dmcs2, value); dmcs2.bits }
+function clause write_DM_reg(0x32, value) = { dmcs2 = legalize_dmcs2(dmcs2, value); }
 function clause read_DM_reg(0x32) = dmcs2.bits
 
 bitfield Haltsum2 : bits(32) = {
@@ -970,7 +960,7 @@ register sbcs: Sbcs = legalize_sbcs(Mk_Sbcs(zeros()), zeros())
 mapping clause dm_name_map = 0x38  <-> "sbcs"
 
 function clause is_DM_reg_defined (0x38) = true
-function clause write_DM_reg(0x38, value) = { sbcs = legalize_sbcs(sbcs, value); sbcs.bits }
+function clause write_DM_reg(0x38, value) = { sbcs = legalize_sbcs(sbcs, value); }
 function clause read_DM_reg(0x38) = sbcs.bits
 
 bitfield Sbaddresse0 : bits(32) = {
@@ -989,7 +979,7 @@ register sbaddresse0: Sbaddresse0 = legalize_sbaddresse0(Mk_Sbaddresse0(zeros())
 mapping clause dm_name_map = 0x39  <-> "sbaddresse0"
 
 function clause is_DM_reg_defined (0x39) = sbcs[sbasize] != 0b0000000
-function clause write_DM_reg(0x39, value) = { sbaddresse0 = legalize_sbaddresse0(sbaddresse0, value); sbaddresse0.bits }
+function clause write_DM_reg(0x39, value) = { sbaddresse0 = legalize_sbaddresse0(sbaddresse0, value); }
 function clause read_DM_reg(0x39) = sbaddresse0.bits
 
 bitfield Sbaddresse1 : bits(32) = {
@@ -1008,7 +998,7 @@ register sbaddresse1: Sbaddresse1 = legalize_sbaddresse1(Mk_Sbaddresse1(zeros())
 mapping clause dm_name_map = 0x3a  <-> "sbaddresse1"
 
 function clause is_DM_reg_defined (0x3a) = unsigned(sbcs[sbasize]) >= 33
-function clause write_DM_reg(0x3a, value) = { sbaddresse1 = legalize_sbaddresse1(sbaddresse1, value); sbaddresse1.bits }
+function clause write_DM_reg(0x3a, value) = { sbaddresse1 = legalize_sbaddresse1(sbaddresse1, value); }
 function clause read_DM_reg(0x3a) = sbaddresse1.bits
 
 bitfield Sbaddresse2 : bits(32) = {
@@ -1027,7 +1017,7 @@ register sbaddresse2: Sbaddresse2 = legalize_sbaddresse2(Mk_Sbaddresse2(zeros())
 mapping clause dm_name_map = 0x3b  <-> "sbaddresse2"
 
 function clause is_DM_reg_defined (0x3b) = unsigned(sbcs[sbasize]) >= 65
-function clause write_DM_reg(0x3b, value) = { sbaddresse2 = legalize_sbaddresse2(sbaddresse2, value); sbaddresse2.bits }
+function clause write_DM_reg(0x3b, value) = { sbaddresse2 = legalize_sbaddresse2(sbaddresse2, value); }
 function clause read_DM_reg(0x3b) = sbaddresse2.bits
 
 bitfield Sbaddresse3 : bits(32) = {
@@ -1046,7 +1036,7 @@ register sbaddresse3: Sbaddresse3 = legalize_sbaddresse3(Mk_Sbaddresse3(zeros())
 mapping clause dm_name_map = 0x37  <-> "sbaddresse3"
 
 function clause is_DM_reg_defined (0x37) = unsigned(sbcs[sbasize]) >= 97
-function clause write_DM_reg(0x37, value) = { sbaddresse3 = legalize_sbaddresse3(sbaddresse3, value); sbaddresse3.bits }
+function clause write_DM_reg(0x37, value) = { sbaddresse3 = legalize_sbaddresse3(sbaddresse3, value); }
 function clause read_DM_reg(0x37) = sbaddresse3.bits
 
 bitfield Sbdata0 : bits(32) = {
@@ -1065,7 +1055,7 @@ register sbdata0: Sbdata0 = legalize_sbdata0(Mk_Sbdata0(zeros()), zeros())
 mapping clause dm_name_map = 0x3c  <-> "sbdata0"
 
 function clause is_DM_reg_defined (0x3c) = sbcs[sbaccess] != 0b000
-function clause write_DM_reg(0x3c, value) = { sbdata0 = legalize_sbdata0(sbdata0, value); sbdata0.bits }
+function clause write_DM_reg(0x3c, value) = { sbdata0 = legalize_sbdata0(sbdata0, value); }
 function clause read_DM_reg(0x3c) = sbdata0.bits
 
 bitfield Sbdata1 : bits(32) = {
@@ -1082,7 +1072,7 @@ function legalize_sbdata1(d : Sbdata1, x : bits(32)) -> Sbdata1 = {
 register sbdata1: Sbdata1 = legalize_sbdata1(Mk_Sbdata1(zeros()), zeros())
 mapping clause dm_name_map = 0x3d  <-> "sbdata1"
 function clause is_DM_reg_defined (0x3d) = sbcs[sbaccess64] != 0b0 & sbcs[sbaccess128] != 0b0
-function clause write_DM_reg(0x3d, value) = { sbdata1 = legalize_sbdata1(sbdata1, value); sbdata1.bits }
+function clause write_DM_reg(0x3d, value) = { sbdata1 = legalize_sbdata1(sbdata1, value); }
 function clause read_DM_reg(0x3d) = sbdata1.bits
 
 bitfield Sbdata2 : bits(32) = {
@@ -1101,7 +1091,7 @@ register sbdata2: Sbdata2 = legalize_sbdata2(Mk_Sbdata2(zeros()), zeros())
 mapping clause dm_name_map = 0x3e  <-> "sbdata2"
 
 function clause is_DM_reg_defined (0x3e) = sbcs[sbaccess128] == 0b1
-function clause write_DM_reg(0x3e, value) = { sbdata2 = legalize_sbdata2(sbdata2, value); sbdata2.bits }
+function clause write_DM_reg(0x3e, value) = { sbdata2 = legalize_sbdata2(sbdata2, value); }
 function clause read_DM_reg(0x3e) = sbdata2.bits
 
 bitfield Sbdata3 : bits(32) = {
@@ -1121,7 +1111,7 @@ register sbdata3: Sbdata3 = legalize_sbdata3(Mk_Sbdata3(zeros()), zeros())
 mapping clause dm_name_map = 0x3f  <-> "sbdata3"
 
 function clause is_DM_reg_defined (0x3f) = sbcs[sbaccess128] == 0b1
-function clause write_DM_reg(0x3f, value) = { sbdata3 = legalize_sbdata3(sbdata3, value); sbdata3.bits }
+function clause write_DM_reg(0x3f, value) = { sbdata3 = legalize_sbdata3(sbdata3, value); }
 function clause read_DM_reg(0x3f) = sbdata3.bits
 
 bitfield Haltsum0 : bits(32) = {
