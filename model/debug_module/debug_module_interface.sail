@@ -28,6 +28,6 @@ function dmi_write(address : nat, value : nat) -> bool = {
   let address = to_bits_truncate(8, address);
   let value = to_bits_truncate(32, value);
   //print_log("DMI Write: Address = " ^ bits_str(address) ^ ", Write = " ^ bits_str(value) ^ ", Register = " ^ dm_name_map(address));
-  let _ = write_DM_reg(address, value);
+  write_DM_reg(address, value);
   true
 }
