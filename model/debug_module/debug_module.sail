@@ -412,22 +412,13 @@ bitfield Hawindowsel : bits(32) = {
   hawindowsel : 14 ..0,
 }
 
-function legalize_hawindowsel(d : Hawindowsel, x : bits(32)) -> Hawindowsel = {
-  let x = Mk_Hawindowsel(x);
-
-  [d with
-    // Currently, we only support one hart
-    hawindowsel = zeros(),
-  ]
-}
-
-register hawindowsel: Hawindowsel = legalize_hawindowsel(Mk_Hawindowsel(zeros()), zeros())
+register hawindowsel: Hawindowsel = Mk_Hawindowsel(zeros())
 
 mapping clause dm_name_map = 0x14  <-> "hawindowsel"
 
 // Optional Register
 function clause is_DM_reg_defined (0x14) = false
-function clause write_DM_reg(0x14, value) = { hawindowsel = legalize_hawindowsel(hawindowsel, value); }
+function clause write_DM_reg(0x14, value) = ()
 function clause read_DM_reg(0x14) = hawindowsel.bits
 
 bitfield Hawindow : bits(32) = {
