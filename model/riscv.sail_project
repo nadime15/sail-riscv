@@ -22,6 +22,7 @@ core {
     core/vext_types.sail,
     core/csr_begin.sail,
     debug_module/debug_module_types.sail,
+    debug_module/debug_module_regs.sail,
     core/callbacks.sail,
     core/reg_type.sail,
     core/regs.sail,
