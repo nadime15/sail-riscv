@@ -13,11 +13,32 @@ enum DebugHartState = {NON_EXISTENT, UNAVAILABLE, RUNNING, HALTED}
 
 register debug_hart_state : DebugHartState = RUNNING
 
+type aamsize = {0, 1, 2, 3, 4}
+
+// TODO this should be part of the hart or at least debug extension
+register debug_physical_access : bool = false
+
 union DebugRequest = {
   Resume : unit,
   Halt   : unit,
   Reset  : bool,               // Halt on reset
   ExecuteProgramBuffer : bool, // Resume after
+  MemoryAccess : (bool, bool, aamsize, bits(128))  // Virtual (true) or Physical (false) and Write (true) or read (false), Size. Data
+}
+
+// TODO Improve formatting
+// TODO Define new type AbstractCommand for ProgramBuffer and MemoryAccess
+function debug_request_to_string(request : DebugRequest) -> string = {
+  match request {
+    Resume()                     => "Resume()",
+    Halt()                       => "Halt()",
+    Reset(halt_on_reset)         => "Reset(haltonreset=" ^ (if halt_on_reset then "true" else "false") ^ ")",
+    ExecuteProgramBuffer(resume) => "ExecuteProgramBuffer(resume=" ^ (if resume then "true" else "false") ^ ")",
+    MemoryAccess(virtual, write, width, addr) => "MemoryAccess(virtual=" ^ (if virtual then "true" else "false") ^
+                                              ", write=" ^ (if write then "true" else "false") ^
+                                              ", width=" ^ dec_str(width) ^
+                                              ", addr="  ^ bits_str(addr) ^ ")"
+  }
 }
 
 register debug_module_active_request : bool = false

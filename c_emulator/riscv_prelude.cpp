@@ -35,6 +35,11 @@ unit print_step(unit)
   return UNIT;
 }
 
+bool get_config_print_debug(unit)
+{
+  return config_print_debug;
+}
+
 bool get_config_print_instr(unit)
 {
   return config_print_instr;

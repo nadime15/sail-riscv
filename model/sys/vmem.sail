@@ -364,7 +364,8 @@ function translateAddr(
 
   let mode = translationMode(effPriv);
 
-  if mode == Bare then return Ok(Physaddr(zero_extend(bits_of(vAddr))), init_ext_ptw);
+  if mode == Bare | (debug_abstract_command_active & debug_physical_access)
+  then return Ok(Physaddr(zero_extend(bits_of(vAddr))), init_ext_ptw);
 
   // Sv39 -> 39, etc.
   let sv_width = satp_mode_width(mode);

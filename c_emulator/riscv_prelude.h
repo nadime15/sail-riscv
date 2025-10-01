@@ -13,6 +13,7 @@ unit print_log(const_sail_string s);
 unit print_log_instr(const_sail_string s, uint64_t pc);
 unit print_step(unit);
 
+bool get_config_print_debug(unit);
 bool get_config_print_instr(unit);
 bool get_config_print_clint(unit);
 bool get_config_print_exception(unit);

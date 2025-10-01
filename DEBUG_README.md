@@ -412,6 +412,106 @@ There are a few interesting edge cases, for example, what happens if a quick acc
 
 The model handles this the following way: we execute the program buffer and resume the hart, but immediately re-enter debug mode and halt execution again, because single-step mode is active.
 
+## Access Memory
+
+Telnet provides multiple commands to read from and write to the memory.
+
+```bash
+  riscv.cpu mdb address [count]
+  riscv.cpu mdd address [count]
+  riscv.cpu mdh address [count]
+  riscv.cpu mdw address [count]
+  riscv.cpu mdd address [count]
+  riscv.cpu mwb address data [count]
+  riscv.cpu mwd address data [count]
+  riscv.cpu mwh address data [count]
+  riscv.cpu mww address data [count]
+  riscv.cpu mwd address data [count]
+```
+
+By default OpenOCD will use the program buffer to load into and read from the memory. This can be changed with the following command:
+
+```bash
+> riscv.cpu riscv set_mem_access abstract
+```
+
+Now memory operations are performed using the abstract command 'Access Memory'.
+
+There are in total three options:
+
+```bash
+> riscv.cpu riscv set_mem_access abstra
+Unknown argument 'abstra'. Must be one of: 'progbuf', 'sysbus' or 'abstract'.
+    riscv.cpu riscv set_mem_access method1 [method2] [method3]
+```
+
+Additionally we can set whether we wanna perform a virtual or physical memory access.
+
+```bash
+riscv.cpu riscv set_enable_virtual on
+```
+
+NOTE: This command does not work for some reason, all memory accesses are still performed with the physical bit (aamirtual) set. I might have misunderstand the usage for this command
+
+There are four ways to access memory using the Access Memory command:
+
+```bash
+# Physical Memory READ
+# Execute: cmdtype=2, aamvirtual=0, aamsize=3, write=0
+riscv.cpu riscv dmi_write 0x17 0x02300000
+```
+
+```bash
+# Physical Memory WRITE
+# Execute: cmdtype=2, aamvirtual=0, aamsize=3, write=1
+riscv.cpu riscv dmi_write 0x17 0x02310000
+```
+
+```bash
+# Virtual Memory READ
+# Execute: cmdtype=2, aamvirtual=1, aamsize=3, write=0
+riscv.cpu riscv dmi_write 0x17 0x02B00000
+```
+
+```bash
+# Virtual Memory WRITE
+# Execute: cmdtype=2, aamvirtual=1, aamsize=3, write=1
+riscv.cpu riscv dmi_write 0x17 0x02B10000
+```
+
+The following demonstrates a 64-bit memory read using the program buffer:
+
+```bash
+riscv.cpu mdd 0x80002150
+```
+
+which will lead to:
+
+```bash
+Hart received request from debug module: ExecuteProgramBuffer (resume=false)
+Start Abstract Command
+mem[X,0x0000000000002000] -> 0x100F
+mem[X,0x0000000000002002] -> 0x0000
+[15077116] [M]: 0x0000000000002000 (0x0000100F) fence.i
+mem[X,0x0000000000002004] -> 0x000F
+mem[X,0x0000000000002006] -> 0x0000
+[15077117] [M]: 0x0000000000002004 (0x0000000F) fence 0, 0
+mem[X,0x0000000000002008] -> 0x0073
+mem[X,0x000000000000200A] -> 0x0010
+[15077118] [M]: 0x0000000000002008 (0x00100073) ebreak
+End Abstract Command
+Hart received request from debug module: ExecuteProgramBuffer (resume=false)
+Start Abstract Command
+mem[X,0x0000000000002000] -> 0x3403
+mem[X,0x0000000000002002] -> 0x0004
+[15077145] [M]: 0x0000000000002000 (0x00043403) ld x8, 0x0(x8)
+mem[R,0x0000000080002150] -> 0x000000003F8CCCCD
+mem[X,0x0000000000002004] -> 0x0073
+mem[X,0x0000000000002006] -> 0x0010
+[15077146] [M]: 0x0000000000002004 (0x00100073) ebreak
+End Abstract Command
+```
+
 # TODO's
 
 - Add `progbuf0` - `progbuf15` to device tree as `/reserved-memory` (assuming we keep the current approach)

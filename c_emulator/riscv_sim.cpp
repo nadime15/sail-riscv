@@ -69,6 +69,7 @@ uint64_t mem_sig_end = 0;
 const int DEFAULT_SIGNATURE_GRANULARITY = 4;
 int signature_granularity = DEFAULT_SIGNATURE_GRANULARITY;
 
+bool config_print_debug = false;
 bool config_print_instr = false;
 bool config_print_reg = false;
 bool config_print_mem_access = false;
@@ -178,6 +179,8 @@ static void setup_options(CLI::App &app)
       ->option_text("<file>");
 #endif
 
+  app.add_flag("--trace-debug", config_print_debug,
+               "Enable trace output for debug module events");
   app.add_flag("--trace-instr", config_print_instr,
                "Enable trace output for instruction execution");
   app.add_flag("--trace-reg", config_print_reg,
@@ -215,6 +218,7 @@ static void setup_options(CLI::App &app)
   app.add_flag_callback(
       "--trace-all",
       [] {
+        config_print_debug = true;
         config_print_instr = true;
         config_print_reg = true;
         config_print_mem_access = true;

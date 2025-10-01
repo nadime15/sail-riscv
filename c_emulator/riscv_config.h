@@ -1,6 +1,7 @@
 #pragma once
 #include <stdbool.h>
 
+extern bool config_print_debug;
 extern bool config_print_instr;
 extern bool config_print_step;
 extern bool config_print_reg;
