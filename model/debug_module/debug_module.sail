@@ -114,7 +114,7 @@ function clause is_DM_reg_defined (0x0f) = unsigned(abstractcs[datacount]) > 11
 function clause write_DM_reg(0x04, value) = { data0 = legalize_data(data0, value); }
 function clause write_DM_reg(0x05, value) = { data1 = legalize_data(data1, value); }
 function clause write_DM_reg(0x06, value) = { data2 = legalize_data(data2, value); }
-function clause write_DM_reg(0x07, value) = { data4 = legalize_data(data3, value); }
+function clause write_DM_reg(0x07, value) = { data3 = legalize_data(data3, value); }
 function clause write_DM_reg(0x08, value) = { data4 = legalize_data(data4, value); }
 function clause write_DM_reg(0x09, value) = { data5 = legalize_data(data5, value); }
 function clause write_DM_reg(0x0a, value) = { data6 = legalize_data(data6, value); }
@@ -557,8 +557,9 @@ function execute_abstract_command(command : bits(32)) -> AbstractCommandError = 
         let transfer         = command[17 .. 17];
         let write            = command[16 .. 16];
         let regno            = command[15 .. 0];
+
         var error = NONE;
-        // NOTE: aarpostincrement
+        // NOTE: aarpostincrement not supported yet
         if reserved == 0b1 | aarpostincrement == 0b1 then {
           error = NOT_SUPPORTED;
         } else {
@@ -598,7 +599,35 @@ function execute_abstract_command(command : bits(32)) -> AbstractCommandError = 
           NONE
         }
       },
-      ACCESS_MEMORY => NOT_SUPPORTED,
+      ACCESS_MEMORY => {
+        let aamvirtual       = command[23 .. 23];
+        let aamsize          = command[22 .. 20];
+        let aampostincrement = command[19 .. 19];
+        let write            = command[16 .. 16];
+        let target_specific  = command[15 .. 14];
+        if aampostincrement == 0b1 then {
+          NOT_SUPPORTED
+        }
+        // Check if any reserved bits are set in command[13:0]
+        else if command[18 .. 17] != zeros() | command[13 .. 0] != zeros() | unsigned(aamsize) > 4 then {
+          // NOTE: We allow 128-bit accesses even on 32-bit or 64-bit XLEN systems.
+          // Should this be restricted to match the native XLEN width instead?
+          NOT_SUPPORTED
+        } else {
+          let addr : bits(128) = match unsigned(aamsize) {
+            0 => zeros() @ data1[7 .. 0],
+            1 => zeros() @ data1[15 .. 0],
+            2 => zeros() @ data1,
+            3 => zeros() @ data3 @ data2,
+            4 => data7 @ data6 @ data5 @ data4,
+            _ => zeros(),
+          };
+          let aamsize = unsigned(aamsize);
+          assert(0 <= aamsize & aamsize <= 4);
+          send_debug_request(MemoryAccess(bits_to_bool(aamvirtual), bits_to_bool(write), aamsize, addr));
+          NONE
+        };
+      }
     };
   status
 }

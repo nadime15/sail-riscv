@@ -9,6 +9,7 @@
 // we can do something fancier.
 extern "C" void model_test();
 
+bool config_print_debug = false;
 bool config_print_instr = false;
 bool config_print_step = false;
 bool config_print_reg = false;
