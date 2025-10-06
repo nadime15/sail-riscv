@@ -61,7 +61,7 @@ std::optional<uint64_t> htif_tohost_address;
 rvfi_callbacks rvfi_cbs;
 
 int rbb_port = 0;
-std::optional<std::shared_ptr<remote_bitbang_t>> remote_bitbang;
+std::optional<std::unique_ptr<remote_bitbang_t>> remote_bitbang;
 
 std::string sig_file;
 uint64_t mem_sig_start = 0;
@@ -458,23 +458,6 @@ void run_sail(void)
       }
     }
     { /* run a Sail step */
-      if (remote_bitbang) {
-        // If enabled, advances the bit banging protocol and sends
-        // data to the debugger (over OpenOCD) or reads from it
-        int max_ticks = 100;
-        int ticks = 0;
-        while (ticks < max_ticks) {
-          // By tracking whether a request was sent from OpenOCD, we can avoid
-          // timing issues (request timing out due no responses) and no longer
-          // need to tweak 'max_ticks'. As soon as a new request is detected,
-          // we immediately exit the loop to enter try_step().
-          if (zdebug_module_active_request) {
-            break;
-          }
-          remote_bitbang.value()->tick();
-          ticks++;
-        }
-      }
       sail_int sail_step;
       CREATE(sail_int)(&sail_step);
       CONVERT_OF(sail_int, mach_int)(&sail_step, step_no);
@@ -529,13 +512,6 @@ void run_sail(void)
       insn_cnt = 0;
       ztick_clock(UNIT);
     }
-  }
-  // TODO: Ports are only closed on successful simulation.
-  // We should ensure ports (and RVFI) are always closed, regardless of outcome.
-  // Consider adding an exit() (exit_sail()) wrapper to handle cleanup
-  // automatically.
-  if (remote_bitbang) {
-    remote_bitbang.value()->close_port();
   }
 
   // This is reached if there is a Sail exception, HTIF has indicated
@@ -730,15 +706,18 @@ int inner_main(int argc, char **argv)
     exit(EXIT_FAILURE);
   }
 
-  do {
-    run_sail();
-    // `run_sail` only returns in the case of rvfi.
+  if (remote_bitbang) {
+    remote_bitbang.value()->run(insn_limit);
+  } else {
+    do {
+      run_sail();
+      // `run_sail` only returns in the case of rvfi.
     if (rvfi) {
-      /* Reset for next test */
-      reinit_sail(entry, config_file.c_str());
-    }
-  } while (rvfi);
-
+        /* Reset for next test */
+        reinit_sail(entry, config_file.c_str());
+      }
+    } while (rvfi);
+  }
   model_fini();
   flush_logs();
   close_logs();

@@ -45,8 +45,7 @@ public:
   remote_bitbang_t(const remote_bitbang_t &) = delete;
   remote_bitbang_t &operator=(const remote_bitbang_t &) = delete;
 
-  void tick();
-  void close_port();
+  int run(uint64_t insn_limit);
 
 private:
   uint16_t port = 0;
@@ -68,4 +67,7 @@ private:
 
   // Execute any commands the client has for us.
   void execute_commands();
+
+  void tick();
+  void close_port();
 };
