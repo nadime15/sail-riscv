@@ -18,3 +18,13 @@ function determine_access_type(write : bits(1), transfer : bits(1)) -> access_ty
     (_,   0b0) => NO_TRANSFER
   }
 }
+
+function is_valid_aamsize(aamsize : bits(3)) -> bool = {
+  let size = unsigned(aamsize);
+  if size > 4 then false
+  else match dxlen {
+    32 => size <= 2,
+    64 => size <= 3,
+    _ => false,
+  }
+}

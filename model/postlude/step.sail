@@ -204,21 +204,7 @@ function update_debug_module_status(request: DebugRequest, step : bool) -> unit 
                                                    running   = (to_reset & not(halt_on_reset)) | resume & not(step),
                                                    havereset = to_reset,
                                                  };
-
   send_hart_status(status);
-}
-
-function handle_debug_module_halt_on_reset_request(request : DebugRequest) -> unit = {
-  reset();
-  update_debug_module_status(request, false);
-  enter_debug_mode(DBGEntry_ResetHaltReq, zeros(), get_arch_pc());
-}
-
-function handle_debug_module_reset_request(request : DebugRequest) -> unit = {
-  // Call reset() before enter_debug_mode(). If the hart is already halted,
-  // reset() ensures debug_mode_active is cleared first.
-  reset();
-  update_debug_module_status(request, false);
 }
 
 function handle_debug_module_resume_request(request : DebugRequest) -> unit = {
@@ -296,7 +282,7 @@ function handle_vmem_read(vaddr, width) = {
   }
 }
 
-function handle_debug_module_memory_access(virtual : bool, write : bool, width : aamsize, addr: bits(128)) -> unit = {
+function handle_debug_module_memory_access(virtual : bool, write : bool, width : aamsize, addr: xlenbits) -> unit = {
   start_debug_abstract_command();
   debug_physical_access = not(virtual);
   let vaddr : virtaddr = Virtaddr(addr[xlen - 1..0]);
@@ -321,18 +307,30 @@ function handle_debug_module_memory_access(virtual : bool, write : bool, width :
   end_debug_abstract_command();
 }
 
+function handle_debug_module_reset_request(request : DebugRequest) -> unit = {
+  reset();
+  update_debug_module_status(request, false);
+  match request {
+    Reset(halt_on_reset) => if halt_on_reset then enter_debug_mode(DBGEntry_ResetHaltReq, zeros(), get_arch_pc()),
+    _ => (),
+  };
+}
+
+function handle_debug_module_request_quick_access(request : DebugRequest) -> unit = {
+  handle_debug_module_halt_request(Halt());
+  print_endline("Execute ProgramBuffer");
+  handle_debug_module_execute_program_buffer(ExecuteProgramBuffer(true));
+}
+
 function handle_debug_module_request() -> option(DebugRequest) = {
   if debug_module_active_request then {
     if get_config_print_debug()
     then print_log("Hart received request from debug module: " ^ debug_request_to_string(debug_module_request));
     match debug_module_request {
-      Halt()               => handle_debug_module_halt_request(debug_module_request),
-      Resume()             => handle_debug_module_resume_request(debug_module_request),
-      Reset(halt_on_reset) => {
-        if halt_on_reset
-        then handle_debug_module_halt_on_reset_request(debug_module_request)
-        else handle_debug_module_reset_request(debug_module_request);
-      },
+      Halt()                  => handle_debug_module_halt_request(debug_module_request),
+      Resume()                => handle_debug_module_resume_request(debug_module_request),
+      Reset(_)                => handle_debug_module_reset_request(debug_module_request),
+      QuickAccess()           => handle_debug_module_request_quick_access(debug_module_request),
       ExecuteProgramBuffer(_) => handle_debug_module_execute_program_buffer(debug_module_request),
       MemoryAccess(virtual, write, size, addr) => handle_debug_module_memory_access(virtual, write, size, addr),
     };
@@ -341,11 +339,6 @@ function handle_debug_module_request() -> option(DebugRequest) = {
   } else {
     return None()
   }
-  // TODO: Consider adding a function to fetch debug_module_request / debug_module_active_request
-  // instead of accessing the global variables directly. Not fully sure if this is better.
-  //debug_module_request = DR_None;
-  //debug_module_active_request = false;
-  //request
 }
 
 function handle_debug_single_step() -> unit = {
