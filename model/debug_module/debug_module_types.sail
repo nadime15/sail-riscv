@@ -6,19 +6,31 @@
 /*  SPDX-License-Identifier: BSD-2-Clause                                                */
 /*=======================================================================================*/
 
+// Debug module uses same XLEN as the hart
+type dxlen : Int = xlen
+
+type log2_dxlen  : Int = if dxlen == 32 then 5 else 6
+type dxlen_bytes : Int = if dxlen == 32 then 5 else 6
+
+let log2_dxlen = sizeof(log2_dxlen)
+let dxlen_bytes = sizeof(dxlen_bytes)
+let dxlen = sizeof(dxlen)
+type dxlenbits = bits(dxlen)
+
 type dmreg = bits(8)
 
 // State of the Hart from the Debug Module's point of view
 enum DebugHartState = {NON_EXISTENT, UNAVAILABLE, RUNNING, HALTED}
 
-type aamsize = {0, 1, 2, 3, 4}
+type aamsize = {0, 1, 2, 3}
 
 union DebugRequest = {
   Resume : unit,
   Halt   : unit,
   Reset  : bool,               // Halt on reset
   ExecuteProgramBuffer : bool, // Resume after
-  MemoryAccess : (bool, bool, aamsize, bits(128))  // Virtual (true) or Physical (false) and Write (true) or read (false), Size. Data
+  QuickAccess : unit,
+  MemoryAccess : (bool, bool, aamsize, xlenbits)  // Virtual (true) or Physical (false) and Write (true) or read (false), Size. Data
 }
 
 // TODO Improve formatting
@@ -29,6 +41,7 @@ function debug_request_to_string(request : DebugRequest) -> string = {
     Halt()                       => "Halt()",
     Reset(halt_on_reset)         => "Reset(haltonreset=" ^ (if halt_on_reset then "true" else "false") ^ ")",
     ExecuteProgramBuffer(resume) => "ExecuteProgramBuffer(resume=" ^ (if resume then "true" else "false") ^ ")",
+    QuickAccess()                => "QuickAccess()",
     MemoryAccess(virtual, write, width, addr) => "MemoryAccess(virtual=" ^ (if virtual then "true" else "false") ^
                                               ", write=" ^ (if write then "true" else "false") ^
                                               ", width=" ^ dec_str(width) ^

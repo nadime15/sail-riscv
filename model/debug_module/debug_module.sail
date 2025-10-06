@@ -362,7 +362,9 @@ function clause read_DM_reg(0x10) = dmcontrol.bits
 function send_hart_status(status : debug_module_hart_status) -> unit = {
   set_running(status.running);
   set_halted(status.halted);
-  set_havereset(status.havereset);
+  // Only set, never clear havereset
+  if status.havereset then
+    set_havereset(true);
 
   assert((halted & not(running)) | (not(halted) & running), "Hart cannot be both halted and running at the same time");
 }
@@ -446,53 +448,112 @@ bitfield Command : bits(32) = {
   control: 23 .. 0
 }
 
-function write_data_regs(value: bits(128), aarsize: range(2, 4)) -> unit = {
-   match aarsize {
-    2 => data0 = value[31..0],
-    3 => { data0 = value[31..0];  data1 = value[63..32]; },
-    4 => { data0 = value[31..0];  data1 = value[63..32];
-           data2 = value[95..64]; data3 = value[127..96]; },
+
+val read_arg : forall 'n, 'n in {32, 64, 128}.
+  (range(0, 2), int('n)) -> bits('n)
+
+function read_arg(arg_num, argument_width) = {
+  match (arg_num, argument_width) {
+    // arg0
+    (0, 32)  => data0,
+    (0, 64)  => data1 @ data0,
+    (0, 128) => data3 @ data2 @ data1 @ data0,
+
+    // arg1
+    (1, 32)  => data1,
+    (1, 64)  => data3 @ data2,
+    (1, 128) => data7 @ data6 @ data5 @ data4,
+
+    // arg2
+    (2, 32)  => data2,
+    (2, 64)  => data5 @ data4,
+    (2, 128) => data11 @ data10 @ data9 @ data8,
   }
 }
 
-function read_data_regs(aarsize: range(2, 4)) -> bits(128) = {
-  match aarsize {
-    2 => zeros() @ data0,
-    3 => zeros() @ data1 @ data0,
-    4 => data3 @ data2 @ data1 @ data0,
+val write_arg : forall 'n, 'n in {32, 64, 128}.
+  (range(0, 2), int('n), bits('n)) -> unit
+
+function write_arg(arg_num, argument_width, value) = {
+  match (arg_num, argument_width) {
+    // arg0
+    (0, 32)  => {
+      data0 = value;
+    },
+    (0, 64)  => {
+      data0 = value[31..0];
+      data1 = value[63..32];
+    },
+    (0, 128) => {
+      data0 = value[31..0];
+      data1 = value[63..32];
+      data2 = value[95..64];
+      data3 = value[127..96];
+    },
+
+    // arg1
+    (1, 32)  => {
+      data1 = value;
+    },
+    (1, 64)  => {
+      data2 = value[31..0];
+      data3 = value[63..32];
+    },
+    (1, 128) => {
+      data4 = value[31..0];
+      data5 = value[63..32];
+      data6 = value[95..64];
+      data7 = value[127..96];
+    },
+
+    // arg2
+    (2, 32)  => {
+      data2 = value;
+    },
+    (2, 64)  => {
+      data4 = value[31..0];
+      data5 = value[63..32];
+    },
+    (2, 128) => {
+      data8  = value[31..0];
+      data9  = value[63..32];
+      data10 = value[95..64];
+      data11 = value[127..96];
+    },
   }
 }
 
-function write_gpr(regidx: regidx, aarsize: range(2, 4)) -> AbstractCommandError = {
-  let value = read_data_regs(aarsize);
+function write_gpr(regidx: regidx, aarsize: {2, 3}) -> AbstractCommandError = {
   match (aarsize, xlen) {
-    (2, 32) => { X(regidx) = value[31..0]; NONE },
-    (2, 64) => { X(regidx) = zeros() @ value[31..0]; NONE },
-    (3, 64) => { X(regidx) = value[63..0]; NONE },
+    (2, 32) => { X(regidx) = read_arg(0, 32); NONE },
+    (2, 64) => { X(regidx) = zeros() @ read_arg(0, 32); NONE },
+    (3, 64) => { X(regidx) = read_arg(0, 64); NONE },
     (_, _)  => NOT_SUPPORTED,
   }
 }
 
-function write_fpr(fregidx: fregidx, aarsize: range(2, 4)) -> AbstractCommandError = {
-  let value = read_data_regs(aarsize);
+function write_fpr(fregidx: fregidx, aarsize: {2, 3}) -> AbstractCommandError = {
   match (aarsize, flen) {
-    (2, 32) => { F(fregidx) = value[31..0]; NONE },
-    (2, 64) => { F(fregidx) = zeros() @ value[31..0]; NONE },
-    (3, 64) => { F(fregidx) = value[63..0]; NONE },
+    (2, 32) => { F(fregidx) = read_arg(0, 32); NONE },
+    (2, 64) => { F(fregidx) = zeros() @ read_arg(0, 32); NONE },
+    (3, 64) => { F(fregidx) = read_arg(0, 64); NONE },
     (_, _)  => NOT_SUPPORTED,
   }
 }
 
 function execute_access_register_command(aarsize : bits(3), transfer : bits(1), write : bits(1), regno : bits (16)) -> AbstractCommandError = {
+  let regidx  = encdec_reg(regno[4 .. 0]);
+  let fregidx = encdec_freg(regno[4 .. 0]);
+
   let access = determine_access_type(write, transfer);
   if access == NO_TRANSFER then return NONE;
 
   let addr = unsigned(regno);
   let aarsize = unsigned(aarsize);
 
-  if not(1 < aarsize & aarsize < 5) then return NOT_SUPPORTED;
+  if not(1 < aarsize & aarsize < 4) then return NOT_SUPPORTED;
 
-  assert(1 < aarsize & aarsize < 5);
+  assert(1 < aarsize & aarsize < 4);
 
   // NOTE: In theory, we should check whether a register access exceeds the specified aarize value.
   // If it does, the access must fail. The problem is that all CSRs return xlenbits and are
@@ -500,34 +561,28 @@ function execute_access_register_command(aarsize : bits(3), transfer : bits(1), 
   // additional metadata (e.g., a list tracking register sizes). For now, we allow access to CSRs
   // smaller than aarize, even though this does not fully comply with the spec.
   match addr {
-    addr if addr <= unsigned(0x0fff) => {
-      // TODO: Ensure CSR access is performed in M-Mode.
-      if not(is_CSR_accessible(regno[11 .. 0], Machine, true)) then return EXCEPTION;
+    // TODO: Ensure CSR access is performed in M-Mode. (Entering Debug Mode can help here because this will change the privilege mode to M)
+    // but this mean we won't support access when the halt is running
+    addr if addr <= unsigned(0x0fff) & is_CSR_accessible(regno[11 .. 0], Machine, true) => {
       match access {
-        READ => write_data_regs(zeros() @ read_CSR(regno[11 .. 0]), aarsize),
+        READ  => write_arg(0, dxlen, read_CSR(regno[11 .. 0])),
         WRITE => {
-          let value = read_data_regs(aarsize);
-          match write_CSR(regno[11 .. 0], value[xlen - 1 ..  0]) {
+          match write_CSR(regno[11 .. 0], read_arg(0, dxlen)[dxlen - 1 ..  0]) {
             Ok (_) => (),
             Err(_) => return EXCEPTION,
-          }
+          };
         },
-      }
-    },
-    addr if addr <= unsigned(0x101f) => {
-      let regidx = encdec_reg(regno[4 .. 0]);
-      if base_E_enabled & unsigned(regno[4 .. 0]) > 15 then return EXCEPTION;
-      match access {
-        // TODO: Get rid of the zeros()
-        READ  => write_data_regs(zeros() @ X(regidx), aarsize),
-        WRITE => {let status = write_gpr(regidx, aarsize); return status },
       };
     },
-    addr if addr <= unsigned(0x103f) => {
-      if mstatus[FS] == 0b00 then return EXCEPTION;
-      let fregidx = encdec_freg(regno[4 .. 0]);
+    addr if addr <= unsigned(0x101f) & not(base_E_enabled & unsigned(regno[4 .. 0]) > 15) => {
       match access {
-        READ  => write_data_regs(zeros () @ F(fregidx), aarsize),
+        READ  => write_arg(0, dxlen, X(regidx)),
+        WRITE => { let status = write_gpr(regidx, aarsize); return status },
+      };
+    },
+    addr if addr <= unsigned(0x103f) & mstatus[FS] != 0b00 => {
+      match access {
+        READ  => write_arg(0, flen, F(fregidx)),
         WRITE => { let status = write_fpr(fregidx, aarsize); return status },
       };
     },
@@ -540,6 +595,7 @@ function execute_abstract_command(command : bits(32)) -> AbstractCommandError = 
   let cmdtype = command[31 .. 24];
   let hart_exists = dmstatus[allnonexistent] == 0b0;
   let hart_available = dmstatus[allunavail] == 0b0;
+  let hart_halted    = dmstatus[allhalted] == 0b1;
   let abstract_command_busy = abstractcs[busy] == 0b1;
 
   let status =
@@ -547,7 +603,14 @@ function execute_abstract_command(command : bits(32)) -> AbstractCommandError = 
       abstractcs[busy] = 0b0;
       HALT_RESUME
     }
-    else if abstract_command_busy then {if abstractcs[cmderr] == abstract_command_error(NONE) then BUSY else NONE}
+    // The line below is probably wrong...
+    // "1 (busy): An abstract command was executing while
+    // command, abstractcs, or abstractauto was written, or when
+    // one of the data or progbuf registers was read or written.
+    // This status is only written if cmderr contains 0."
+    else if abstract_command_busy then {if abstractcs[cmderr] == abstract_command_error(NONE) then BUSY else abstract_command_error(abstractcs[cmderr])}
+    // TODO: handle cases where cmdtype > 2, currently this results in a bug
+    // Pattern match failure in abstract_command_type_forwards
     else match abstract_command_type(cmdtype) {
       ACCESS_REGISTER => {
         let aarsize          = command[22 .. 20];
@@ -566,13 +629,16 @@ function execute_abstract_command(command : bits(32)) -> AbstractCommandError = 
           abstractcs[busy] = 0b1;
           error = execute_access_register_command(aarsize, transfer, write, regno);
 
-          if postexec == 0b1 then {
+          if error != NONE then {
+            abstractcs[busy] = 0b0;
+          }
+          else if postexec == 0b1 then {
             if not(config platform.debug_module.program_buffer.supported : bool) then {
               abstractcs[busy] = 0b0;
               error = NOT_SUPPORTED;
             } else {
               // Hart must be halted to execute program buffer (implementation dependent)
-              if dmstatus[allhalted] == 0b0 then {
+              if not(hart_halted) then {
                 abstractcs[busy] = 0b0;
                 error = HALT_RESUME;
               } else {
@@ -584,18 +650,21 @@ function execute_abstract_command(command : bits(32)) -> AbstractCommandError = 
             abstractcs[busy] = 0b0;
           }
         };
+
+        print_log("Hart received request from debug module: AccessRegister(addr=" ^ bits_str(regno) ^ ",write=" ^ (if write == 0b1 then "write" else "read") ^ ")");
         error
       },
       QUICK_ACCESS  => {
         // Check if any reserved bits are set in command[23:0]
         if command[23 .. 0] != zeros() then {
           NOT_SUPPORTED
-        } else if dmstatus[allhalted] != 0b1 then {
-          // All harts must be halted before quick access
+        } else if hart_halted then {
+          // Hart must be running
           HALT_RESUME
         } else {
+          abstractcs[busy] = 0b1;
           // Execute program buffer and return success
-          send_debug_request(ExecuteProgramBuffer(true));
+          send_debug_request(QuickAccess());
           NONE
         }
       },
@@ -605,25 +674,28 @@ function execute_abstract_command(command : bits(32)) -> AbstractCommandError = 
         let aampostincrement = command[19 .. 19];
         let write            = command[16 .. 16];
         let target_specific  = command[15 .. 14];
+
+        // Early returns for unsupported cases
         if aampostincrement == 0b1 then {
           NOT_SUPPORTED
         }
         // Check if any reserved bits are set in command[13:0]
-        else if command[18 .. 17] != zeros() | command[13 .. 0] != zeros() | unsigned(aamsize) > 4 then {
-          // NOTE: We allow 128-bit accesses even on 32-bit or 64-bit XLEN systems.
-          // Should this be restricted to match the native XLEN width instead?
+        else if command[18 .. 17] != zeros() | command[13 .. 0] != zeros() | not(is_valid_aamsize(aamsize)) then {
           NOT_SUPPORTED
         } else {
-          let addr : bits(128) = match unsigned(aamsize) {
-            0 => zeros() @ data1[7 .. 0],
-            1 => zeros() @ data1[15 .. 0],
-            2 => zeros() @ data1,
-            3 => zeros() @ data3 @ data2,
-            4 => data7 @ data6 @ data5 @ data4,
-            _ => zeros(),
-          };
+          abstractcs[busy] = 0b1;
           let aamsize = unsigned(aamsize);
-          assert(0 <= aamsize & aamsize <= 4);
+          assert(0 <= aamsize & aamsize <= 3);
+
+          // TODO: I want something like the line below but the type checker won't allow me
+          //let addr : xlenbits = zero_extend(read_arg(1, dxlen))[aamsize * 8 - 1 .. 0]);
+          let addr : xlenbits = match aamsize {
+            0 => zero_extend(read_arg(1, dxlen)[7  .. 0]),
+            1 => zero_extend(read_arg(1, dxlen)[15 .. 0]),
+            2 => zero_extend(read_arg(1, dxlen)),
+            3 => zero_extend(read_arg(1, dxlen)),
+          };
+
           send_debug_request(MemoryAccess(bits_to_bool(aamvirtual), bits_to_bool(write), aamsize, addr));
           NONE
         };
@@ -652,10 +724,15 @@ bitfield Abstractauto : bits(32) = {
 function legalize_abstractauto(d : Abstractauto, x : bits(32)) -> Abstractauto = {
   let x = Mk_Abstractauto(x);
   // TODO
-  [d with
-    autoexecdata = zeros(),
-    autoexecdata = zeros(),
-  ]
+  if abstractcs[busy] == 0b1 then{
+    abstractcs[cmderr] = abstract_command_error(BUSY);
+    d
+  } else {
+    [d with
+      autoexecdata = zeros(),
+      autoexecdata = zeros(),
+     ]
+  }
 }
 
 register abstractauto: Abstractauto = legalize_abstractauto(Mk_Abstractauto(zeros()), zeros())
