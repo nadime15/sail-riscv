@@ -47,6 +47,8 @@
 
 #include "jtag_dtm.h"
 #include "remote_bitbang.h"
+#include "riscv_sail.h"
+#include "config_utils.h"
 
 remote_bitbang_t::remote_bitbang_t(uint16_t port, jtag_dtm_t *tap,
                                    int socket_fd)
@@ -63,14 +65,6 @@ remote_bitbang_t::make(uint16_t port, uint64_t required_rti_cycles)
   int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
   if (socket_fd == -1) {
     throw std::runtime_error("remote_bitbang failed to create socket: "
-                             + std::string(strerror(errno)) + " ("
-                             + std::to_string(errno) + ")");
-  }
-
-  // Set non-blocking
-  if (fcntl(socket_fd, F_SETFL, O_NONBLOCK) == -1) {
-    close(socket_fd);
-    throw std::runtime_error("remote_bitbang failed to set non-blocking: "
                              + std::string(strerror(errno)) + " ("
                              + std::to_string(errno) + ")");
   }
@@ -274,4 +268,88 @@ void remote_bitbang_t::close_port()
 
   printf("Remote bitbang port closed.\n");
   fflush(stdout);
+}
+
+// This is called with an initialized Sail model for a reset hart with
+// PC pointing at the ELF entry.
+int remote_bitbang_t::run(uint64_t insn_limit)
+{
+  // Wait for OpenOCD to connect
+  accept_connection();
+  fprintf(stdout, "Accepted debug connection.\n");
+
+  struct zstep_result step_result = {false, false, false, false};
+  bool exit_wait = true;
+  bool had_sail_exception = false;
+
+  // initialize the step number
+  mach_int step_no = 0;
+  uint64_t insn_cnt = 0;
+  uint64_t total_insns = 0;
+
+  uint64_t insns_per_tick
+      = get_config_uint64({"platform", "instructions_per_tick"});
+
+  while (!zhtif_done && (insn_limit == 0 || total_insns < insn_limit)) {
+    // Advances the bit banging protocol and sends
+    // data to the debugger (over OpenOCD) or reads from it
+    {
+      int max_ticks = 100;
+      int ticks = 0;
+      while (ticks < max_ticks) {
+        // By tracking whether a request was sent from OpenOCD, we can avoid
+        // timing issues (request timing out due no responses) and no longer
+        // need to tweak 'max_ticks'. As soon as a new request is detected,
+        // we immediately exit the loop to enter try_step().
+        if (zdebug_module_active_request) {
+          break;
+        }
+        tick();
+        ticks++;
+      }
+    }
+    // run a Sail step
+    {
+      sail_int sail_step;
+      CREATE(sail_int)(&sail_step);
+      CONVERT_OF(sail_int, mach_int)(&sail_step, step_no);
+      // TODO we might have to skip as long we are in Debug Mode?
+      step_result = ztry_step(sail_step, exit_wait);
+      KILL(sail_int)(&sail_step);
+      // Check for Sail-internal exception.
+      if (have_exception) {
+        fprintf(stderr, "Sail exception!");
+        break;
+      }
+    }
+    // TODO: better handling of entry into debug mode (step_result.zin_debug),
+    // e.g, by connecting to a debugger interface.
+    // For now, we just request an immediate resume above.
+    if (!step_result.zin_wait) {
+      // TODO: Dont increment the variables when hart halted
+      step_no++;
+      insn_cnt++;
+      total_insns++;
+    }
+
+    // Check for exit
+    if (zhtif_done) {
+      /* check exit code */
+      if (zhtif_exit_code == 0) {
+        fprintf(stdout, "SUCCESS\n");
+      } else {
+        fprintf(stdout, "FAILURE: %" PRIi64 "\n", zhtif_exit_code);
+        exit(EXIT_FAILURE);
+      }
+    }
+    // Tick clock
+    if (insn_cnt == insns_per_tick) {
+      insn_cnt = 0;
+      ztick_clock(UNIT);
+    }
+  }
+
+  // This function needs to return to inner_main, where the model will
+  // be cleaned up.
+  return had_sail_exception ? -1 : 0;
 }
