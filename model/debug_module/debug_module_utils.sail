@@ -28,3 +28,14 @@ function is_valid_aamsize(aamsize : bits(3)) -> bool = {
     _ => false,
   }
 }
+
+function aamsize_to_bytes(aamsize : bits(3)) -> word_width = {
+  let size = unsigned(aamsize);
+  assert(size < 4, "aamsize value exceeds maximum");
+  match size {
+    0 => 1,
+    1 => 2,
+    2 => 4,
+    3 => 8,
+  }
+}

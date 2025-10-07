@@ -113,7 +113,7 @@ function is_load_store forall ('a : Type) . (ac : MemoryAccessType('a)) -> bool 
     InstructionFetch(_) => false,
   }
 
-type is_mem_width('w) = 'w in {1, 2, 4, 8, 16}
+type is_mem_width('w) = 'w in {1, 2, 4, 8}
 
 // architectural interrupt definitions
 

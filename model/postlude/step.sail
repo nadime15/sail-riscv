@@ -260,71 +260,29 @@ function handle_debug_module_execute_program_buffer(request : DebugRequest) -> u
   start_debug_abstract_command();
 }
 
-val write_data : forall 'width, is_mem_width('width).
-  (bits(8 * 'width), int('width)) -> unit
 
-function write_data(data, width) = {
-  match width {
-    1  => data0 = zeros(24) @ data[7..0],
-    2  => data0 = zeros(16) @ data[15..0],
-    4  => data0 = data[31..0],
-    8  => { data0 = data[31..0]; data1 = data[63..32]; },
-    16 => { data0 = data[31..0]; data1 = data[63 .. 32]; data2 = data[95 .. 64]; data3 = data[127 .. 96 ]; },
-  }
-}
-
-val read_data : forall 'width, is_mem_width('width).
-  (int('width)) -> (bits(8 * 'width))
-
-function read_data(width) = match width {
-  1  => data0[7..0],
-  2  => data0[15..0],
-  4  => data0[31..0],
-  8  => data1 @ data0,
-  16 => data3 @ data2 @ data1 @ data0,
-}
-
-val handle_vmem_write : forall 'width, is_mem_width('width).
-  (virtaddr, int('width), bits(8 * 'width)) -> unit
-
-function handle_vmem_write(vaddr, width, data) = {
-  match vmem_write_addr(vaddr, width, data, Write(Data), false, false, false) {
-    Ok(_) => (),
-    Err(_) => abstractcs[cmderr] = abstract_command_error(EXCEPTION),
-  }
-}
-
-val handle_vmem_read : forall 'width, is_mem_width('width).
-  (virtaddr, int('width)) -> unit
-
-function handle_vmem_read(vaddr, width) = {
-  match vmem_read_addr(vaddr, zeros(), width, Read(Data), false, false, false) {
-    Ok(data) => write_data(data, width),
-    Err(_) => abstractcs[cmderr] = abstract_command_error(EXCEPTION),
-  }
-}
-
-function handle_debug_module_memory_access(virtual : bool, write : bool, width : aamsize, addr: xlenbits) -> unit = {
+function handle_debug_module_memory_access(virtual : bool, write : bool, width : word_width, addr: xlenbits) -> unit = {
   start_debug_abstract_command();
   debug_physical_access = not(virtual);
-  let vaddr : virtaddr = Virtaddr(addr[xlen - 1..0]);
+
+  let vaddr : virtaddr = Virtaddr(addr[dxlen - 1..0]);
+
+  // This is checked in execute_abstract_command()
+  assert(width <= dxlen_bytes);
+
   if write then {
-    match width {
-      0 => handle_vmem_write(vaddr, 1,  read_data(1)),
-      1 => handle_vmem_write(vaddr, 2,  read_data(2)),
-      2 => handle_vmem_write(vaddr, 4,  read_data(4)),
-      3 => handle_vmem_write(vaddr, 8,  read_data(8)),
-      4 => handle_vmem_write(vaddr, 16, read_data(16)),
+    let data = read_arg(0, dxlen)[width * 8 - 1 .. 0];
+    match vmem_write_addr(vaddr, width, data, Write(Data), false, false, false) {
+        Ok(_)  => (),
+        Err(_) => abstractcs[cmderr] = abstract_command_error(EXCEPTION),
     }
   } else {
-    match width {
-      0 => handle_vmem_read(vaddr, 1),
-      1 => handle_vmem_read(vaddr, 2),
-      2 => handle_vmem_read(vaddr, 4),
-      3 => handle_vmem_read(vaddr, 8),
-      4 => handle_vmem_read(vaddr, 16),
-   }
+      match vmem_read_addr(vaddr, zeros(), width, Read(Data), false, false, false) {
+          Ok(data) => write_arg(0, dxlen, zero_extend(data)),
+          Err(_)   => abstractcs[cmderr] = abstract_command_error(EXCEPTION),
+      }
   };
+
   abstractcs[busy] = 0b0;
   end_debug_abstract_command();
 }

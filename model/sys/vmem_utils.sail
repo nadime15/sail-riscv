@@ -108,7 +108,7 @@ function misaligned_order(n) = {
 
 // External API
 
-function check_misaligned(vaddr : virtaddr, width : word_width_wide) -> bool = {
+function check_misaligned(vaddr : virtaddr, width : word_width) -> bool = {
   if plat_enable_misaligned_access then {
     false
   } else {

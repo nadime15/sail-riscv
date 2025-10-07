@@ -287,17 +287,50 @@ def test_access_memory():
     print(send_cmd("riscv.cpu riscv set_mem_access abstract"))
 
     # Test 1.1
-    print(send_cmd("riscv.cpu mwd 0xF0000000 0x8"))
+    print(send_cmd("riscv.cpu mwd 0xF0000000 0x7654321076543210"))
     assert get_cmderr() == 0, "cmderr is not 0"
 
     # Test 1.2
-    print(send_cmd("riscv.cpu mdd 0xf0000000"))
     addr, value = read_mem("mdd", "0xf0000000")
     assert addr == 0xf0000000, "Unexpected memory address"
-    assert value == 0x8, "Unexpected memory address"
+    assert value == 0x7654321076543210, "Unexpected memory address"
     assert get_cmderr() == 0, "cmderr is not 0"
 
-    # Test 1.2
+    # Test 1.3
+    print(send_cmd("riscv.cpu mwb 0xf0000004 0xfed"))
+    assert get_cmderr() == 0, "cmderr is not 0"
+    addr, value = read_mem("mdb", "0xf0000004")
+    assert addr == 0xf0000004
+    assert value == 0xed
+    assert get_cmderr() == 0, "cmderr is not 0"
+
+    # Test 1.4
+    print(send_cmd("riscv.cpu mwh 0xf0000008 0xfedcba"))
+    assert get_cmderr() == 0, "cmderr is not 0"
+    addr, value = read_mem("mdh", "0xf0000008")
+    assert addr == 0xf0000008
+    assert value == 0xdcba
+    assert get_cmderr() == 0, "cmderr is not 0"
+
+    # Test 1.5
+    print(send_cmd("riscv.cpu mwh 0xf0000008 0xfedcba"))
+    assert get_cmderr() == 0, "cmderr is not 0"
+    addr, value = read_mem("mdh", "0xf0000008")
+    assert addr == 0xf0000008
+    print(value)
+    breakpoint
+    assert value == 0xdcba
+    assert get_cmderr() == 0, "cmderr is not 0"
+
+    # Test 1.5
+    print(send_cmd("riscv.cpu mww 0xf000000C 0xaaaabcde"))
+    assert get_cmderr() == 0, "cmderr is not 0"
+    addr, value = read_mem("mdw", "0xf000000C")
+    assert addr == 0xf000000c
+    assert value == 0xaaaabcde
+    assert get_cmderr() == 0, "cmderr is not 0"
+
+    # Test 1.6
     print(send_cmd("riscv.cpu riscv dmi_write 0x17 0x02000001"))
     assert get_cmderr() == 2, "cmderr is not not supported"
 

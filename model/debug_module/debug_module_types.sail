@@ -30,10 +30,10 @@ union DebugRequest = {
   Reset  : bool,               // Halt on reset
   ExecuteProgramBuffer : bool, // Resume after
   QuickAccess : unit,
-  MemoryAccess : (bool, bool, aamsize, xlenbits)  // Virtual (true) or Physical (false) and Write (true) or read (false), Size. Data
+  MemoryAccess : (bool, bool, word_width, xlenbits)  // Virtual (true) or Physical (false) and Write (true) or read (false), With. Addr
 }
 
-// TODO Improve formatting
+
 // TODO Define new type AbstractCommand for ProgramBuffer and MemoryAccess
 function debug_request_to_string(request : DebugRequest) -> string = {
   match request {

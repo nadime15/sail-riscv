@@ -603,12 +603,7 @@ function execute_abstract_command(command : bits(32)) -> AbstractCommandError = 
       abstractcs[busy] = 0b0;
       HALT_RESUME
     }
-    // The line below is probably wrong...
-    // "1 (busy): An abstract command was executing while
-    // command, abstractcs, or abstractauto was written, or when
-    // one of the data or progbuf registers was read or written.
-    // This status is only written if cmderr contains 0."
-    else if abstract_command_busy then {if abstractcs[cmderr] == abstract_command_error(NONE) then BUSY else abstract_command_error(abstractcs[cmderr])}
+    else if abstract_command_busy then { if abstractcs[cmderr] == abstract_command_error(NONE) then BUSY else abstract_command_error(abstractcs[cmderr]) }
     // TODO: handle cases where cmdtype > 2, currently this results in a bug
     // Pattern match failure in abstract_command_type_forwards
     else match abstract_command_type(cmdtype) {
@@ -622,7 +617,7 @@ function execute_abstract_command(command : bits(32)) -> AbstractCommandError = 
         let regno            = command[15 .. 0];
 
         var error = NONE;
-        // NOTE: aarpostincrement not supported yet
+        // TODO: Add support for aarpostincrement
         if reserved == 0b1 | aarpostincrement == 0b1 then {
           error = NOT_SUPPORTED;
         } else {
@@ -675,27 +670,13 @@ function execute_abstract_command(command : bits(32)) -> AbstractCommandError = 
         let write            = command[16 .. 16];
         let target_specific  = command[15 .. 14];
 
-        // Early returns for unsupported cases
-        if aampostincrement == 0b1 then {
-          NOT_SUPPORTED
-        }
-        // Check if any reserved bits are set in command[13:0]
-        else if command[18 .. 17] != zeros() | command[13 .. 0] != zeros() | not(is_valid_aamsize(aamsize)) then {
+        // TODO: Add support for aampostincrement
+        if aampostincrement == 0b1 | command[18 .. 17] != zeros() | command[13 .. 0] != zeros() | not(is_valid_aamsize(aamsize)) then {
           NOT_SUPPORTED
         } else {
           abstractcs[busy] = 0b1;
-          let aamsize = unsigned(aamsize);
-          assert(0 <= aamsize & aamsize <= 3);
-
-          // TODO: I want something like the line below but the type checker won't allow me
-          //let addr : xlenbits = zero_extend(read_arg(1, dxlen))[aamsize * 8 - 1 .. 0]);
-          let addr : xlenbits = match aamsize {
-            0 => zero_extend(read_arg(1, dxlen)[7  .. 0]),
-            1 => zero_extend(read_arg(1, dxlen)[15 .. 0]),
-            2 => zero_extend(read_arg(1, dxlen)),
-            3 => zero_extend(read_arg(1, dxlen)),
-          };
-
+          let aamsize = aamsize_to_bytes(aamsize);
+          let addr = read_arg(1, dxlen);
           send_debug_request(MemoryAccess(bits_to_bool(aamvirtual), bits_to_bool(write), aamsize, addr));
           NONE
         };
