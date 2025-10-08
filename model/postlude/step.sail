@@ -250,8 +250,6 @@ function handle_debug_module_memory_access(virtual : bool, write : bool, width :
           Err(_)   => abstractcs[cmderr] = abstract_command_error(EXCEPTION),
       }
   };
-
-  set_abstractcs_busy(false);
   end_debug_abstract_command();
 }
 
@@ -325,7 +323,6 @@ function handle_debug_module_access_register(write : bool, regno : bits(16), wid
     execute_program_buffer(false);
   } else {
     abstractcs[cmderr] = abstract_command_error(status);
-    set_abstractcs_busy(false);
     end_debug_abstract_command();
   };
 }
@@ -429,9 +426,6 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
         },
         Exit_Debug_Abstract_Command() => {
           progbuf_active = false;
-
-          // TODO: Check if I can move set_abstracts_busy into end_debug_abstract_mode
-          set_abstractcs_busy(false);
           end_debug_abstract_command();
 
           if resume_after_progbuf then {
