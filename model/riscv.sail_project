@@ -451,7 +451,7 @@ mops {
 postlude {
   after extensions, mops
 
-  requires core, riscv, exceptions, Smcntrpmf, pmp, Sdext_regs, Sdext_control, debug_module
+  requires core, riscv, exceptions, Smcntrpmf, pmp, Sdext_regs, Sdext_control, debug_module, FD_core
 
   files
     postlude/insts_end.sail,

@@ -189,7 +189,7 @@ function trap_handler(del_priv : Privilege, intr : bool, c : exc_code, pc : xlen
     //set_debug_abstract_command_error();
     if progbuf_active then {
       abstractcs[cmderr] = 0b011;
-      abstractcs[busy] = 0b0;
+      set_abstractcs_busy(false);
       end_debug_abstract_command();
       progbuf_active = false;
     };

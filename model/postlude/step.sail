@@ -209,10 +209,6 @@ function update_debug_module_status(request: DebugRequest, step : bool) -> unit 
 
 function handle_debug_module_resume_request(request : DebugRequest) -> unit = {
   if debug_mode_active then {
-    // TODO: writes to resumereq should be ignored while a abstract command is executed
-    // so we should remove the if statement down below.
-    // TODO: Lets revisit the line below
-    //if in_debug_abstract_command() then end_debug_abstract_command();
     exit_debug_mode();
     update_debug_module_status(request, false)
   };
@@ -225,19 +221,13 @@ function handle_debug_module_halt_request(request : DebugRequest) -> unit = {
   };
 }
 
-function handle_debug_module_execute_program_buffer(request : DebugRequest) -> unit = {
+function execute_program_buffer(resume : bool) -> unit = {
+  assert(debug_abstract_command_active, "Need to be in debug mode in order to execute program buffer");
   PC = trunc(plat_program_buffer_base);
   nextPC = PC;
   progbuf_active = true;
-
-  resume_after_progbuf = match request {
-    ExecuteProgramBuffer(resume) => resume,
-    _ => false,
-  };
-
-  start_debug_abstract_command();
+  resume_after_progbuf = resume;
 }
-
 
 function handle_debug_module_memory_access(virtual : bool, write : bool, width : word_width, addr: xlenbits) -> unit = {
   start_debug_abstract_command();
@@ -261,7 +251,7 @@ function handle_debug_module_memory_access(virtual : bool, write : bool, width :
       }
   };
 
-  abstractcs[busy] = 0b0;
+  set_abstractcs_busy(false);
   end_debug_abstract_command();
 }
 
@@ -275,9 +265,69 @@ function handle_debug_module_reset_request(request : DebugRequest) -> unit = {
 }
 
 function handle_debug_module_request_quick_access(request : DebugRequest) -> unit = {
+  // NOTE: The hart enters debug mode inside handle_debug_module_halt_request(Halt()).
   handle_debug_module_halt_request(Halt());
-  print_endline("Execute ProgramBuffer");
-  handle_debug_module_execute_program_buffer(ExecuteProgramBuffer(true));
+  // NOTE: We have to halt first to enter debug mode and then we can start the debug abstract command otherwise we run into an assert (we might change that)
+  start_debug_abstract_command();
+  execute_program_buffer(true);
+}
+
+function handle_debug_module_access_register(write : bool, regno : bits(16), width: range(2, 3), postexec : bool, transfer : bool) -> unit = {
+  start_debug_abstract_command();
+
+  // NOTE: In theory, we should check whether a register access exceeds the specified aarize value.
+  // If it does, the access must fail. The problem is that all CSRs return xlenbits and are
+  // zero-extended, so there is no reliable way to distinguish between 32-bit and 64-bit CSRs without
+  // additional metadata (e.g., a list tracking register sizes). For now, we allow access to CSRs
+  // smaller than aarize, even though this does not fully comply with the spec.
+  var status : AbstractCommandError = NONE;
+  if transfer then {
+    let regidx  = encdec_reg(regno[4 .. 0]);
+    let fregidx = encdec_freg(regno[4 .. 0]);
+    let addr    = unsigned(regno);
+    let aarsize = width;
+    status = match addr {
+      addr if addr <= unsigned(0x0fff) & is_CSR_accessible(regno[11 .. 0], Machine, true) => {
+          if write then {
+              match write_CSR(regno[11 .. 0], read_arg(0, dxlen)[dxlen - 1 .. 0]) {
+                  Ok(_)  => NONE,
+                  Err(_) => EXCEPTION,
+              }
+          } else {
+              write_arg(0, dxlen, read_CSR(regno[11 .. 0]));
+              NONE
+          }
+      },
+
+      addr if addr <= unsigned(0x101f) & not(base_E_enabled & unsigned(regno[4 .. 0]) > 15) => {
+          if write then {
+              write_gpr(regidx, aarsize)
+          } else {
+              write_arg(0, dxlen, X(regidx));
+              NONE
+          }
+      },
+
+      addr if addr <= unsigned(0x103f) & mstatus[FS] != 0b00 => {
+          if write then {
+              write_fpr(fregidx, aarsize)
+          } else {
+              write_arg(0, flen, F(fregidx));
+              NONE
+          }
+      },
+
+      _ => EXCEPTION
+    };
+  };
+
+  if postexec & status == NONE then {
+    execute_program_buffer(false);
+  } else {
+    abstractcs[cmderr] = abstract_command_error(status);
+    set_abstractcs_busy(false);
+    end_debug_abstract_command();
+  };
 }
 
 function handle_debug_module_request() -> option(DebugRequest) = {
@@ -288,8 +338,8 @@ function handle_debug_module_request() -> option(DebugRequest) = {
       Halt()                  => handle_debug_module_halt_request(debug_module_request),
       Resume()                => handle_debug_module_resume_request(debug_module_request),
       Reset(_)                => handle_debug_module_reset_request(debug_module_request),
+      RegisterAccess(write, regno, width, postexec, transfer) => handle_debug_module_access_register(write, regno, width, postexec, transfer),
       QuickAccess()           => handle_debug_module_request_quick_access(debug_module_request),
-      ExecuteProgramBuffer(_) => handle_debug_module_execute_program_buffer(debug_module_request),
       MemoryAccess(virtual, write, size, addr) => handle_debug_module_memory_access(virtual, write, size, addr),
     };
     debug_module_active_request = false;
@@ -379,7 +429,9 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
         },
         Exit_Debug_Abstract_Command() => {
           progbuf_active = false;
-          abstractcs[busy] = 0b0;
+
+          // TODO: Check if I can move set_abstracts_busy into end_debug_abstract_mode
+          set_abstractcs_busy(false);
           end_debug_abstract_command();
 
           if resume_after_progbuf then {

@@ -168,9 +168,9 @@ def test_halt_reset_resume():
     print(send_cmd("resume"))
     assert get_hart_state() == "running", "Hart is not running"
 
-    # NOTE: Wd dont use the `reset` command because OpenOCD uses
+    # NOTE: Dont use the `reset` command because OpenOCD uses
     # ndmreset which resets all dmstatus bits as well (implementation defined behaviour)
-    # To check whether the right status bits have been set we use hartreset and halt right when
+    # To check whether the right status bits have been set we use hartreset and halt when
     # the reset bit is deasserted
     print(send_cmd("reset"))
     print(send_cmd("riscv.cpu riscv dmi_write 0x10 0x20000001"))

@@ -10,7 +10,7 @@
 type dxlen : Int = xlen
 
 type log2_dxlen  : Int = if dxlen == 32 then 5 else 6
-type dxlen_bytes : Int = if dxlen == 32 then 5 else 6
+type dxlen_bytes : Int = if dxlen == 32 then 4 else 8
 
 let log2_dxlen = sizeof(log2_dxlen)
 let dxlen_bytes = sizeof(dxlen_bytes)
@@ -22,17 +22,14 @@ type dmreg = bits(8)
 // State of the Hart from the Debug Module's point of view
 enum DebugHartState = {NON_EXISTENT, UNAVAILABLE, RUNNING, HALTED}
 
-type aamsize = {0, 1, 2, 3}
-
 union DebugRequest = {
   Resume : unit,
   Halt   : unit,
-  Reset  : bool,               // Halt on reset
-  ExecuteProgramBuffer : bool, // Resume after
+  Reset  : bool, // Halt on reset
+  RegisterAccess : (bool, bits(16), range(2, 3), bool, bool), // Write, Regno, Width, Postexec, Transfer
   QuickAccess : unit,
-  MemoryAccess : (bool, bool, word_width, xlenbits)  // Virtual (true) or Physical (false) and Write (true) or read (false), With. Addr
+  MemoryAccess : (bool, bool, word_width, xlenbits),          // Virtual, Write, Width, Addr
 }
-
 
 // TODO Define new type AbstractCommand for ProgramBuffer and MemoryAccess
 function debug_request_to_string(request : DebugRequest) -> string = {
@@ -40,12 +37,16 @@ function debug_request_to_string(request : DebugRequest) -> string = {
     Resume()                     => "Resume()",
     Halt()                       => "Halt()",
     Reset(halt_on_reset)         => "Reset(haltonreset=" ^ (if halt_on_reset then "true" else "false") ^ ")",
-    ExecuteProgramBuffer(resume) => "ExecuteProgramBuffer(resume=" ^ (if resume then "true" else "false") ^ ")",
-    QuickAccess()                => "QuickAccess()",
+    RegisterAccess(write, regno, width, postexec, transfer) => "RegisterAccess(write=" ^ (if write then "true" else "false") ^
+                                                              ", regno=" ^ bits_str(regno) ^
+                                                              ", width=" ^ dec_str(width)  ^
+                                                              ", postexec=" ^ (if postexec then "true" else "false") ^
+                                                              ", transfer=" ^ (if transfer then "true" else "false") ^ ")",
+    QuickAccess() => "QuickAccess()",
     MemoryAccess(virtual, write, width, addr) => "MemoryAccess(virtual=" ^ (if virtual then "true" else "false") ^
                                               ", write=" ^ (if write then "true" else "false") ^
                                               ", width=" ^ dec_str(width) ^
-                                              ", addr="  ^ bits_str(addr) ^ ")"
+                                              ", addr="  ^ bits_str(addr) ^ ")",
   }
 }
 
@@ -92,13 +93,6 @@ mapping abstract_command_error_name : AbstractCommandError <-> string = {
   BUS           <-> "BUS",
   RESERVED      <-> "RESERVED",
   OTHER         <-> "OTHER",
-}
-
-// Abstract Command Access Type
-enum access_type = {
-  READ,
-  WRITE,
-  NO_TRANSFER
 }
 
 struct debug_module_hart_status = {
