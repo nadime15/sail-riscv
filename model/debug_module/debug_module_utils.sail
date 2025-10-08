@@ -11,17 +11,17 @@ function send_debug_request(request : DebugRequest) -> unit = {
   debug_module_active_request = true;
 }
 
-// TODO: Rename function
-function is_access(write : bits(1), transfer : bits(1)) -> bool = {
-  match (write, transfer) {
-    (0b0, 0b1) => true,
-    (0b1, 0b1) => true,
-    (_,   0b0) => false
-  }
+function is_unsupported_reg_access(aarsize : bits(3), addr : bits(16)) -> bool = {
+  let width = unsigned(aarsize);
+  match addr {
+    addr if 0x1000 <=_u addr & addr <=_u 0x101f => width == 3 & dxlen == 32,
+    addr if 0x1020 <=_u addr & addr <=_u 0x103f => width == 3 & flen == 32,
+    _ => false
+  };
 }
 
-function is_valid_aarsize(aamsize : bits(3)) -> bool = {
-  let size = unsigned(aamsize);
+function is_valid_aarsize(aarsize : bits(3)) -> bool = {
+  let size = unsigned(aarsize);
   if size < 2 | size > 4 then false
   else match dxlen {
     32 => size == 2,
