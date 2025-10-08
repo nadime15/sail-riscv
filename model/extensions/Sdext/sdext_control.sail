@@ -66,6 +66,7 @@ function end_debug_abstract_command() -> unit = {
   print_endline("End Abstract Command");
   assert(currentlyEnabled(Ext_Sdext), "Cannot end Debug abstract command: Sdext is not currently enabled");
   debug_abstract_command_active = false;
+  set_abstractcs_busy(false);
 }
 
 // This is called internally.

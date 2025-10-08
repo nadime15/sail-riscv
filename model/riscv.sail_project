@@ -425,7 +425,7 @@ extensions {
     }
 
     Sdext_control {
-      requires core, exceptions, Sdext_regs
+      requires core, exceptions, Sdext_regs, debug_module
       before riscv
       files
         extensions/Sdext/sdext_control.sail
