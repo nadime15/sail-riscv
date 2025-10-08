@@ -258,53 +258,108 @@ function execute_program_buffer(resume : bool) -> unit = {
 // Abstract Command Handlers
 // ----------------------------------------------------------------------------
 
+/*
 function handle_abstract_register_access(write : bool, regno : bits(16), width: range(2, 3), postexec : bool, transfer : bool) -> unit = {
   start_debug_abstract_command();
 
-  // NOTE: In theory, we should check whether a register access exceeds the specified aarize value.
+  // NOTE: In theory, we should check whether a register access exceeds the specified aarsize value.
   // If it does, the access must fail. The problem is that all CSRs return xlenbits and are
   // zero-extended, so there is no reliable way to distinguish between 32-bit and 64-bit CSRs without
   // additional metadata (e.g., a list tracking register sizes). For now, we allow access to CSRs
-  // smaller than aarize, even though this does not fully comply with the spec.
+  // smaller than aarsize, even though this does not fully comply with the spec.
   var status : AbstractCommandError = NONE;
   if transfer then {
     let regidx  = encdec_reg(regno[4 .. 0]);
     let fregidx = encdec_freg(regno[4 .. 0]);
-    let addr    = unsigned(regno);
     let aarsize = width;
-    status = match addr {
-      addr if addr <= unsigned(0x0fff) & is_CSR_accessible(regno[11 .. 0], Machine, true) => {
-          if write then {
+    status = match regno {
+      // Control status registers
+      regno if regno <=_u 0x0fff & is_CSR_accessible(regno[11 .. 0], Machine, true) => {
+          if write then
               match write_CSR(regno[11 .. 0], read_arg(0, dxlen)[dxlen - 1 .. 0]) {
-                  Ok(_)  => NONE,
-                  Err(_) => EXCEPTION,
+                  Ok(_)  => (),
+                  Err(_) => (),
               }
-          } else {
+            else
               write_arg(0, dxlen, read_CSR(regno[11 .. 0]));
-              NONE
-          }
+          NONE
       },
-
-      addr if addr <= unsigned(0x101f) & not(base_E_enabled & unsigned(regno[4 .. 0]) > 15) => {
-          if write then {
-              write_gpr(regidx, aarsize)
-          } else {
-              write_arg(0, dxlen, X(regidx));
-              NONE
-          }
+      // General purpose registers
+      regno if regno <=_u 0x101f & not(base_E_enabled & unsigned(regno[4 .. 0]) > 15) => {
+          if write then X(regidx) = if width == 2 & dxlen == 64 then zeros() @ read_arg(0, 32) else read_arg(0, dxlen)
+          else write_arg(0, dxlen, X(regidx));
+          NONE
       },
-
-      addr if addr <= unsigned(0x103f) & mstatus[FS] != 0b00 => {
-          if write then {
-              write_fpr(fregidx, aarsize)
-          } else {
-              write_arg(0, flen, F(fregidx));
-              NONE
-          }
+      // Floating point registers
+      regno if regno <=_u 0x103f & mstatus[FS] != 0b00 => {
+          if write then F(fregidx) = if width == 2 & flen == 64 then zeros() @ read_arg(0, 32) else read_arg(0, flen)
+          else write_arg(0, flen, F(fregidx));
+          NONE
       },
 
       _ => EXCEPTION
     };
+  };
+
+  if postexec & status == NONE then {
+    execute_program_buffer(false);
+  } else {
+    abstractcs[cmderr] = abstract_command_error(status);
+    end_debug_abstract_command();
+  };
+}
+
+*/
+
+function handle_abstract_register_access(write : bool, regno : bits(16), width: range(2, 3), postexec : bool, transfer : bool) -> unit = {
+  start_debug_abstract_command();
+  // NOTE: In theory, we should check whether a register access exceeds the specified aarsize value.
+  // If it does, the access must fail. The problem is that all CSRs return xlenbits and are
+  // zero-extended, so there is no reliable way to distinguish between 32-bit and 64-bit CSRs without
+  // additional metadata (e.g., a list tracking register sizes). For now, we allow access to CSRs
+  // smaller than aarsize, even though this does not fully comply with the spec.
+  let status : AbstractCommandError = if transfer then {
+    let regidx  = encdec_reg(regno[4 .. 0]);
+    let fregidx = encdec_freg(regno[4 .. 0]);
+
+    match regno {
+      // Control Status Registers (0x0000-0x0fff)
+      regno if regno <=_u 0x0fff & is_CSR_accessible(regno[11 .. 0], Machine, true) => {
+        if write then {
+          match write_CSR(regno[11 .. 0], read_arg(0, dxlen)[dxlen - 1 .. 0]) {
+            Ok(_)  => (),
+            Err(_) => (),
+          }
+        } else {
+          write_arg(0, dxlen, read_CSR(regno[11 .. 0]))
+        };
+        NONE
+      },
+
+      // General Purpose Registers (0x1000-0x101f)
+      regno if regno <=_u 0x101f & not(base_E_enabled & unsigned(regno[4 .. 0]) > 15) => {
+        let value = if width == 2 & dxlen == 64
+                    then zeros() @ read_arg(0, 32)
+                    else read_arg(0, dxlen);
+        if write then X(regidx) = value
+        else write_arg(0, dxlen, X(regidx));
+        NONE
+      },
+
+      // Floating Point Registers (0x1020-0x103f)
+      regno if regno <=_u 0x103f & mstatus[FS] != 0b00 => {
+        let value = if width == 2 & flen == 64
+                    then zeros() @ read_arg(0, 32)
+                    else read_arg(0, flen);
+        if write then F(fregidx) = value
+        else write_arg(0, flen, F(fregidx));
+        NONE
+      },
+
+      _ => EXCEPTION
+    }
+  } else {
+    NONE
   };
 
   if postexec & status == NONE then {
