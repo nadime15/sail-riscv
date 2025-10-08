@@ -22,13 +22,17 @@ type dmreg = bits(8)
 // State of the Hart from the Debug Module's point of view
 enum DebugHartState = {NON_EXISTENT, UNAVAILABLE, RUNNING, HALTED}
 
+union AbstractCommand = {
+  AccessRegister : (bool, bits(16), range(2, 3), bool, bool),
+  QuickAccess    : unit,
+  MemoryAccess   : (bool, bool, word_width, xlenbits),
+}
+
 union DebugRequest = {
   Resume : unit,
   Halt   : unit,
   Reset  : bool, // Halt on reset
-  RegisterAccess : (bool, bits(16), range(2, 3), bool, bool), // Write, Regno, Width, Postexec, Transfer
-  QuickAccess : unit,
-  MemoryAccess : (bool, bool, word_width, xlenbits),          // Virtual, Write, Width, Addr
+  AbstractCommand : AbstractCommand,
 }
 
 // TODO Define new type AbstractCommand for ProgramBuffer and MemoryAccess
@@ -37,29 +41,33 @@ function debug_request_to_string(request : DebugRequest) -> string = {
     Resume()                     => "Resume()",
     Halt()                       => "Halt()",
     Reset(halt_on_reset)         => "Reset(haltonreset=" ^ (if halt_on_reset then "true" else "false") ^ ")",
-    RegisterAccess(write, regno, width, postexec, transfer) => "RegisterAccess(write=" ^ (if write then "true" else "false") ^
+    AbstractCommand(command) => {
+      match command {
+        AccessRegister(write, regno, width, postexec, transfer) => "RegisterAccess(write=" ^ (if write then "true" else "false") ^
                                                               ", regno=" ^ bits_str(regno) ^
                                                               ", width=" ^ dec_str(width)  ^
                                                               ", postexec=" ^ (if postexec then "true" else "false") ^
                                                               ", transfer=" ^ (if transfer then "true" else "false") ^ ")",
-    QuickAccess() => "QuickAccess()",
-    MemoryAccess(virtual, write, width, addr) => "MemoryAccess(virtual=" ^ (if virtual then "true" else "false") ^
+        QuickAccess() => "QuickAccess",
+        MemoryAccess(virtual, write, width, addr) => "MemoryAccess(virtual=" ^ (if virtual then "true" else "false") ^
                                               ", write=" ^ (if write then "true" else "false") ^
                                               ", width=" ^ dec_str(width) ^
                                               ", addr="  ^ bits_str(addr) ^ ")",
+      };
+    },
   }
 }
 
-enum AbstractCommand = {
+enum AbstractCommandType = {
   ACCESS_REGISTER,
   QUICK_ACCESS,
   ACCESS_MEMORY
 }
 
-mapping abstract_command_type : bits(8) <-> AbstractCommand = {
-  0x00 <-> ACCESS_REGISTER,
-  0x01 <-> QUICK_ACCESS,
-  0x02 <-> ACCESS_MEMORY,
+mapping abstract_command_type : int <-> AbstractCommandType = {
+  0 <-> ACCESS_REGISTER,
+  1 <-> QUICK_ACCESS,
+  2 <-> ACCESS_MEMORY,
 }
 
 enum AbstractCommandError = {
