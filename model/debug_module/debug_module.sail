@@ -49,12 +49,20 @@ function legalize_abstractcs(d : Abstractcs, x : bits(32)) -> Abstractcs = {
   [d with
     progbufsize = MAX_PROGBUF_SIZE,
     relaxedpriv = 0b1,
-    cmderr      = if x[cmderr] == ones() then zeros() else x[cmderr], // R/W1C
+    cmderr      = if x[cmderr] == ones() then zeros() else d[cmderr], // R/W1C
     datacount   = MAX_DATA_SIZE,
   ]
 }
 
 register abstractcs: Abstractcs = legalize_abstractcs(Mk_Abstractcs(zeros()), zeros())
+
+function set_abstractcs_busy(is_busy : bool) -> unit = {
+  abstractcs[busy] = bool_to_bits(is_busy);
+}
+
+function is_abstractcs_busy() -> bool = {
+  bits_to_bool(abstractcs[busy])
+}
 
 mapping clause dm_name_map = 0x16  <-> "abstractcs"
 
@@ -63,8 +71,10 @@ function clause write_DM_reg(0x16, value) = { abstractcs = legalize_abstractcs(a
 function clause read_DM_reg(0x16) = abstractcs.bits
 
 function legalize_data(d: bits(32), x : bits(32)) -> bits(32) = {
-  if abstractcs[busy] == 0b1 then {
-    abstractcs[cmderr] = abstract_command_error(BUSY);
+  if is_abstractcs_busy() then {
+    if abstractcs[cmderr] == abstract_command_error(NONE) then {
+      abstractcs[cmderr] = abstract_command_error(BUSY);
+    };
     d
   }
   else {
@@ -123,7 +133,6 @@ function clause write_DM_reg(0x0c, value) = { data8 = legalize_data(data8, value
 function clause write_DM_reg(0x0d, value) = { data9 = legalize_data(data9, value); }
 function clause write_DM_reg(0x0e, value) = { data10 = legalize_data(data10, value); }
 function clause write_DM_reg(0x0f, value) = { data11 = legalize_data(data11, value); }
-
 
 function clause read_DM_reg(0x04) = data0
 function clause read_DM_reg(0x05) = data1
@@ -250,7 +259,7 @@ function legalize_active_dmcontrol(d : Dmcontrol, x : Dmcontrol) -> Dmcontrol = 
   // 0.
 
   // Ignore the bits below if abstract command is executed
-  let x = if abstractcs[busy] == 0b1 then [x with
+  let x = if is_abstractcs_busy() then [x with
     haltreq         = 0b0,
     resumereq       = 0b0,
     ackhavereset    = 0b0,
@@ -324,7 +333,7 @@ function legalize_active_dmcontrol(d : Dmcontrol, x : Dmcontrol) -> Dmcontrol = 
 
   [d with
     // Control bits - preserve written values for pulse-type operations
-    haltreq         = if abstractcs[busy] != 0b1 then x[haltreq] else d[haltreq],
+    haltreq         = if not(is_abstractcs_busy()) then x[haltreq] else d[haltreq],
     hartreset       = x[hartreset],
     // Hart selection - minimal implementation supports only hart 0
     hasel           = 0b0,
@@ -448,7 +457,6 @@ bitfield Command : bits(32) = {
   control: 23 .. 0
 }
 
-
 val read_arg : forall 'n, 'n in {32, 64, 128}.
   (range(0, 2), int('n)) -> bits('n)
 
@@ -541,72 +549,16 @@ function write_fpr(fregidx: fregidx, aarsize: {2, 3}) -> AbstractCommandError = 
   }
 }
 
-function execute_access_register_command(aarsize : bits(3), transfer : bits(1), write : bits(1), regno : bits (16)) -> AbstractCommandError = {
-  let regidx  = encdec_reg(regno[4 .. 0]);
-  let fregidx = encdec_freg(regno[4 .. 0]);
-
-  let access = determine_access_type(write, transfer);
-  if access == NO_TRANSFER then return NONE;
-
-  let addr = unsigned(regno);
-  let aarsize = unsigned(aarsize);
-
-  if not(1 < aarsize & aarsize < 4) then return NOT_SUPPORTED;
-
-  assert(1 < aarsize & aarsize < 4);
-
-  // NOTE: In theory, we should check whether a register access exceeds the specified aarize value.
-  // If it does, the access must fail. The problem is that all CSRs return xlenbits and are
-  // zero-extended, so there is no reliable way to distinguish between 32-bit and 64-bit CSRs without
-  // additional metadata (e.g., a list tracking register sizes). For now, we allow access to CSRs
-  // smaller than aarize, even though this does not fully comply with the spec.
-  match addr {
-    // TODO: Ensure CSR access is performed in M-Mode. (Entering Debug Mode can help here because this will change the privilege mode to M)
-    // but this mean we won't support access when the halt is running
-    addr if addr <= unsigned(0x0fff) & is_CSR_accessible(regno[11 .. 0], Machine, true) => {
-      match access {
-        READ  => write_arg(0, dxlen, read_CSR(regno[11 .. 0])),
-        WRITE => {
-          match write_CSR(regno[11 .. 0], read_arg(0, dxlen)[dxlen - 1 ..  0]) {
-            Ok (_) => (),
-            Err(_) => return EXCEPTION,
-          };
-        },
-      };
-    },
-    addr if addr <= unsigned(0x101f) & not(base_E_enabled & unsigned(regno[4 .. 0]) > 15) => {
-      match access {
-        READ  => write_arg(0, dxlen, X(regidx)),
-        WRITE => { let status = write_gpr(regidx, aarsize); return status },
-      };
-    },
-    addr if addr <= unsigned(0x103f) & mstatus[FS] != 0b00 => {
-      match access {
-        READ  => write_arg(0, flen, F(fregidx)),
-        WRITE => { let status = write_fpr(fregidx, aarsize); return status },
-      };
-    },
-    addr => return EXCEPTION
-  };
-  NONE
-}
-
 function execute_abstract_command(command : bits(32)) -> AbstractCommandError = {
   let cmdtype = command[31 .. 24];
-  let hart_exists = dmstatus[allnonexistent] == 0b0;
-  let hart_available = dmstatus[allunavail] == 0b0;
-  let hart_halted    = dmstatus[allhalted] == 0b1;
-  let abstract_command_busy = abstractcs[busy] == 0b1;
+  let hart_halted = dmstatus[allhalted] == 0b1;
 
-  let status =
-    if not(hart_available) | not(hart_exists) then {
-      abstractcs[busy] = 0b0;
-      HALT_RESUME
-    }
-    else if abstract_command_busy then { if abstractcs[cmderr] == abstract_command_error(NONE) then BUSY else abstract_command_error(abstractcs[cmderr]) }
+  set_abstractcs_busy(true);
+
+  let status : AbstractCommandError =
     // TODO: handle cases where cmdtype > 2, currently this results in a bug
     // Pattern match failure in abstract_command_type_forwards
-    else match abstract_command_type(cmdtype) {
+    match abstract_command_type(cmdtype) {
       ACCESS_REGISTER => {
         let aarsize          = command[22 .. 20];
         let reserved         = command[23 .. 23];
@@ -616,38 +568,20 @@ function execute_abstract_command(command : bits(32)) -> AbstractCommandError = 
         let write            = command[16 .. 16];
         let regno            = command[15 .. 0];
 
-        var error = NONE;
         // TODO: Add support for aarpostincrement
-        if reserved == 0b1 | aarpostincrement == 0b1 then {
-          error = NOT_SUPPORTED;
+        if reserved == 0b1 | aarpostincrement == 0b1 | (postexec == 0b1 & not(config platform.debug_module.program_buffer.supported : bool) ) | not(is_valid_aarsize(aarsize)) then {
+          NOT_SUPPORTED
+        } else if not(hart_halted) then {
+          // NOTE: To simplify the implementation, we perform Register Access only when the hart is halted.
+          //      In this state, the hart runs in M-Mode with the highest privilege level, allowing access
+          //      to CSRs as described in the specification.
+          HALT_RESUME
         } else {
-          abstractcs[busy] = 0b1;
-          error = execute_access_register_command(aarsize, transfer, write, regno);
-
-          if error != NONE then {
-            abstractcs[busy] = 0b0;
-          }
-          else if postexec == 0b1 then {
-            if not(config platform.debug_module.program_buffer.supported : bool) then {
-              abstractcs[busy] = 0b0;
-              error = NOT_SUPPORTED;
-            } else {
-              // Hart must be halted to execute program buffer (implementation dependent)
-              if not(hart_halted) then {
-                abstractcs[busy] = 0b0;
-                error = HALT_RESUME;
-              } else {
-                send_debug_request(ExecuteProgramBuffer(false));
-                // Hart sets potential error and busy
-              };
-            }
-          } else {
-            abstractcs[busy] = 0b0;
-          }
+          let aarsize = unsigned(aarsize);
+          assert(1 < aarsize & aarsize < 4);
+          send_debug_request(RegisterAccess(bits_to_bool(write), regno, aarsize, bits_to_bool(postexec), bits_to_bool(transfer)));
+          NONE
         };
-
-        print_log("Hart received request from debug module: AccessRegister(addr=" ^ bits_str(regno) ^ ",write=" ^ (if write == 0b1 then "write" else "read") ^ ")");
-        error
       },
       QUICK_ACCESS  => {
         // Check if any reserved bits are set in command[23:0]
@@ -657,7 +591,6 @@ function execute_abstract_command(command : bits(32)) -> AbstractCommandError = 
           // Hart must be running
           HALT_RESUME
         } else {
-          abstractcs[busy] = 0b1;
           // Execute program buffer and return success
           send_debug_request(QuickAccess());
           NONE
@@ -674,7 +607,6 @@ function execute_abstract_command(command : bits(32)) -> AbstractCommandError = 
         if aampostincrement == 0b1 | command[18 .. 17] != zeros() | command[13 .. 0] != zeros() | not(is_valid_aamsize(aamsize)) then {
           NOT_SUPPORTED
         } else {
-          abstractcs[busy] = 0b1;
           let aamsize = aamsize_to_bytes(aamsize);
           let addr = read_arg(1, dxlen);
           send_debug_request(MemoryAccess(bits_to_bool(aamvirtual), bits_to_bool(write), aamsize, addr));
@@ -682,11 +614,29 @@ function execute_abstract_command(command : bits(32)) -> AbstractCommandError = 
         };
       }
     };
+
+  if status != NONE then
+    set_abstractcs_busy(false);
+
   status
 }
 
 function legalize_command(d : Command, x : bits(32)) -> unit = {
-  abstractcs[cmderr] = abstract_command_error(execute_abstract_command(x))
+  let hart_exists = dmstatus[allnonexistent] == 0b0;
+  let hart_available = dmstatus[allunavail] == 0b0;
+
+  let status =
+    if is_abstractcs_busy() then {
+      if abstractcs[cmderr] == abstract_command_error(NONE)
+      then abstract_command_error(BUSY)
+      else abstractcs[cmderr]
+    } else if not(hart_available) | not(hart_exists) then {
+      set_abstractcs_busy(false);
+      abstract_command_error(HALT_RESUME)
+    } else {
+      abstract_command_error(execute_abstract_command(x))
+  };
+  abstractcs[cmderr] = status;
 }
 
 register command: Command = Mk_Command(zeros())
@@ -704,8 +654,8 @@ bitfield Abstractauto : bits(32) = {
 
 function legalize_abstractauto(d : Abstractauto, x : bits(32)) -> Abstractauto = {
   let x = Mk_Abstractauto(x);
-  // TODO
-  if abstractcs[busy] == 0b1 then{
+  // TODO/NOTE: This is not correctly implemented as of now
+  if is_abstractcs_busy() then{
     abstractcs[cmderr] = abstract_command_error(BUSY);
     d
   } else {
@@ -824,8 +774,10 @@ function clause is_DM_reg_defined (0x1d) = true
 function clause read_DM_reg(0x1d) = nextdm.bits
 
 function legalize_progbuf(d: bits(32), x : bits(32)) -> bits(32) = {
-  if abstractcs[busy] == 0b1 then {
-    abstractcs[cmderr] = abstract_command_error(BUSY);
+  if is_abstractcs_busy() then {
+    if abstractcs[cmderr] == abstract_command_error(NONE) then {
+      abstractcs[cmderr] = abstract_command_error(BUSY);
+    };
     d
   }
   else {
@@ -1025,13 +977,13 @@ function legalize_sbcs(d : Sbcs, x : bits(32)) -> Sbcs = {
   let x = Mk_Sbcs(x);
   [d with
     sbversion       = 0b001,
-    sbbusyerror     = if x[sbbusyerror] == 0b1 then 0b0 else x[sbbusyerror], // R/W1C
+    sbbusyerror     = if x[sbbusyerror] == 0b1 then 0b0 else d[sbbusyerror], // R/W1C
     //sbbusy
     sbreadonaddr    = x[sbreadonaddr],
     sbaccess        = x[sbaccess],
     sbautoincrement = x[sbautoincrement],
     sbreadonaddr    = x[sbreadonaddr],
-    sberror         = if x[sberror] == ones() then zeros() else x[sberror], //R/W1C
+    sberror         = if x[sberror] == ones() then zeros() else d[sberror], //R/W1C
     // No bus access support yet
     sbasize     = zeros(),
     sbaccess128 = 0b0,
@@ -1192,7 +1144,6 @@ function legalize_sbdata3(d : Sbdata3, x : bits(32)) -> Sbdata3 = {
   ]
 }
 
-
 register sbdata3: Sbdata3 = legalize_sbdata3(Mk_Sbdata3(zeros()), zeros())
 
 mapping clause dm_name_map = 0x3f  <-> "sbdata3"
@@ -1242,7 +1193,8 @@ function clause write_DM_reg(dm_reg, _) = {
 end write_DM_reg
 
 function reset_debug_module() = {
-
+  if get_config_print_debug()
+  then print_log("Reset Debug Module");
   // Behavior is undefined if a hart is halted when the
   // debug module resets. For now, we check if the hart
   // is halted and issue a resume request.

@@ -11,11 +11,22 @@ function send_debug_request(request : DebugRequest) -> unit = {
   debug_module_active_request = true;
 }
 
-function determine_access_type(write : bits(1), transfer : bits(1)) -> access_type = {
+// TODO: Rename function
+function is_access(write : bits(1), transfer : bits(1)) -> bool = {
   match (write, transfer) {
-    (0b0, 0b1) => READ,
-    (0b1, 0b1) => WRITE,
-    (_,   0b0) => NO_TRANSFER
+    (0b0, 0b1) => true,
+    (0b1, 0b1) => true,
+    (_,   0b0) => false
+  }
+}
+
+function is_valid_aarsize(aamsize : bits(3)) -> bool = {
+  let size = unsigned(aamsize);
+  if size < 2 | size > 4 then false
+  else match dxlen {
+    32 => size == 2,
+    64 => size == 2 | size == 3,
+    _ => false,
   }
 }
 
