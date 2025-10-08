@@ -214,32 +214,57 @@ struct step_result = {
 //              `debug_request` is either `DR_Halt` or `DR_Resume`.
 //              When single-stepping is set, DR_Resume should be specified.
 
+
+// ============================================================================
+// Debug Module Interface
+// ============================================================================
+// These functions handle external debug requests from the Debug Module (DM)
+// and execute abstract commands. The main entry point is
+// handle_debug_module_request(), which dispatches to specific handlers based
+// on the request type.
+
 function update_debug_module_status(request: DebugRequest, step : bool) -> unit = {
-  let resume = request == Resume();
-  let halt   = request == Halt();
-  let (to_reset, halt_on_reset) : (bool, bool) = match request {
+  let (is_reset, halt_on_reset) : (bool, bool) = match request {
     Reset(hor) => (true, hor),
     _          => (false, false),
   };
-  // TODO change name of to_reset
-  let status : debug_module_hart_status = struct { halted    = halt     | halt_on_reset | step,
-                                                   running   = (to_reset & not(halt_on_reset)) | resume & not(step),
-                                                   havereset = to_reset,
-                                                 };
+
+  let is_halt   = request == Halt();
+  let is_resume = request == Resume();
+
+  let status : debug_module_hart_status = struct {
+    halted    = is_halt | halt_on_reset | step,
+    running   = is_reset & not(halt_on_reset) | is_resume & not(step),
+    havereset = is_reset,
+  };
+
   send_hart_status(status);
 }
 
-function handle_debug_module_resume_request(request : DebugRequest) -> unit = {
+// ----------------------------------------------------------------------------
+// Basic Debug Operations
+// ----------------------------------------------------------------------------
+
+function handle_debug_resume(request : DebugRequest) -> unit = {
   if debug_mode_active then {
     exit_debug_mode();
     update_debug_module_status(request, false)
   };
 }
 
-function handle_debug_module_halt_request(request : DebugRequest) -> unit = {
+function handle_debug_halt(request : DebugRequest) -> unit = {
   if not(debug_mode_active) then {
     enter_debug_mode(DBGEntry_HaltReq, zeros(), get_arch_pc());
     update_debug_module_status(request, false)
+  };
+}
+
+function handle_debug_reset(request : DebugRequest) -> unit = {
+  reset();
+  update_debug_module_status(request, false);
+  match request {
+    Reset(halt_on_reset) => if halt_on_reset then enter_debug_mode(DBGEntry_ResetHaltReq, zeros(), get_arch_pc()),
+    _ => (),
   };
 }
 
@@ -251,48 +276,11 @@ function execute_program_buffer(resume : bool) -> unit = {
   resume_after_progbuf = resume;
 }
 
-function handle_debug_module_memory_access(virtual : bool, write : bool, width : word_width, addr: xlenbits) -> unit = {
-  start_debug_abstract_command();
-  debug_physical_access = not(virtual);
+// ----------------------------------------------------------------------------
+// Abstract Command Handlers
+// ----------------------------------------------------------------------------
 
-  let vaddr : virtaddr = Virtaddr(addr[dxlen - 1..0]);
-
-  // This is checked in execute_abstract_command()
-  assert(width <= dxlen_bytes);
-
-  if write then {
-    let data = read_arg(0, dxlen)[width * 8 - 1 .. 0];
-    match vmem_write_addr(vaddr, width, data, Write(Data), false, false, false) {
-        Ok(_)  => (),
-        Err(_) => abstractcs[cmderr] = abstract_command_error(EXCEPTION),
-    }
-  } else {
-      match vmem_read_addr(vaddr, zeros(), width, Read(Data), false, false, false) {
-          Ok(data) => write_arg(0, dxlen, zero_extend(data)),
-          Err(_)   => abstractcs[cmderr] = abstract_command_error(EXCEPTION),
-      }
-  };
-  end_debug_abstract_command();
-}
-
-function handle_debug_module_reset_request(request : DebugRequest) -> unit = {
-  reset();
-  update_debug_module_status(request, false);
-  match request {
-    Reset(halt_on_reset) => if halt_on_reset then enter_debug_mode(DBGEntry_ResetHaltReq, zeros(), get_arch_pc()),
-    _ => (),
-  };
-}
-
-function handle_debug_module_request_quick_access(request : DebugRequest) -> unit = {
-  // NOTE: The hart enters debug mode inside handle_debug_module_halt_request(Halt()).
-  handle_debug_module_halt_request(Halt());
-  // NOTE: We have to halt first to enter debug mode and then we can start the debug abstract command otherwise we run into an assert (we might change that)
-  start_debug_abstract_command();
-  execute_program_buffer(true);
-}
-
-function handle_debug_module_access_register(write : bool, regno : bits(16), width: range(2, 3), postexec : bool, transfer : bool) -> unit = {
+function handle_abstract_register_access(write : bool, regno : bits(16), width: range(2, 3), postexec : bool, transfer : bool) -> unit = {
   start_debug_abstract_command();
 
   // NOTE: In theory, we should check whether a register access exceeds the specified aarize value.
@@ -349,18 +337,61 @@ function handle_debug_module_access_register(write : bool, regno : bits(16), wid
   };
 }
 
+function handle_abstract_quick_access(request : DebugRequest) -> unit = {
+  // NOTE: The hart enters debug mode inside handle_debug_module_halt_request(Halt()).
+  handle_debug_halt(Halt());
+  // NOTE: We have to halt first to enter debug mode and then we can start the debug abstract command otherwise we run into an assert (we might change that)
+  start_debug_abstract_command();
+  execute_program_buffer(true);
+}
+
+function handle_abstract_memory_access(virtual : bool, write : bool, width : word_width, addr: xlenbits) -> unit = {
+  start_debug_abstract_command();
+  debug_physical_access = not(virtual);
+
+  let vaddr : virtaddr = Virtaddr(addr[dxlen - 1..0]);
+
+  // This is checked in execute_abstract_command()
+  assert(width <= dxlen_bytes);
+
+  if write then {
+    let data = read_arg(0, dxlen)[width * 8 - 1 .. 0];
+    match vmem_write_addr(vaddr, width, data, Write(Data), false, false, false) {
+        Ok(_)  => (),
+        Err(_) => abstractcs[cmderr] = abstract_command_error(EXCEPTION),
+    }
+  } else {
+      match vmem_read_addr(vaddr, zeros(), width, Read(Data), false, false, false) {
+          Ok(data) => write_arg(0, dxlen, zero_extend(data)),
+          Err(_)   => abstractcs[cmderr] = abstract_command_error(EXCEPTION),
+      }
+  };
+  end_debug_abstract_command();
+}
+
+// ----------------------------------------------------------------------------
+// Debug Request Dispatcher
+// ----------------------------------------------------------------------------
+
 function handle_debug_module_request() -> option(DebugRequest) = {
   if debug_module_active_request then {
     if get_config_print_debug()
     then print_log("Hart received request from debug module: " ^ debug_request_to_string(debug_module_request));
+
     match debug_module_request {
-      Halt()                  => handle_debug_module_halt_request(debug_module_request),
-      Resume()                => handle_debug_module_resume_request(debug_module_request),
-      Reset(_)                => handle_debug_module_reset_request(debug_module_request),
-      RegisterAccess(write, regno, width, postexec, transfer) => handle_debug_module_access_register(write, regno, width, postexec, transfer),
-      QuickAccess()           => handle_debug_module_request_quick_access(debug_module_request),
-      MemoryAccess(virtual, write, size, addr) => handle_debug_module_memory_access(virtual, write, size, addr),
+      Halt()   => handle_debug_halt(debug_module_request),
+      Resume() => handle_debug_resume(debug_module_request),
+      Reset(_) => handle_debug_reset(debug_module_request),
+      AbstractCommand(cmd) => match cmd {
+        AccessRegister(write, regno, width, postexec, transfer) =>
+          handle_abstract_register_access(write, regno, width, postexec, transfer),
+        QuickAccess() =>
+          handle_abstract_quick_access(debug_module_request),
+        MemoryAccess(virtual, write, size, addr) =>
+          handle_abstract_memory_access(virtual, write, size, addr),
+      },
     };
+
     debug_module_active_request = false;
     return Some(debug_module_request);
   } else {
@@ -453,7 +484,7 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
           end_debug_abstract_command();
 
           if resume_after_progbuf then {
-            handle_debug_module_resume_request(Resume());
+            handle_debug_resume(Resume());
             resume_after_progbuf = false;
           };
         },

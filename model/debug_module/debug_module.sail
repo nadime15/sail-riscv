@@ -550,70 +550,69 @@ function write_fpr(fregidx: fregidx, aarsize: {2, 3}) -> AbstractCommandError = 
 }
 
 function execute_abstract_command(command : bits(32)) -> AbstractCommandError = {
-  let cmdtype = command[31 .. 24];
+  let cmdtype = unsigned(command[31 .. 24]);
   let hart_halted = dmstatus[allhalted] == 0b1;
 
   set_abstractcs_busy(true);
 
-  let status : AbstractCommandError =
-    // TODO: handle cases where cmdtype > 2, currently this results in a bug
-    // Pattern match failure in abstract_command_type_forwards
-    match abstract_command_type(cmdtype) {
-      ACCESS_REGISTER => {
-        let aarsize          = command[22 .. 20];
-        let reserved         = command[23 .. 23];
-        let aarpostincrement = command[19 .. 19];
-        let postexec         = command[18 .. 18];
-        let transfer         = command[17 .. 17];
-        let write            = command[16 .. 16];
-        let regno            = command[15 .. 0];
+  let status : AbstractCommandError = if cmdtype > 2
+    then NOT_SUPPORTED
+    else match abstract_command_type(cmdtype) {
+        ACCESS_REGISTER => {
+          let aarsize          = command[22 .. 20];
+          let reserved         = command[23 .. 23];
+          let aarpostincrement = command[19 .. 19];
+          let postexec         = command[18 .. 18];
+          let transfer         = command[17 .. 17];
+          let write            = command[16 .. 16];
+          let regno            = command[15 .. 0];
 
-        // TODO: Add support for aarpostincrement
-        if reserved == 0b1 | aarpostincrement == 0b1 | (postexec == 0b1 & not(config platform.debug_module.program_buffer.supported : bool) ) | not(is_valid_aarsize(aarsize)) then {
-          NOT_SUPPORTED
-        } else if not(hart_halted) then {
-          // NOTE: To simplify the implementation, we perform Register Access only when the hart is halted.
-          //      In this state, the hart runs in M-Mode with the highest privilege level, allowing access
-          //      to CSRs as described in the specification.
-          HALT_RESUME
-        } else {
-          let aarsize = unsigned(aarsize);
-          assert(1 < aarsize & aarsize < 4);
-          send_debug_request(RegisterAccess(bits_to_bool(write), regno, aarsize, bits_to_bool(postexec), bits_to_bool(transfer)));
-          NONE
-        };
-      },
-      QUICK_ACCESS  => {
-        // Check if any reserved bits are set in command[23:0]
-        if command[23 .. 0] != zeros() then {
-          NOT_SUPPORTED
-        } else if hart_halted then {
-          // Hart must be running
-          HALT_RESUME
-        } else {
-          // Execute program buffer and return success
-          send_debug_request(QuickAccess());
-          NONE
+          // TODO: Add support for aarpostincrement
+          if reserved == 0b1 | aarpostincrement == 0b1 | (postexec == 0b1 & not(config platform.debug_module.program_buffer.supported : bool) ) | not(is_valid_aarsize(aarsize)) then {
+            NOT_SUPPORTED
+          } else if not(hart_halted) then {
+            // NOTE: To simplify the implementation, we perform Register Access only when the hart is halted.
+            //      In this state, the hart runs in M-Mode with the highest privilege level, allowing access
+            //      to CSRs as described in the specification.
+            HALT_RESUME
+          } else {
+            let aarsize = unsigned(aarsize);
+            assert(1 < aarsize & aarsize < 4);
+            send_debug_request(AbstractCommand(AccessRegister(bits_to_bool(write), regno, aarsize, bits_to_bool(postexec), bits_to_bool(transfer))));
+            NONE
+          };
+        },
+        QUICK_ACCESS  => {
+          // Check if any reserved bits are set in command[23:0]
+          if command[23 .. 0] != zeros() then {
+            NOT_SUPPORTED
+          } else if hart_halted then {
+            // Hart must be running
+            HALT_RESUME
+          } else {
+            // Execute program buffer and return success
+            send_debug_request(AbstractCommand(QuickAccess()));
+            NONE
+          }
+        },
+        ACCESS_MEMORY => {
+          let aamvirtual       = command[23 .. 23];
+          let aamsize          = command[22 .. 20];
+          let aampostincrement = command[19 .. 19];
+          let write            = command[16 .. 16];
+          let target_specific  = command[15 .. 14];
+
+          // TODO: Add support for aampostincrement
+          if aampostincrement == 0b1 | command[18 .. 17] != zeros() | command[13 .. 0] != zeros() | not(is_valid_aamsize(aamsize)) then {
+            NOT_SUPPORTED
+          } else {
+            let aamsize = aamsize_to_bytes(aamsize);
+            let addr = read_arg(1, dxlen);
+            send_debug_request(AbstractCommand(MemoryAccess(bits_to_bool(aamvirtual), bits_to_bool(write), aamsize, addr)));
+            NONE
+          };
         }
-      },
-      ACCESS_MEMORY => {
-        let aamvirtual       = command[23 .. 23];
-        let aamsize          = command[22 .. 20];
-        let aampostincrement = command[19 .. 19];
-        let write            = command[16 .. 16];
-        let target_specific  = command[15 .. 14];
-
-        // TODO: Add support for aampostincrement
-        if aampostincrement == 0b1 | command[18 .. 17] != zeros() | command[13 .. 0] != zeros() | not(is_valid_aamsize(aamsize)) then {
-          NOT_SUPPORTED
-        } else {
-          let aamsize = aamsize_to_bytes(aamsize);
-          let addr = read_arg(1, dxlen);
-          send_debug_request(MemoryAccess(bits_to_bool(aamvirtual), bits_to_bool(write), aamsize, addr));
-          NONE
-        };
-      }
-    };
+      };
 
   if status != NONE then
     set_abstractcs_busy(false);
