@@ -199,7 +199,7 @@ def test_register_access():
     1.1 Read the `misa` register and confirm the expected value.
     1.2 Write a value to register `t6` and verify the write/read-back behavior.
     1.3 Attempt an unsupported access (aarsize = 0) and check that cmderr = 2.
-    1.4 Attempt an out-of-range access and check that cmderr = 3.
+    1.4 Attempt an out-of-range access and check that cmderr = 2.
     1.5 Access floating-point register `ft8` and validate error behavior depending on mstatus.FS.
     1.6 Execute the Program Buffer and confirm cmderr = 0.
 
@@ -231,7 +231,7 @@ def test_register_access():
 
     ### 1.4 ###
     print((send_cmd("riscv.cpu riscv dmi_write 0x17 0x0032ffff")))
-    assert get_cmderr() == 3, "cmderr is not exception"
+    assert get_cmderr() == 2, "cmderr is not supported"
 
     ### 1.5 ###
     mstatus = get_reg_abstract(0x300) # mstatus

@@ -406,17 +406,14 @@ bitfield Haltsum1 : bits(32) = {
   haltsum1: 31 .. 0
 }
 
-function legalize_haltsum1(d : Haltsum1, x : bits(32)) -> Haltsum1 = {
-  let x = Mk_Haltsum1(x);
-  [d with
-    // TODO
-    haltsum1 = zeros(),
-  ]
-}
-register haltsum1: Haltsum1 = legalize_haltsum1(Mk_Haltsum1(zeros()), zeros())
+register haltsum1: Haltsum1 = Mk_Haltsum1(zeros())
+
 mapping clause dm_name_map = 0x13  <-> "haltsum1"
-function clause is_DM_reg_defined (0x13) = true
-// Read Only Register
+
+function clause is_DM_reg_defined (0x13) = false
+
+function clause write_DM_reg(0x13, value) = ()
+
 function clause read_DM_reg(0x13) = haltsum1.bits
 
 bitfield Hawindowsel : bits(32) = {
@@ -553,11 +550,10 @@ function handle_abstract_command(command : bits(32)) -> AbstractCommandError = {
         let unsupported = reserved == 0b1 |
                           // TODO: Add support for aarpostincrement
                          aarpostincrement == 0b1 |
-                         (postexec == 0b1 & not(config platform.debug_module.program_buffer.supported : bool)) |
-                         not(is_valid_aarsize(aarsize));
+                         (postexec == 0b1 & not(config platform.debug_module.program_buffer.supported : bool));
 
         if unsupported then NOT_SUPPORTED
-        else if transfer == 0b1 & is_unsupported_reg_access(aarsize, regno) then NOT_SUPPORTED
+        else if transfer == 0b1 & not(is_supported_reg_access(aarsize, regno)) then NOT_SUPPORTED
         else if not(hart_halted) then HALT_RESUME
         else {
           // Hart is halted and command is valid
@@ -765,7 +761,9 @@ register nextdm: Nextdm = initial_nextdm()
 mapping clause dm_name_map = 0x1d  <-> "nextdm"
 
 function clause is_DM_reg_defined (0x1d) = true
-// Read Only Register
+
+function clause write_DM_reg(0x1d, value) = ()
+
 function clause read_DM_reg(0x1d) = nextdm.bits
 
 function legalize_progbuf(d: bits(32), x : bits(32)) -> bits(32) = {
@@ -869,12 +867,7 @@ bitfield Authdata : bits(32) = {
   data: 31 .. 0
 }
 
-function legalize_authdata(d : Authdata, x : bits(32)) -> Authdata = {
-  let x = Mk_Authdata(x);
-  [d with
-    data = x[data]
-  ]
-}
+function legalize_authdata(d : Authdata, x : bits(32)) -> Authdata = Mk_Authdata(x)
 
 register authdata: Authdata = legalize_authdata(Mk_Authdata(zeros()), zeros())
 
@@ -900,8 +893,6 @@ function legalize_dmcs2(d : Dmcs2, x : bits(32)) -> Dmcs2 = {
     // TODO: Can be preset
     group = x[group],
     hgwrite = 0b0,
-    // TODO
-    // NOTE: Tie it to 0 for now, but can actually be set
     hgselect = 0b0
   ]
 }
@@ -915,40 +906,28 @@ bitfield Haltsum2 : bits(32) = {
   haltsum2: 31 .. 0
 }
 
-function legalize_haltsum2(d : Haltsum2, x : bits(32)) -> Haltsum2 = {
-  let x = Mk_Haltsum2(x);
-  [d with
-    // TODO
-    haltsum2 = zeros(),
-  ]
-}
-
-register haltsum2: Haltsum2 = legalize_haltsum2(Mk_Haltsum2(zeros()), zeros())
+register haltsum2: Haltsum2 = Mk_Haltsum2(zeros())
 
 mapping clause dm_name_map = 0x34  <-> "haltsum2"
 
-function clause is_DM_reg_defined (0x34) = true
-// Read Only Register
+function clause is_DM_reg_defined (0x34) = false
+
+function clause write_DM_reg(0x34, value) = ()
+
 function clause read_DM_reg(0x34) = haltsum2.bits
 
 bitfield Haltsum3 : bits(32) = {
   haltsum3: 31 .. 0
 }
 
-function legalize_haltsum3(d : Haltsum3, x : bits(32)) -> Haltsum3 = {
-  let x = Mk_Haltsum3(x);
-  [d with
-    // TODO
-    haltsum3 = zeros(),
-  ]
-}
-
-register haltsum3: Haltsum3 = legalize_haltsum3(Mk_Haltsum3(zeros()), zeros())
+register haltsum3: Haltsum3 = Mk_Haltsum3(zeros())
 
 mapping clause dm_name_map = 0x35  <-> "haltsum3"
 
-function clause is_DM_reg_defined (0x35) = true
-// Read Only Register
+function clause is_DM_reg_defined (0x35) = false
+
+function clause write_DM_reg(0x35, value) = ()
+
 function clause read_DM_reg(0x35) = haltsum3.bits
 
 bitfield Sbcs : bits(32) = {
@@ -972,14 +951,13 @@ function legalize_sbcs(d : Sbcs, x : bits(32)) -> Sbcs = {
   let x = Mk_Sbcs(x);
   [d with
     sbversion       = 0b001,
-    sbbusyerror     = if x[sbbusyerror] == 0b1 then 0b0 else d[sbbusyerror], // R/W1C
-    //sbbusy
+    sbbusyerror     = if x[sbbusyerror] == ones() then zeros() else d[sbbusyerror], // R/W1C
     sbreadonaddr    = x[sbreadonaddr],
     sbaccess        = x[sbaccess],
     sbautoincrement = x[sbautoincrement],
     sbreadonaddr    = x[sbreadonaddr],
-    sberror         = if x[sberror] == ones() then zeros() else d[sberror], //R/W1C
-    // No bus access support yet
+    sberror         = if x[sberror] == ones() then zeros() else d[sberror], // R/W1C
+    // No system bus access support yet
     sbasize     = zeros(),
     sbaccess128 = 0b0,
     sbaccess64  = 0b0,
@@ -1012,7 +990,7 @@ register sbaddresse0: Sbaddresse0 = legalize_sbaddresse0(Mk_Sbaddresse0(zeros())
 
 mapping clause dm_name_map = 0x39  <-> "sbaddresse0"
 
-function clause is_DM_reg_defined (0x39) = sbcs[sbasize] != 0b0000000
+function clause is_DM_reg_defined (0x39) = sbcs[sbasize] != zeros()
 function clause write_DM_reg(0x39, value) = { sbaddresse0 = legalize_sbaddresse0(sbaddresse0, value); }
 function clause read_DM_reg(0x39) = sbaddresse0.bits
 
@@ -1088,7 +1066,7 @@ register sbdata0: Sbdata0 = legalize_sbdata0(Mk_Sbdata0(zeros()), zeros())
 
 mapping clause dm_name_map = 0x3c  <-> "sbdata0"
 
-function clause is_DM_reg_defined (0x3c) = sbcs[sbaccess] != 0b000
+function clause is_DM_reg_defined (0x3c) = sbcs[sbaccess] != zeros()
 function clause write_DM_reg(0x3c, value) = { sbdata0 = legalize_sbdata0(sbdata0, value); }
 function clause read_DM_reg(0x3c) = sbdata0.bits
 
@@ -1164,7 +1142,9 @@ register haltsum0: Haltsum0 = legalize_haltsum0(Mk_Haltsum0(zeros()), zeros())
 mapping clause dm_name_map = 0x40  <-> "haltsum0"
 
 function clause is_DM_reg_defined (0x40) = true
-// Read Only Register
+
+function clause write_DM_reg(0x40, value) = ()
+
 function clause read_DM_reg(0x40) = haltsum0.bits
 
 // terminate scattered definitions

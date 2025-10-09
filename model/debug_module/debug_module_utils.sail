@@ -11,39 +11,35 @@ function send_debug_request(request : DebugRequest) -> unit = {
   debug_module_active_request = true;
 }
 
-function is_unsupported_reg_access(aarsize : bits(3), addr : bits(16)) -> bool = {
-  let width = unsigned(aarsize);
-  match addr {
-    addr if 0x1000 <=_u addr & addr <=_u 0x101f => width == 3 & dxlen == 32,
-    addr if 0x1020 <=_u addr & addr <=_u 0x103f => width == 3 & flen == 32,
-    _ => false
-  };
-}
-
-function is_valid_aarsize(aarsize : bits(3)) -> bool = {
-  let size = unsigned(aarsize);
-  if size < 2 | size > 4 then false
-  else match dxlen {
-    32 => size == 2,
-    64 => size == 2 | size == 3,
-    _ => false,
+function is_supported_reg_access(aarsize : bits(3), regno : bits(16)) -> bool = {
+  let aarsize = unsigned(aarsize);
+  // We only support 32-bit and 64-bit access
+  if not(aarsize == 2 | aarsize == 3) then false
+  else {
+    match regno {
+      // Cover both CSRs and GPRs
+      regno if regno <=_u 0x101f => not(aarsize == 3 & dxlen == 32),
+      // Cover FPRs
+      regno if regno <=_u 0x103f => not(aarsize == 3 & flen == 32),
+      _ => false
+    };
   }
 }
 
 function is_valid_aamsize(aamsize : bits(3)) -> bool = {
-  let size = unsigned(aamsize);
-  if size > 4 then false
+  let aamsize = unsigned(aamsize);
+  if aamsize > 4 then false
   else match dxlen {
-    32 => size <= 2,
-    64 => size <= 3,
+    32 => aamsize <= 2,
+    64 => aamsize <= 3,
     _ => false,
   }
 }
 
 function aamsize_to_bytes(aamsize : bits(3)) -> word_width = {
-  let size = unsigned(aamsize);
-  assert(size < 4, "aamsize value exceeds maximum");
-  match size {
+  let aamsize = unsigned(aamsize);
+  assert(aamsize < 4, "aamsize value exceeds maximum");
+  match aamsize {
     0 => 1,
     1 => 2,
     2 => 4,
