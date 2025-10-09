@@ -45,7 +45,7 @@ public:
   remote_bitbang_t(const remote_bitbang_t &) = delete;
   remote_bitbang_t &operator=(const remote_bitbang_t &) = delete;
 
-  int run(uint64_t insn_limit);
+  void run(uint64_t insn_limit);
 
 private:
   uint16_t port = 0;

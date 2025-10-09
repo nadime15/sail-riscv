@@ -257,7 +257,7 @@ void remote_bitbang_t::tick()
 
 // This is called with an initialized Sail model for a reset hart with
 // PC pointing at the ELF entry.
-int remote_bitbang_t::run(uint64_t insn_limit)
+void remote_bitbang_t::run(uint64_t insn_limit)
 {
   // Wait for OpenOCD to connect
   accept_connection();
@@ -265,7 +265,6 @@ int remote_bitbang_t::run(uint64_t insn_limit)
 
   struct zstep_result step_result = {false, false, false, false};
   bool exit_wait = true;
-  bool had_sail_exception = false;
 
   // initialize the step number
   mach_int step_no = 0;
@@ -275,7 +274,10 @@ int remote_bitbang_t::run(uint64_t insn_limit)
   uint64_t insns_per_tick
       = get_config_uint64({"platform", "instructions_per_tick"});
 
-  while (!zhtif_done && (insn_limit == 0 || total_insns < insn_limit)) {
+  // Run until either HTIF signals completion, the instruction limit
+  // is reached, or the debugger closed the connection.
+  while (!zhtif_done && (insn_limit == 0 || total_insns < insn_limit)
+         && (client_fd > 0)) {
     // Advances the bit banging protocol and sends
     // data to the debugger (over OpenOCD) or reads from it
     {
@@ -336,5 +338,4 @@ int remote_bitbang_t::run(uint64_t insn_limit)
 
   // This function needs to return to inner_main, where the model will
   // be cleaned up.
-  return had_sail_exception ? -1 : 0;
 }
