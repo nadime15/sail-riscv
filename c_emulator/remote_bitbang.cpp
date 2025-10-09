@@ -138,13 +138,9 @@ void remote_bitbang_t::accept_connection()
 {
   client_fd = accept(socket_fd, NULL, NULL);
   if (client_fd == -1) {
-    if (errno == EAGAIN) {
-      // No client waiting to connect right now.
-    } else {
-      fprintf(stderr, "failed to accept on socket: %s (%d)\n", strerror(errno),
-              errno);
-      exit(EXIT_FAILURE);
-    }
+    fprintf(stderr, "failed to accept on socket: %s (%d)\n", strerror(errno),
+            errno);
+    exit(EXIT_FAILURE);
   } else {
     fcntl(client_fd, F_SETFL, O_NONBLOCK);
   }
