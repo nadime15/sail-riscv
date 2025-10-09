@@ -62,12 +62,8 @@ private:
 
   // Check for a client connecting, and accept if there is one.
   void accept_connection();
-
   void close_sockets();
 
   // Execute any commands the client has for us.
-  void execute_commands();
-
   void tick();
-  void close_port();
 };

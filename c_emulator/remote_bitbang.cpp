@@ -120,10 +120,12 @@ remote_bitbang_t::make(uint16_t port, uint64_t required_rti_cycles)
 
 void remote_bitbang_t::close_sockets()
 {
-  if (socket_fd != -1)
+  if (socket_fd != -1) {
     close(socket_fd);
-  if (client_fd != -1)
+  }
+  if (client_fd != -1) {
     close(client_fd);
+  }
 }
 
 remote_bitbang_t::~remote_bitbang_t()
@@ -149,15 +151,6 @@ void remote_bitbang_t::accept_connection()
 }
 
 void remote_bitbang_t::tick()
-{
-  if (client_fd > 0) {
-    execute_commands();
-  } else {
-    this->accept_connection();
-  }
-}
-
-void remote_bitbang_t::execute_commands()
 {
   unsigned total_processed = 0;
   bool quit = false;
@@ -260,14 +253,6 @@ void remote_bitbang_t::execute_commands()
       break;
     }
   }
-}
-
-void remote_bitbang_t::close_port()
-{
-  close_sockets();
-
-  printf("Remote bitbang port closed.\n");
-  fflush(stdout);
 }
 
 // This is called with an initialized Sail model for a reset hart with
