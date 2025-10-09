@@ -602,17 +602,14 @@ union clause instruction = EBREAK : unit
 mapping clause encdec = EBREAK()
   <-> 0b000000000001 @ 0b00000 @ 0b000 @ 0b00000 @ 0b1110011
 
-function ebreak_into_debug() -> bool =
-  if   currentlyEnabled(Ext_Sdext)
-  then match cur_privilege {
-    User       => bool_bits(dcsr[EBreakU]),
-    Supervisor => bool_bits(dcsr[EBreakS]),
-    Machine    => bool_bits(dcsr[EBreakM]),
-    // TODO: VS/VU modes
-    VirtualSupervisor => { internal_error(__FILE__, __LINE__, "Invalid privilege level or virtual mode"); false },
-    VirtualUser       => { internal_error(__FILE__, __LINE__, "Invalid privilege level or virtual mode"); false },
-  }
-  else false
+function ebreak_into_debug() -> bool = match cur_privilege {
+  User       => bool_bits(dcsr[EBreakU]),
+  Supervisor => bool_bits(dcsr[EBreakS]),
+  Machine    => bool_bits(dcsr[EBreakM]),
+  // TODO: VS/VU modes
+  VirtualSupervisor => { internal_error(__FILE__, __LINE__, "Invalid privilege level or virtual mode"); false },
+  VirtualUser       => { internal_error(__FILE__, __LINE__, "Invalid privilege level or virtual mode"); false },
+}
 
 function clause execute EBREAK() = {
   if in_debug_abstract_command() then {

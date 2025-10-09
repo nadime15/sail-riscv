@@ -280,59 +280,6 @@ function execute_program_buffer(resume : bool) -> unit = {
 // Abstract Command Handlers
 // ----------------------------------------------------------------------------
 
-/*
-function handle_abstract_register_access(write : bool, regno : bits(16), width: range(2, 3), postexec : bool, transfer : bool) -> unit = {
-  start_debug_abstract_command();
-
-  // NOTE: In theory, we should check whether a register access exceeds the specified aarsize value.
-  // If it does, the access must fail. The problem is that all CSRs return xlenbits and are
-  // zero-extended, so there is no reliable way to distinguish between 32-bit and 64-bit CSRs without
-  // additional metadata (e.g., a list tracking register sizes). For now, we allow access to CSRs
-  // smaller than aarsize, even though this does not fully comply with the spec.
-  var status : AbstractCommandError = NONE;
-  if transfer then {
-    let regidx  = encdec_reg(regno[4 .. 0]);
-    let fregidx = encdec_freg(regno[4 .. 0]);
-    let aarsize = width;
-    status = match regno {
-      // Control status registers
-      regno if regno <=_u 0x0fff & is_CSR_accessible(regno[11 .. 0], Machine, true) => {
-          if write then
-              match write_CSR(regno[11 .. 0], read_arg(0, dxlen)[dxlen - 1 .. 0]) {
-                  Ok(_)  => (),
-                  Err(_) => (),
-              }
-            else
-              write_arg(0, dxlen, read_CSR(regno[11 .. 0]));
-          NONE
-      },
-      // General purpose registers
-      regno if regno <=_u 0x101f & not(base_E_enabled & unsigned(regno[4 .. 0]) > 15) => {
-          if write then X(regidx) = if width == 2 & dxlen == 64 then zeros() @ read_arg(0, 32) else read_arg(0, dxlen)
-          else write_arg(0, dxlen, X(regidx));
-          NONE
-      },
-      // Floating point registers
-      regno if regno <=_u 0x103f & mstatus[FS] != 0b00 => {
-          if write then F(fregidx) = if width == 2 & flen == 64 then zeros() @ read_arg(0, 32) else read_arg(0, flen)
-          else write_arg(0, flen, F(fregidx));
-          NONE
-      },
-
-      _ => EXCEPTION
-    };
-  };
-
-  if postexec & status == NONE then {
-    execute_program_buffer(false);
-  } else {
-    abstractcs[cmderr] = abstract_command_error(status);
-    end_debug_abstract_command();
-  };
-}
-
-*/
-
 function handle_abstract_register_access(write : bool, regno : bits(16), width: range(2, 3), postexec : bool, transfer : bool) -> unit = {
   start_debug_abstract_command();
   // NOTE: In theory, we should check whether a register access exceeds the specified aarsize value.
