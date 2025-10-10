@@ -279,7 +279,9 @@ void remote_bitbang_t::run(uint64_t insn_limit)
     {
       int max_ticks = 100;
       int ticks = 0;
-      while (ticks < max_ticks) {
+      // Since OpenOCD could disconnect anytime in the loop,
+      // ensure the socket is valid before calling `tick()`.
+      while (ticks < max_ticks && client_fd > 0) {
         // By tracking whether a request was sent from OpenOCD, we can avoid
         // timing issues (request timing out due no responses) and no longer
         // need to tweak 'max_ticks'. As soon as a new request is detected,
