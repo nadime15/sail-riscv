@@ -371,6 +371,32 @@ function handle_abstract_memory_access(virtual : bool, write : bool, width : wor
   end_debug_abstract_command();
 }
 
+/*
+function handle_abstract_memory_access(virtual : bool, write : bool, width : word_width, addr: xlenbits) -> unit = {
+  start_debug_abstract_command();
+  debug_physical_access = not(virtual);
+
+  let vaddr : virtaddr = Virtaddr(addr[dxlen - 1..0]);
+
+  assert(width <= dxlen_bytes);
+
+  let result =
+    if write then {
+      let data = read_arg(0, dxlen)[width * 8 - 1 .. 0];
+      vmem_write_addr(vaddr, width, data, Write(Data), false, false, false)
+    } else {
+      vmem_read_addr(vaddr, zeros(), width, Read(Data), false, false, false)
+    };
+
+  match result {
+    Ok(data) => if not write then write_arg(0, dxlen, zero_extend(data)),
+    Err(_)   => abstractcs[cmderr] = abstract_command_error(EXCEPTION)
+  };
+
+  end_debug_abstract_command();
+}
+
+*/
 // ----------------------------------------------------------------------------
 // Debug Request Dispatcher
 // ----------------------------------------------------------------------------

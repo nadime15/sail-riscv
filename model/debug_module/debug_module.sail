@@ -594,6 +594,7 @@ function handle_abstract_command(command : bits(32)) -> AbstractCommandError = {
                          not(is_valid_aamsize(aamsize));
 
         if unsupported then NOT_SUPPORTED
+        else if not(hart_halted) then HALT_RESUME
         else {
           let aamsize = aamsize_to_bytes(aamsize);
           let addr = read_arg(1, dxlen);
