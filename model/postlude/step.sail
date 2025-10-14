@@ -349,54 +349,29 @@ function handle_abstract_quick_access(request : DebugRequest) -> unit = {
 
 function handle_abstract_memory_access(virtual : bool, write : bool, width : word_width, addr: xlenbits) -> unit = {
   start_debug_abstract_command();
-  debug_physical_access = not(virtual);
-
   let vaddr : virtaddr = Virtaddr(addr[dxlen - 1..0]);
-
-  // This is checked in execute_abstract_command()
   assert(width <= dxlen_bytes);
-
-  if write then {
+  
+  let success : bool = if write then {
     let data = read_arg(0, dxlen)[width * 8 - 1 .. 0];
     match vmem_write_addr(vaddr, width, data, Write(Data), false, false, false) {
-        Ok(_)  => (),
-        Err(_) => abstractcs[cmderr] = abstract_command_error(EXCEPTION),
+      Ok(_)  => true,
+      Err(_) => false,
     }
   } else {
-      match vmem_read_addr(vaddr, zeros(), width, Read(Data), false, false, false) {
-          Ok(data) => write_arg(0, dxlen, zero_extend(data)),
-          Err(_)   => abstractcs[cmderr] = abstract_command_error(EXCEPTION),
-      }
+    match vmem_read_addr(vaddr, zeros(), width, Read(Data), false, false, false) {
+      Ok(data) => { write_arg(0, dxlen, zero_extend(data)); true },
+      Err(_)   => false,
+    }
   };
+  
+  if not(success) then {
+    abstractcs[cmderr] = abstract_command_error(EXCEPTION)
+  };
+  
   end_debug_abstract_command();
 }
 
-/*
-function handle_abstract_memory_access(virtual : bool, write : bool, width : word_width, addr: xlenbits) -> unit = {
-  start_debug_abstract_command();
-  debug_physical_access = not(virtual);
-
-  let vaddr : virtaddr = Virtaddr(addr[dxlen - 1..0]);
-
-  assert(width <= dxlen_bytes);
-
-  let result =
-    if write then {
-      let data = read_arg(0, dxlen)[width * 8 - 1 .. 0];
-      vmem_write_addr(vaddr, width, data, Write(Data), false, false, false)
-    } else {
-      vmem_read_addr(vaddr, zeros(), width, Read(Data), false, false, false)
-    };
-
-  match result {
-    Ok(data) => if not write then write_arg(0, dxlen, zero_extend(data)),
-    Err(_)   => abstractcs[cmderr] = abstract_command_error(EXCEPTION)
-  };
-
-  end_debug_abstract_command();
-}
-
-*/
 // ----------------------------------------------------------------------------
 // Debug Request Dispatcher
 // ----------------------------------------------------------------------------
@@ -410,13 +385,16 @@ function handle_debug_module_request() -> option(DebugRequest) = {
       Halt()   => handle_debug_halt(debug_module_request),
       Resume() => handle_debug_resume(debug_module_request),
       Reset(_) => handle_debug_reset(debug_module_request),
-      AbstractCommand(cmd) => match cmd {
-        AccessRegister(write, regno, width, postexec, transfer) =>
-          handle_abstract_register_access(write, regno, width, postexec, transfer),
-        QuickAccess() =>
-          handle_abstract_quick_access(debug_module_request),
-        MemoryAccess(virtual, write, size, addr) =>
-          handle_abstract_memory_access(virtual, write, size, addr),
+      AbstractCommand(cmd) => {
+        debug_active_command = Some(cmd);
+        match cmd {
+          AccessRegister(write, regno, width, postexec, transfer) =>
+            handle_abstract_register_access(write, regno, width, postexec, transfer),
+          QuickAccess() =>
+            handle_abstract_quick_access(debug_module_request),
+          MemoryAccess(virtual, write, size, addr) =>
+            handle_abstract_memory_access(virtual, write, size, addr),
+        }
       },
     };
 
@@ -510,7 +488,7 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
         Exit_Debug_Abstract_Command() => {
           progbuf_active = false;
           end_debug_abstract_command();
-
+          debug_active_command = None();
           if resume_after_progbuf then {
             handle_debug_resume(Resume());
             resume_after_progbuf = false;

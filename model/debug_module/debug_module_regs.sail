@@ -8,9 +8,6 @@
 
 register debug_hart_state : DebugHartState = RUNNING
 
-// TODO this should be part of the hart or at least debug extension
-register debug_physical_access : bool = false
-
 register debug_module_active_request : bool = false
 register debug_module_request : DebugRequest = Resume()
 

@@ -363,8 +363,7 @@ function translateAddr(
   let effPriv = effectivePrivilege(ac, mstatus, cur_privilege);
 
   let mode = translationMode(effPriv);
-  // TODO: That's a bug, this only matters for memory access commands, right now this might get triggered for other commands as well
-  if mode == Bare | (debug_abstract_command_active & debug_physical_access)
+  if mode == Bare | (in_debug_abstract_command() & not(debug_uses_virtual_addressing()))
   then return Ok(Physaddr(zero_extend(bits_of(vAddr))), init_ext_ptw);
   // Sv39 -> 39, etc.
   let sv_width = satp_mode_width(mode);

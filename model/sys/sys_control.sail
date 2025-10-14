@@ -14,8 +14,12 @@ function effectivePrivilege(access_type : MemoryAccessType(ext_access_type), m :
   let mprv_active = if   in_debug_abstract_command()
                     then dcsr[MPRVEn] == 0b1
                     else true;
+  
+  // For debug abstract commands: force MPRV behavior when 
+  // aamvirtual=1 (virtual mode) for access memory abstract command
+  let apply_mprv_for_debug = in_debug_abstract_command() & debug_uses_virtual_addressing();
 
-  if   mprv_active & access_type != InstructionFetch() & m[MPRV] == 0b1
+  if   mprv_active & access_type != InstructionFetch() & (m[MPRV] == 0b1 | apply_mprv_for_debug)
   then privLevel_bits(m[MPP], bitzero) // TODO: use m[MPV] if hypervisor enabled
   else priv
 }
