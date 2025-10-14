@@ -15,7 +15,9 @@ register debug_mode_active : bool = false
 register debug_abstract_command_active : bool = false
 register debug_abstract_command_error  : bool = false
 
-function clause currentlyEnabled(Ext_Sdext) = hartSupports(Ext_Sdext) & debug_mode_active
+// NOTE: While not explicitly stated in the spec, Sdext implicitly requires Zicsr
+// for accessing debug CSRs (dcsr, dpc, dscratch0/1).
+function clause currentlyEnabled(Ext_Sdext) = hartSupports(Ext_Sdext) & currentlyEnabled(Ext_Zicsr) & debug_mode_active
 
 // Defined with type `xlenbits` since it needs to be a return value of `trap_handler`.
 register debug_mem_base : physaddrbits = zeros()
