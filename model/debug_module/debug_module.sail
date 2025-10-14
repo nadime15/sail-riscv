@@ -779,22 +779,25 @@ function legalize_progbuf(d: bits(32), x : bits(32)) -> bits(32) = {
   }
 }
 
-register progbuf0  : bits(32)
-register progbuf1  : bits(32)
-register progbuf2  : bits(32)
-register progbuf3  : bits(32)
-register progbuf4  : bits(32)
-register progbuf5  : bits(32)
-register progbuf6  : bits(32)
-register progbuf7  : bits(32)
-register progbuf8  : bits(32)
-register progbuf9  : bits(32)
-register progbuf10 : bits(32)
-register progbuf11 : bits(32)
-register progbuf12 : bits(32)
-register progbuf13 : bits(32)
-register progbuf14 : bits(32)
-register progbuf15 : bits(32)
+// Initialize program buffer with EBREAK instructions (0x00100073)
+// This prevents the hart from executing undefined instructions if the
+// debugger fails to populate the buffer before execution
+register progbuf0  : bits(32) = 0x00100073
+register progbuf1  : bits(32) = 0x00100073
+register progbuf2  : bits(32) = 0x00100073
+register progbuf3  : bits(32) = 0x00100073
+register progbuf4  : bits(32) = 0x00100073
+register progbuf5  : bits(32) = 0x00100073
+register progbuf6  : bits(32) = 0x00100073
+register progbuf7  : bits(32) = 0x00100073
+register progbuf8  : bits(32) = 0x00100073
+register progbuf9  : bits(32) = 0x00100073
+register progbuf10 : bits(32) = 0x00100073
+register progbuf11 : bits(32) = 0x00100073
+register progbuf12 : bits(32) = 0x00100073
+register progbuf13 : bits(32) = 0x00100073
+register progbuf14 : bits(32) = 0x00100073
+register progbuf15 : bits(32) = 0x00100073
 
 mapping clause dm_name_map = 0x20  <-> "progbuf0"
 mapping clause dm_name_map = 0x21  <-> "progbuf1"
