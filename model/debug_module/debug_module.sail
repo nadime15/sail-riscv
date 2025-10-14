@@ -779,9 +779,9 @@ function legalize_progbuf(d: bits(32), x : bits(32)) -> bits(32) = {
   }
 }
 
-// Initialize program buffer with EBREAK instructions (0x00100073)
-// This prevents the hart from executing undefined instructions if the
-// debugger fails to populate the buffer before execution
+// Program buffer registers, initialized with EBREAK (0x00100073)
+// Ensures the hart safely exits debug mode even if the program buffer
+// is not fully populated by the debugger
 register progbuf0  : bits(32) = 0x00100073
 register progbuf1  : bits(32) = 0x00100073
 register progbuf2  : bits(32) = 0x00100073
