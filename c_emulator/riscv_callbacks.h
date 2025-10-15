@@ -25,8 +25,6 @@ unit vreg_write_callback(unsigned reg, lbits value);
 unit pc_write_callback(sbits new_pc);
 unit redirect_callback(sbits new_pc);
 unit trap_callback(bool is_interrupt, fbits cause);
-unit debug_entry_callback(unit);
-unit debug_exit_callback(unit);
 
 #ifdef __cplusplus
 }

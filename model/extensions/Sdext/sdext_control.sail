@@ -26,7 +26,6 @@ function enter_debug_mode(cause : debug_entry_cause, extcause : bits(3), pc : xl
   dtime = mtime;
 
   debug_mode_active = true;
-  debug_entry_callback();
 
   if get_config_print_debug()
   then print_log("entering Debug mode from " ^ to_str(privLevel_bits(dcsr[Prv], bitzero)));
@@ -46,7 +45,6 @@ function exit_debug_mode() -> unit = {
   // TODO: V from hypervisor mode, ELP from Zicfilp
 
   debug_mode_active = false;
-  debug_exit_callback();
 
   if get_config_print_debug()
   then print_log("exiting Debug mode to " ^ to_str(cur_privilege));
