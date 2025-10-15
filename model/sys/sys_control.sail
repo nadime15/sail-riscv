@@ -14,8 +14,8 @@ function effectivePrivilege(access_type : MemoryAccessType(ext_access_type), m :
   let mprv_active = if   in_debug_abstract_command()
                     then dcsr[MPRVEn] == 0b1
                     else true;
-  
-  // For debug abstract commands: force MPRV behavior when 
+
+  // For debug abstract commands: force MPRV behavior when
   // aamvirtual=1 (virtual mode) for access memory abstract command
   let apply_mprv_for_debug = in_debug_abstract_command() & debug_uses_virtual_addressing();
 
@@ -152,7 +152,6 @@ function tval(excinfo : option(xlenbits)) -> xlenbits = {
   }
 }
 
-
 function track_trap(p : Privilege) -> unit = {
   long_csr_write_callback("mstatus", "mstatush", mstatus.bits);
   match (p) {
@@ -195,7 +194,7 @@ function trap_handler(del_priv : Privilege, c : TrapCause, pc : xlenbits, info :
   then {
     //set_debug_abstract_command_error();
     if progbuf_active then {
-      abstractcs[cmderr] = 0b011;
+      abstractcs[cmderr] = abstract_command_error(EXCEPTION);
       end_debug_abstract_command();
       progbuf_active = false;
     };

@@ -522,6 +522,7 @@ postlude {
     postlude/validate_config.sail,
     postlude/device_tree.sail,
     postlude/model.sail,
+    postlude/debug_module_handlers.sail,
     postlude/step.sail,
 }
 

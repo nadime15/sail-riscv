@@ -280,8 +280,11 @@ def test_quick_access():
 
 def test_access_memory():
     """
-    TODO/NOTE: Currently, this only works for physical addresses
-    NOTE: The problem probably is that when the hart is halted we have higher privs. than while running
+    NOTE: Using OpenOCD memory access commands like mwd, mdd, etc. is convenient,
+    but OpenOCD performs additional internal operations beyond simply writing to the data*
+    and command registers. For instance, if a memory access fails, OpenOCD automatically clears cmderr.
+    If we need to verify that error codes are set correctly, we should manually perform the access.
+    For example, write the data* registers and issue the abstract command yourself.
     """
 
     print(send_cmd("riscv.cpu riscv set_mem_access abstract"))
@@ -317,8 +320,6 @@ def test_access_memory():
     assert get_cmderr() == 0, "cmderr is not 0"
     addr, value = read_mem("mdh", "0xf0000008")
     assert addr == 0xf0000008
-    print(value)
-    breakpoint
     assert value == 0xdcba
     assert get_cmderr() == 0, "cmderr is not 0"
 
@@ -333,6 +334,13 @@ def test_access_memory():
     # Test 1.6
     print(send_cmd("riscv.cpu riscv dmi_write 0x17 0x02000001"))
     assert get_cmderr() == 2, "cmderr is not not supported"
+
+    # Test 1.7
+    print(send_cmd("riscv.cpu riscv dmi_write 0x6 0x0"))
+    print(send_cmd("riscv.cpu riscv dmi_write 0x7 0x0"))
+    # Execute: cmdtype=2, aamvirtual=0, aamsize=3, write=1
+    print(send_cmd("riscv.cpu riscv dmi_write 0x17 0x02310000"))
+    assert get_cmderr() == 3, "cmderr is not exception"
 
 test_halt_reset_resume()
 test_register_access()
