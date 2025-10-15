@@ -359,9 +359,9 @@ tn.close()
 # NOTE: Memory Access using the Access Memory command DOES NOT work in S-Mode at this point
 #
 # NOTE: Successfully tests with
-# ./sail_riscv_sim --debug 9824 ../test/2025-07-16/riscv-tests/rv64um-p-mul --trace-instr --trace-debug --trace-mem
-# ./sail_riscv_sim --debug 9824 ../test/2025-07-16/riscv-tests/rv64um-p-divw --trace-instr --trace-debug --trace-mem
-# ./sail_riscv_sim --debug 9824 ../test/2025-07-16/riscv-tests/rv64ui-p-bge --trace-instr --trace-debug --trace-mem
+# ./sail_riscv_sim --debug 9824 ../test/2025-10-14/riscv-tests/rv64um-p-mul --trace-instr --trace-debug --trace-mem
+# ./sail_riscv_sim --debug 9824 ../test/2025-10-14/riscv-tests/rv64um-p-divw --trace-instr --trace-debug --trace-mem
+# ./sail_riscv_sim --debug 9824 ../test/2025-10-14/riscv-tests/rv64ui-p-bge --trace-instr --trace-debug --trace-mem
 
 # STEPS
 # 1. Run Sail

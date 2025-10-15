@@ -52,19 +52,18 @@ function handle_debug_halt(request : DebugRequest) -> unit = {
 
 function handle_debug_reset(request : DebugRequest) -> unit = {
   reset();
-  update_debug_module_status(request, false);
   match request {
     Reset(halt_on_reset) => if halt_on_reset then enter_debug_mode(DBGEntry_ResetHaltReq, zeros(), get_arch_pc()),
     _ => (),
   };
+  update_debug_module_status(request, false);
 }
 
-function execute_program_buffer(resume : bool) -> unit = {
+function execute_program_buffer() -> unit = {
   assert(debug_abstract_command_active, "Need to be in debug mode in order to execute program buffer");
   PC = trunc(plat_program_buffer_base);
   nextPC = PC;
   progbuf_active = true;
-  resume_after_progbuf = resume;
 }
 
 // ----------------------------------------------------------------------------
@@ -123,19 +122,16 @@ function handle_abstract_register_access(write : bool, regno : bits(16), width: 
   };
 
   if postexec & status == NONE then {
-    execute_program_buffer(false);
+    execute_program_buffer();
   } else {
-    abstractcs[cmderr] = abstract_command_error(status);
-    end_debug_abstract_command();
+    end_debug_abstract_command(status);
   };
 }
 
 function handle_abstract_quick_access(request : DebugRequest) -> unit = {
-  // NOTE: The hart enters debug mode inside handle_debug_module_halt_request(Halt()).
   handle_debug_halt(Halt());
-  // NOTE: We have to halt first to enter debug mode and then we can start the debug abstract command otherwise we run into an assert (we might change that)
   start_debug_abstract_command();
-  execute_program_buffer(true);
+  execute_program_buffer();
 }
 
 function handle_abstract_memory_access(virtual : bool, write : bool, width : word_width, addr: xlenbits) -> unit = {
@@ -156,12 +152,7 @@ function handle_abstract_memory_access(virtual : bool, write : bool, width : wor
     }
   };
 
-  print_log("success memory access? " ^ (if success then "true" else "false"));
-  if not(success) then {
-    abstractcs[cmderr] = abstract_command_error(EXCEPTION)
-  };
-
-  end_debug_abstract_command();
+  end_debug_abstract_command(if not(success) then EXCEPTION else NONE);
 }
 
 // ----------------------------------------------------------------------------

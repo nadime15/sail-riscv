@@ -35,7 +35,6 @@ union DebugRequest = {
   AbstractCommand : AbstractCommand,
 }
 
-// TODO Define new type AbstractCommand for ProgramBuffer and MemoryAccess
 function debug_request_to_string(request : DebugRequest) -> string = {
   match request {
     Resume()                     => "Resume()",
@@ -48,7 +47,7 @@ function debug_request_to_string(request : DebugRequest) -> string = {
                                                               ", width=" ^ dec_str(width)  ^
                                                               ", postexec=" ^ (if postexec then "true" else "false") ^
                                                               ", transfer=" ^ (if transfer then "true" else "false") ^ ")",
-        QuickAccess() => "QuickAccess",
+        QuickAccess() => "QuickAccess()",
         MemoryAccess(virtual, write, width, addr) => "MemoryAccess(virtual=" ^ (if virtual then "true" else "false") ^
                                               ", write=" ^ (if write then "true" else "false") ^
                                               ", width=" ^ dec_str(width) ^
@@ -120,3 +119,5 @@ function debug_uses_virtual_addressing() -> bool = {
     _ => false,
   }
 }
+
+register progbuf_active : bool = false

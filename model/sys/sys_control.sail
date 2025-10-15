@@ -171,9 +171,6 @@ function track_trap(p : Privilege) -> unit = {
   };
 }
 
-register progbuf_active : bool = false
-register resume_after_progbuf : bool = false
-
 // handle exceptional ctl flow by updating nextPC and operating privilege
 function trap_handler(del_priv : Privilege, c : TrapCause, pc : xlenbits, info : option(xlenbits), ext : option(ext_exception))
                      -> xlenbits = {
@@ -190,15 +187,9 @@ function trap_handler(del_priv : Privilege, c : TrapCause, pc : xlenbits, info :
   // a trap handler address within the Debug Module.
   // TODO: I am not sure about what the note above, if we execute the program buffer
   // we actually stop the abstract command and stop executing, we dont modify the PC
-  if   in_debug_abstract_command()
-  then {
-    //set_debug_abstract_command_error();
-    if progbuf_active then {
-      abstractcs[cmderr] = abstract_command_error(EXCEPTION);
-      end_debug_abstract_command();
-      progbuf_active = false;
-    };
-    return pc//debug_trap_vector
+  if in_debug_abstract_command() then {
+    end_debug_abstract_command(EXCEPTION);
+    return pc // debug_trap_vector
   };
 
 

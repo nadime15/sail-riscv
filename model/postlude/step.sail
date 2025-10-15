@@ -284,15 +284,12 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
           update_debug_module_status(Halt(), false)
         },
         Exit_Debug_Abstract_Command() => {
-          progbuf_active = false;
-          end_debug_abstract_command();
-          debug_active_command = None();
-          if resume_after_progbuf then {
-            handle_debug_resume(Resume());
-            resume_after_progbuf = false;
+          end_debug_abstract_command(NONE);
+          match debug_active_command {
+            Some(QuickAccess()) => handle_debug_resume(Resume()),
+            _ => (),
           };
         },
-        // TODO: Check whether this case (Step_Execute(...)) is actually needed and if we pass the right request (DR_Resume)
         Exit_Debug_Mode() => {
           exit_debug_mode();
           update_debug_module_status(Resume(), false)

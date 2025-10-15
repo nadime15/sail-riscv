@@ -55,16 +55,20 @@ function exit_debug_mode() -> unit = {
 // This function must be called by the debugger/external-harness
 // before executing any instructions from a Debug program buffer.
 function start_debug_abstract_command() -> unit = {
-  if get_config_print_debug() then print_log("Start Abstract Command");
   assert(currentlyEnabled(Ext_Sdext), "Cannot start Debug abstract command: Sdext is not currently enabled");
+  if get_config_print_debug() then print_log("Start Abstract Command");
   debug_abstract_command_active = true
 }
 
-function end_debug_abstract_command() -> unit = {
-  if get_config_print_debug() then print_log("End Abstract Command");
+function end_debug_abstract_command(error : AbstractCommandError) -> unit = {
   assert(currentlyEnabled(Ext_Sdext), "Cannot end Debug abstract command: Sdext is not currently enabled");
+  if get_config_print_debug() then print_log("End Abstract Command");
   debug_abstract_command_active = false;
   set_abstractcs_busy(false);
+  // TODO: Send error as well as current active command back to debug module to handle aarmpostincrement etc.
+  // if errorcode was NONE
+  abstractcs[cmderr] = abstract_command_error(error);
+  progbuf_active = false;
 }
 
 // This is called internally.
