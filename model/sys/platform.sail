@@ -54,7 +54,6 @@ function within_program_buffer forall 'n, 0 < 'n <= max_mem_access . (Physaddr(a
   // overlap into the ROM. Currently, I handle this by checking whether execution
   // is still within an abstract command (Program Buffer). This approach works,
   // but it requires more testing.
-
   (program_buffer_size_int <= addr_int & (addr_int + sizeof('n)) <= (program_buffer_base_int + program_buffer_size_int)) | (((config platform.debug_module.num_prog_reg : int == 1) | config platform.debug_module.impebreak : bool) & (program_buffer_base_int + program_buffer_size_int) == addr_int)
 }
 

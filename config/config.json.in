@@ -80,6 +80,30 @@
         },
         "include_in_device_tree": false
       },
+      // Program Buffer
+      {
+        "base": {
+          "len": 64,
+          "value": "0x2000"
+        },
+        "size": {
+          "len": 64,
+          "value": "0x40"
+        },
+        "attributes": {
+          "cacheable": false,
+          "coherent": true,
+          "executable": true,
+          "readable": true,
+          "writable": true,
+          "read_idempotent": true,
+          "write_idempotent": true,
+          "misaligned_fault": "NoFault",
+          "reservability": "RsrvNone",
+          "supports_cbo_zero": false
+        },
+        "include_in_device_tree": false
+      },
       // MMIO
       {
         "base": {
@@ -150,10 +174,13 @@
     "instructions_per_tick": 2,
     "wfi_is_nop": true,
     "debug_module": {
+      // Value must be in the range [0, 12]
       "num_data_reg": 12,
+      // Value must be in the range [0, 16]
       "num_prog_reg": 16,
       "impebreak": true,
       "program_buffer": {
+        // This must be in a suitable memory region (see memory.regions).
         "supported": true,
         "base": 8192,
         "size": 64
