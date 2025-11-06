@@ -277,34 +277,51 @@ void remote_bitbang_t::run(uint64_t insn_limit)
     // Advances the bit banging protocol and sends
     // data to the debugger (over OpenOCD) or reads from it
     {
-      int max_ticks = 100;
-      int ticks = 0;
+      // Make this a config option
+      int max_ticks_jtag = 1;
       // Since OpenOCD could disconnect anytime in the loop,
       // ensure the socket is valid before calling `tick()`.
-      while (ticks < max_ticks && client_fd > 0) {
+      for (int i = 0; i < max_ticks_jtag && client_fd > 0; i++) {
         // By tracking whether a request was sent from OpenOCD, we can avoid
         // timing issues (request timing out due no responses) and no longer
-        // need to tweak 'max_ticks'. As soon as a new request is detected,
+        // need to tweak 'max_ticks_jtag'. As soon as a new request is detected,
         // we immediately exit the loop to enter try_step().
+
+        // NOTE/TODO: Remove this or add an option (this is needed when the jtag
+        // module is much faster than the sail model otherwise openocd will
+        // timeout for certain requests)
         if (zdebug_module_active_request) {
           break;
         }
         tick();
-        ticks++;
       }
     }
     // run a Sail step
     {
-      sail_int sail_step;
-      CREATE(sail_int)(&sail_step);
-      CONVERT_OF(sail_int, mach_int)(&sail_step, step_no);
-      // TODO we might have to skip as long we are in Debug Mode?
-      step_result = ztry_step(sail_step, exit_wait);
-      KILL(sail_int)(&sail_step);
-      // Check for Sail-internal exception.
-      if (have_exception) {
-        fprintf(stderr, "Sail exception!");
-        break;
+      // NOTE: As it turned out, it can be quite beneficial to test different
+      // frequency ratios between the JTAG module and the Sail model. The
+      // default setting used to be 100 JTAG cycles per single Sail cycle, but
+      // with that configuration, some interesting edge cases showed up, for
+      // example, timeouts or burst read/write operations failing because
+      // OpenOCD didn’t check between writes whether they actually succeeded. By
+      // allowing users to adjust the relative speed of these two components,
+      // different timing scenarios can be explored. The new default is 1:4, one
+      // JTAG cycle followed by four Sail cycles, which is more realistic since
+      // a real chip would typically run faster than the JTAG interface.
+      // TODO: Make this a config option
+      int max_ticks_sail = 4;
+      for (int i = 0; i < max_ticks_sail; i++) {
+        sail_int sail_step;
+        CREATE(sail_int)(&sail_step);
+        CONVERT_OF(sail_int, mach_int)(&sail_step, step_no);
+        // TODO we might have to skip as long we are in Debug Mode?
+        step_result = ztry_step(sail_step, exit_wait);
+        KILL(sail_int)(&sail_step);
+        // Check for Sail-internal exception.
+        if (have_exception) {
+          fprintf(stderr, "Sail exception!");
+          break;
+        }
       }
     }
     // TODO: better handling of entry into debug mode (step_result.zin_debug),

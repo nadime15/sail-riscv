@@ -109,8 +109,9 @@ void jtag_dtm_t::set_pins(bool tck, bool tms, bool tdi)
     // Negative clock edge. TDO is updated.
     switch (_state) {
     case JtagState::RunTestIdle:
-      if (rti_remaining > 0)
+      if (rti_remaining > 0) {
         rti_remaining--;
+      }
       break;
     case JtagState::TestLogicReset:
       ir = static_cast<uint32_t>(IR::IDCODE);
@@ -134,7 +135,7 @@ void jtag_dtm_t::set_pins(bool tck, bool tms, bool tdi)
 
   jtag_log("state=%2d, tdi=%d, tdo=%d, tms=%d, tck=%d, ir=0x%02x, "
            "dr=0x%lx\n",
-           _state, _tdi, _tdo, _tms, _tck, ir, dr);
+           static_cast<int>(_state), _tdi, _tdo, _tms, _tck, ir, dr);
 
   _tck = tck;
   _tms = tms;
@@ -177,10 +178,12 @@ void jtag_dtm_t::update_dr()
   jtag_log("Update DR; IR=0x%x, DR=0x%lx (%d bits)\n", ir, dr, dr_length);
 
   if (ir == static_cast<uint32_t>(IR::DTMCONTROL)) {
-    if (dr & DTMCONTROL_DMIRESET)
+    if (dr & DTMCONTROL_DMIRESET) {
       busy_stuck = false;
-    if (dr & DTMCONTROL_DMIHARDRESET)
+    }
+    if (dr & DTMCONTROL_DMIHARDRESET) {
       reset();
+    }
   } else if (ir == static_cast<uint32_t>(IR::BYPASS)) {
     bypass = dr;
   } else if (ir == static_cast<uint32_t>(IR::DBUS) && !busy_stuck) {
