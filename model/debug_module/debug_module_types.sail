@@ -1,10 +1,10 @@
-/*=======================================================================================*/
-/*  This Sail RISC-V architecture model, comprising all files and                        */
-/*  directories except where otherwise noted is subject the BSD                          */
-/*  two-clause license in the LICENSE file.                                              */
-/*                                                                                       */
-/*  SPDX-License-Identifier: BSD-2-Clause                                                */
-/*=======================================================================================*/
+//=======================================================================================
+//  This Sail RISC-V architecture model, comprising all files and
+//  directories except where otherwise noted is subject the BSD
+//  two-clause license in the LICENSE file.
+//
+//  SPDX-License-Identifier: BSD-2-Clause
+//=======================================================================================
 
 // Debug module uses same XLEN as the hart
 type dxlen : Int = xlen
@@ -57,6 +57,7 @@ function debug_request_to_string(request : DebugRequest) -> string = {
   }
 }
 
+
 enum AbstractCommandType = {
   ACCESS_REGISTER,
   QUICK_ACCESS,
@@ -101,6 +102,8 @@ mapping abstract_command_error_name : AbstractCommandError <-> string = {
   RESERVED      <-> "RESERVED",
   OTHER         <-> "OTHER",
 }
+
+function abstract_command_error_to_string(error : bits(3)) -> string = abstract_command_error_name(abstract_command_error(error))
 
 struct debug_module_hart_status = {
   running  : bool,

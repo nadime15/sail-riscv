@@ -28,7 +28,7 @@ function enter_debug_mode(cause : debug_entry_cause, extcause : bits(3), pc : xl
   debug_mode_active = true;
 
   if get_config_print_debug()
-  then print_log("entering Debug mode from " ^ to_str(privLevel_bits(dcsr[Prv], bitzero)));
+  then print_log("entering Debug mode from " ^ to_str(privLevel_bits(dcsr[Prv], bitzero)) ^ " Cause: " ^ debug_entry_cause_to_str(cause));
 }
 
 // The specification denotes a hart's exit from Debug mode as the hart "resuming".
@@ -58,15 +58,13 @@ function start_debug_abstract_command() -> unit = {
   debug_abstract_command_active = true
 }
 
-function end_debug_abstract_command(error : AbstractCommandError) -> unit = {
+function end_debug_abstract_command(status : AbstractCommandError) -> unit = {
   assert(currentlyEnabled(Ext_Sdext), "Cannot end Debug abstract command: Sdext is not currently enabled");
-  if get_config_print_debug() then print_log("End Abstract Command");
+  if get_config_print_debug() then print_log("End Abstract Command: Status(" ^ abstract_command_error_name(status) ^ ")");
   debug_abstract_command_active = false;
   set_abstractcs_busy(false);
-  // TODO: Send error as well as current active command back to debug module to handle aarmpostincrement etc.
-  // if errorcode was NONE
-  abstractcs[cmderr] = abstract_command_error(error);
   progbuf_active = false;
+  complete_abstract_command(status, debug_active_command);
 }
 
 // This is called internally.

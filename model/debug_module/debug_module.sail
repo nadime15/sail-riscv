@@ -1,12 +1,12 @@
-/*=======================================================================================*/
-/*  This Sail RISC-V architecture model, comprising all files and                        */
-/*  directories except where otherwise noted is subject the BSD                          */
-/*  two-clause license in the LICENSE file.                                              */
-/*                                                                                       */
-/*  SPDX-License-Identifier: BSD-2-Clause                                                */
-/*=======================================================================================*/
+//=======================================================================================
+//  This Sail RISC-V architecture model, comprising all files and
+//  directories except where otherwise noted is subject the BSD
+//  two-clause license in the LICENSE file.
+//
+//  SPDX-License-Identifier: BSD-2-Clause
+//=======================================================================================
 
-/* Mapping of Debug Module Register addresses to their names. */
+// Mapping of Debug Module Register addresses to their names.
 val dm_name_map : dmreg <-> string
 
 // Forward declaration so the implementation can be
@@ -22,19 +22,67 @@ function dm_name(dm_reg) = dm_name_map(dm_reg)
 
 overload to_str = {dm_name}
 
-/* Returns whether a Debug Module Register exists */
+// Returns whether a Debug Module Register exists
 val is_DM_reg_defined : (dmreg) -> bool
 scattered function is_DM_reg_defined
 
-/* Returns the value of the Debug Module Register if it is defined */
+// Returns the value of the Debug Module Register if it is defined
 val read_DM_reg : dmreg -> bits(32)
 scattered function read_DM_reg
 
-/* if the Debug Module Register is defined, writes the legalized value to it */
+// if the Debug Module Register is defined, writes the legalized value to it
 val write_DM_reg : (dmreg, bits(32)) -> unit
 scattered function write_DM_reg
 
 ///////////////////////////////////////////////////////////////////////
+
+bitfield Dmstatus : bits(32) = {
+  ndmresetpending: 24,
+  stickyunavail:   23,
+  impebreak:       22,
+  allhavereset:    19,
+  anyhavereset:    18,
+  allresumeack:    17,
+  anyresumeack:    16,
+  allnonexistent:  15,
+  anynonexistent:  14,
+  allunavail:      13,
+  anyunavail:      12,
+  allrunning:      11,
+  anyrunning:      10,
+  allhalted:        9,
+  anyhalted:        8,
+  authenticated:    7,
+  authbusy:         6,
+  hasresethaltreq:  5,
+  confstrptrvalid:  4,
+  version:          3 .. 0
+}
+
+function initial_dmstatus() -> Dmstatus = {
+  [Mk_Dmstatus(zeros()) with
+    impebreak = if unsigned(MAX_PROGBUF_SIZE) == 1 | (config platform.debug_module.impebreak : bool) then 0b1 else 0b0,
+    // NOTE: By default, the hart is running (riscv-openocd expects it to be either running or halted during initialization).
+    allrunning = 0b1,
+    anyrunning = 0b1,
+    // TODO: For now authentication is not supported
+    // but this should be optional
+    // NOTE: This needs to be disabled because otherwise
+    // OpenOCD will not continue after failed authentication
+    authenticated   = 0b1,
+    hasresethaltreq = 0b1,
+    // Version 1.0
+    version         = 0b0011
+  ]
+}
+
+register dmstatus: Dmstatus = initial_dmstatus()
+
+mapping clause dm_name_map = 0x11  <-> "dmstatus"
+
+function clause is_DM_reg_defined (0x11) = true
+function clause write_DM_reg(0x11, value) = ()
+function clause read_DM_reg(0x11) = dmstatus.bits
 
 bitfield Abstractcs : bits(32) = {
   progbufsize : 28 .. 24,
@@ -70,17 +118,33 @@ function clause is_DM_reg_defined (0x16) = true
 function clause write_DM_reg(0x16, value) = { abstractcs = legalize_abstractcs(abstractcs, value); }
 function clause read_DM_reg(0x16) = abstractcs.bits
 
-function legalize_data(d: bits(32), x : bits(32)) -> bits(32) = {
+function check_abstract_busy_and_set_error() -> bool = {
   if is_abstractcs_busy() then {
     if abstractcs[cmderr] == abstract_command_error(NONE) then {
       abstractcs[cmderr] = abstract_command_error(BUSY);
     };
-    d
+    true
   }
   else {
-    x
+    false
   }
 }
+
+function complete_abstract_command(status : AbstractCommandError, cmd : option(AbstractCommand)) -> unit = {
+  // Debug Module never clears cmderr, only sets it or preserves it
+  // https://github.com/riscv-collab/riscv-openocd/issues/1306#issuecomment-3492075576
+  if abstractcs[cmderr] == abstract_command_error(NONE) then {
+    abstractcs[cmderr] = abstract_command_error(status)
+  };
+
+  //TODO: handle aarmpostincrement etc
+  // match cmd {
+  //  Some(_)
+  //  None() =>
+  //}
+}
+
+
 
 register data0  : bits(32)
 register data1  : bits(32)
@@ -94,6 +158,284 @@ register data8  : bits(32)
 register data9  : bits(32)
 register data10 : bits(32)
 register data11 : bits(32)
+
+bitfield Command : bits(32) = {
+  cmdtype: 31 .. 24,
+  control: 23 .. 0
+}
+
+val read_arg : forall 'n, 'n in {32, 64, 128}.
+  (range(0, 2), int('n)) -> bits('n)
+
+function read_arg(arg_num, argument_width) = {
+  let value : bits('n) = match (arg_num, argument_width) {
+    // arg0
+    (0, 32)  => data0,
+    (0, 64)  => data1 @ data0,
+    (0, 128) => data3 @ data2 @ data1 @ data0,
+
+    // arg1
+    (1, 32)  => data1,
+    (1, 64)  => data3 @ data2,
+    (1, 128) => data7 @ data6 @ data5 @ data4,
+
+    // arg2
+    (2, 32)  => data2,
+    (2, 64)  => data5 @ data4,
+    (2, 128) => data11 @ data10 @ data9 @ data8,
+  };
+  if get_config_print_debug() then
+    print_log("DEBUG read_arg: arg_num=" ^ dec_str(arg_num) ^
+    " width=" ^ dec_str(argument_width) ^
+    " value=" ^ bits_str(value));
+  value
+}
+
+val write_arg : forall 'n, 'n in {32, 64, 128}.
+  (range(0, 2), int('n), bits('n)) -> unit
+
+function write_arg(arg_num, argument_width, value) = {
+  if get_config_print_debug() then
+    print_log("DEBUG write_arg: arg_num=" ^ dec_str(arg_num) ^
+    " width=" ^ dec_str(argument_width) ^
+    " value=" ^ bits_str(value));
+  match (arg_num, argument_width) {
+    // arg0
+    (0, 32)  => {
+      data0 = value;
+    },
+    (0, 64)  => {
+      data0 = value[31..0];
+      data1 = value[63..32];
+    },
+    (0, 128) => {
+      data0 = value[31..0];
+      data1 = value[63..32];
+      data2 = value[95..64];
+      data3 = value[127..96];
+    },
+
+    // arg1
+    (1, 32)  => {
+      data1 = value;
+    },
+    (1, 64)  => {
+      data2 = value[31..0];
+      data3 = value[63..32];
+    },
+    (1, 128) => {
+      data4 = value[31..0];
+      data5 = value[63..32];
+      data6 = value[95..64];
+      data7 = value[127..96];
+    },
+
+    // arg2
+    (2, 32)  => {
+      data2 = value;
+    },
+    (2, 64)  => {
+      data4 = value[31..0];
+      data5 = value[63..32];
+    },
+    (2, 128) => {
+      data8  = value[31..0];
+      data9  = value[63..32];
+      data10 = value[95..64];
+      data11 = value[127..96];
+    },
+  };
+}
+
+function handle_abstract_command(cmd : bits(32)) -> AbstractCommandError = {
+  let cmdtype = unsigned(cmd[31 .. 24]);
+  let hart_halted = dmstatus[allhalted] == 0b1;
+
+  set_abstractcs_busy(true);
+
+  let status : AbstractCommandError =
+    if cmdtype > 2 then NOT_SUPPORTED
+    else match abstract_command_type(cmdtype) {
+      ACCESS_REGISTER => {
+        let aarsize          = cmd[22 .. 20];
+        let reserved         = cmd[23 .. 23];
+        let aarpostincrement = cmd[19 .. 19];
+        let postexec         = cmd[18 .. 18];
+        let transfer         = cmd[17 .. 17];
+        let write            = cmd[16 .. 16];
+        let regno            = cmd[15 .. 0];
+
+        // Check for unsupported features or invalid reserved bits
+        let unsupported = reserved == 0b1 |
+                          // TODO: Add support for aarpostincrement
+                         aarpostincrement == 0b1 |
+                         (postexec == 0b1 & not(config platform.debug_module.program_buffer.supported : bool));
+
+        if unsupported then NOT_SUPPORTED
+        else if transfer == 0b1 & not(is_supported_reg_access(aarsize, regno)) then NOT_SUPPORTED
+        else if not(hart_halted) then HALT_RESUME
+        else {
+          // Hart is halted and command is valid
+          // TODO: aarsize can be 0 or >= 4 if transfer = 0, but it will trigger the assertion,
+          // needs to be fixed. That's a good moment to read the arg0 (data) here instead in the hart
+          // See riscv dmi_write 0x17 0x0
+          // will trigger the assertion
+          let aarsize = unsigned(aarsize);
+          assert(1 < aarsize & aarsize < 4);
+          send_debug_request(AbstractCommand(AccessRegister(
+            bits_to_bool(write),
+            regno,
+            aarsize,
+            bits_to_bool(postexec),
+            bits_to_bool(transfer)
+          )));
+          NONE
+        }
+      },
+
+      QUICK_ACCESS => {
+        if cmd[23 .. 0] != zeros() then NOT_SUPPORTED
+        else if hart_halted then HALT_RESUME
+        else {
+          send_debug_request(AbstractCommand(QuickAccess()));
+          NONE
+        }
+      },
+
+      ACCESS_MEMORY => {
+        let aamvirtual       = cmd[23 .. 23];
+        let aamsize          = cmd[22 .. 20];
+        let aampostincrement = cmd[19 .. 19];
+        let write            = cmd[16 .. 16];
+        let target_specific  = cmd[15 .. 14];
+
+        // Check for unsupported features or invalid reserved bits
+        // TODO: Add support for aampostincrement
+        let unsupported = aampostincrement == 0b1 |
+                         cmd[18 .. 17] != zeros() |
+                         cmd[13 .. 0] != zeros() |
+                         not(is_valid_aamsize(aamsize));
+
+        if unsupported then NOT_SUPPORTED
+        else if not(hart_halted) then HALT_RESUME
+        else {
+          let aamsize = aamsize_to_bytes(aamsize);
+          let addr = read_arg(1, dxlen);
+          send_debug_request(AbstractCommand(MemoryAccess(
+            bits_to_bool(aamvirtual),
+            bits_to_bool(write),
+            aamsize,
+            addr
+          )));
+          NONE
+        }
+      }
+    };
+
+  if status != NONE then set_abstractcs_busy(false);
+  status
+}
+
+
+register command: Command = Mk_Command(zeros())
+
+// NOTE: The command register is WARZ, so the stored value doesn't matter
+// for register reads. However, we preserve the command value internally when busy
+// to ensure abstractauto re-executes the correct command.
+function legalize_command(d : Command, x : bits(32)) -> Command = {
+  let hart_exists = dmstatus[allnonexistent] == 0b0;
+  let hart_available = dmstatus[allunavail] == 0b0;
+
+  let busy = abstractcs[busy] == 0b1;
+
+  let status =
+    if check_abstract_busy_and_set_error() then {
+      // TODO: Refactor, check_abstract_busy_and_set_error() already handles the logic below
+      if abstractcs[cmderr] == abstract_command_error(NONE)
+      then abstract_command_error(BUSY)
+      else abstractcs[cmderr]
+    } else if not(hart_available) | not(hart_exists) then {
+      set_abstractcs_busy(false);
+      abstract_command_error(HALT_RESUME)
+    } else {
+      abstract_command_error(handle_abstract_command(x))
+  };
+  abstractcs[cmderr] = status;
+
+  if busy then d else Mk_Command(x)
+}
+
+mapping clause dm_name_map = 0x17  <-> "command"
+
+function clause is_DM_reg_defined (0x17) = true
+function clause write_DM_reg(0x17, value) = { command = legalize_command(command, value); }
+function clause read_DM_reg(0x17) = zeros()
+
+bitfield Abstractauto : bits(32) = {
+  autoexecprogbuf: 31 .. 16,
+  autoexecdata:    11 ..  0,
+}
+
+// GDB/OpenOCD uses this for burst reads/writes
+// Even though its optional, openocd just assumes it exists...
+function legalize_abstractauto(d : Abstractauto, x : bits(32)) -> Abstractauto = {
+  let xx = x;
+  let x = Mk_Abstractauto(x);
+  // TODO: This is not really correct yet, we have to monitor the current abstract command:
+  // If this register is written while an abstract command is executing then the write is ignored and cmderr
+  // becomes 1 (busy) once the command completes (busy becomes 0). (Only if busy was set and transisioned from 1 to 0)
+  // Errors could have occurred and we dont wanna overwrite them
+  if check_abstract_busy_and_set_error() then {
+    d
+  } else {
+    let num_regs = unsigned(MAX_DATA_SIZE);
+    assert(num_regs <= 12, "MAX_DATA_SIZE must be <= 12");
+    let data_mask : bits(12) = to_bits(12, (2 ^ num_regs) - 1);
+
+    // TODO/NOTE: Add support for progbuf + simplify code
+    let num_regs_progbuf = unsigned(MAX_PROGBUF_SIZE);
+    assert(num_regs_progbuf <= 16, "MAX_PROGBUF_SIZE must be <= 16");
+    let progbuf_mask : bits(16) = to_bits(16, (2 ^ num_regs_progbuf) - 1);
+
+    [d with
+    // TODO modify progbuf bits in order to check for autoexecprogbuf
+    // TODO enable autoexecprogbuf
+      autoexecprogbuf = zeros(), //x[autoexecprogbuf] & progbuf_mask,
+      autoexecdata = x[autoexecdata] & data_mask,
+     ]
+  }
+}
+
+register abstractauto: Abstractauto = legalize_abstractauto(Mk_Abstractauto(zeros()), zeros())
+
+mapping clause dm_name_map = 0x18  <-> "abstractauto"
+
+// Optional Register
+function clause is_DM_reg_defined (0x18) = true
+function clause write_DM_reg(0x18, value) = { abstractauto = legalize_abstractauto(abstractauto, value); }
+function clause read_DM_reg(0x18) = abstractauto.bits
+
+// Separate function to check and trigger abstractauto after register access
+function handle_data_access_abstractauto(index : range(0, 11)) -> unit = {
+  let is_busy = check_abstract_busy_and_set_error();
+
+  // Trigger abstractauto if enabled and not busy
+  // NOTE: Triggers on BOTH read and write according to spec
+  if not(is_busy) & abstractauto[autoexecdata][index] == bitone then {
+    let _ = legalize_command(command, command.bits);
+  };
+}
+
+// Simplified data access handler - just handles busy checking
+function handle_data_write(d : bits(32), x : bits(32)) -> bits(32) = {
+  let is_busy = check_abstract_busy_and_set_error();
+  if is_busy then d else x
+}
+
+function handle_data_read(d : bits(32)) -> bits(32) = {
+  let _ = check_abstract_busy_and_set_error();
+  d
+}
 
 mapping clause dm_name_map = 0x04  <-> "data0"
 mapping clause dm_name_map = 0x05  <-> "data1"
@@ -121,76 +463,69 @@ function clause is_DM_reg_defined (0x0d) = unsigned(abstractcs[datacount]) > 9
 function clause is_DM_reg_defined (0x0e) = unsigned(abstractcs[datacount]) > 10
 function clause is_DM_reg_defined (0x0f) = unsigned(abstractcs[datacount]) > 11
 
-function clause write_DM_reg(0x04, value) = { data0 = legalize_data(data0, value); }
-function clause write_DM_reg(0x05, value) = { data1 = legalize_data(data1, value); }
-function clause write_DM_reg(0x06, value) = { data2 = legalize_data(data2, value); }
-function clause write_DM_reg(0x07, value) = { data3 = legalize_data(data3, value); }
-function clause write_DM_reg(0x08, value) = { data4 = legalize_data(data4, value); }
-function clause write_DM_reg(0x09, value) = { data5 = legalize_data(data5, value); }
-function clause write_DM_reg(0x0a, value) = { data6 = legalize_data(data6, value); }
-function clause write_DM_reg(0x0b, value) = { data7 = legalize_data(data7, value); }
-function clause write_DM_reg(0x0c, value) = { data8 = legalize_data(data8, value); }
-function clause write_DM_reg(0x0d, value) = { data9 = legalize_data(data9, value); }
-function clause write_DM_reg(0x0e, value) = { data10 = legalize_data(data10, value); }
-function clause write_DM_reg(0x0f, value) = { data11 = legalize_data(data11, value); }
-
-function clause read_DM_reg(0x04) = data0
-function clause read_DM_reg(0x05) = data1
-function clause read_DM_reg(0x06) = data2
-function clause read_DM_reg(0x07) = data3
-function clause read_DM_reg(0x08) = data4
-function clause read_DM_reg(0x09) = data5
-function clause read_DM_reg(0x0a) = data6
-function clause read_DM_reg(0x0b) = data7
-function clause read_DM_reg(0x0c) = data8
-function clause read_DM_reg(0x0d) = data9
-function clause read_DM_reg(0x0e) = data10
-function clause read_DM_reg(0x0f) = data11
-
-bitfield Dmstatus : bits(32) = {
-  ndmresetpending: 24,
-  stickyunavail:   23,
-  impebreak:       22,
-  allhavereset:    19,
-  anyhavereset:    18,
-  allresumeack:    17,
-  anyresumeack:    16,
-  allnonexistent:  15,
-  anynonexistent:  14,
-  allunavail:      13,
-  anyunavail:      12,
-  allrunning:      11,
-  anyrunning:      10,
-  allhalted:        9,
-  anyhalted:        8,
-  authenticated:    7,
-  authbusy:         6,
-  hasresethaltreq:  5,
-  confstrptrvalid:  4,
-  version:          3 .. 0
+// Update register FIRST, then trigger abstractauto
+function clause write_DM_reg(0x04, value) = {
+  data0 = handle_data_write(data0, value);
+  handle_data_access_abstractauto(0);
+}
+function clause write_DM_reg(0x05, value) = {
+  data1 = handle_data_write(data1, value);
+  handle_data_access_abstractauto(1);
+}
+function clause write_DM_reg(0x06, value) = {
+  data2 = handle_data_write(data2, value);
+  handle_data_access_abstractauto(2);
+}
+function clause write_DM_reg(0x07, value) = {
+  data3 = handle_data_write(data3, value);
+  handle_data_access_abstractauto(3);
+}
+function clause write_DM_reg(0x08, value) = {
+  data4 = handle_data_write(data4, value);
+  handle_data_access_abstractauto(4);
+}
+function clause write_DM_reg(0x09, value) = {
+  data5 = handle_data_write(data5, value);
+  handle_data_access_abstractauto(5);
+}
+function clause write_DM_reg(0x0a, value) = {
+  data6 = handle_data_write(data6, value);
+  handle_data_access_abstractauto(6);
+}
+function clause write_DM_reg(0x0b, value) = {
+  data7 = handle_data_write(data7, value);
+  handle_data_access_abstractauto(7);
+}
+function clause write_DM_reg(0x0c, value) = {
+  data8 = handle_data_write(data8, value);
+  handle_data_access_abstractauto(8);
+}
+function clause write_DM_reg(0x0d, value) = {
+  data9 = handle_data_write(data9, value);
+  handle_data_access_abstractauto(9);
+}
+function clause write_DM_reg(0x0e, value) = {
+  data10 = handle_data_write(data10, value);
+  handle_data_access_abstractauto(10);
+}
+function clause write_DM_reg(0x0f, value) = {
+  data11 = handle_data_write(data11, value);
+  handle_data_access_abstractauto(11);
 }
 
-function initial_dmstatus() -> Dmstatus = {
-  [Mk_Dmstatus(zeros()) with
-    impebreak = if unsigned(MAX_PROGBUF_SIZE) == 1 | (config platform.debug_module.impebreak : bool) then 0b1 else 0b0,
-    // TODO: For now authentication is not supported
-    // but this should be optional
-    // NOTE: This needs to be disabled because otherwise
-    // OpenOCD will not continue after failed authentication
-    authenticated   = 0b1,
-    hasresethaltreq = 0b1,
-    // Version 1.0
-    version         = 0b0011
-  ]
-}
-
-register dmstatus: Dmstatus = initial_dmstatus()
-
-mapping clause dm_name_map = 0x11  <-> "dmstatus"
-
-function clause is_DM_reg_defined (0x11) = true
-function clause write_DM_reg(0x11, value) = ()
-function clause read_DM_reg(0x11) = dmstatus.bits
+// Trigger abstractauto AFTER read completes
+function clause read_DM_reg(0x04) = { let r = handle_data_read(data0); handle_data_access_abstractauto(0); r }
+function clause read_DM_reg(0x05) = { let r = handle_data_read(data1); handle_data_access_abstractauto(1); r }
+function clause read_DM_reg(0x06) = { let r = handle_data_read(data2); handle_data_access_abstractauto(2); r }
+function clause read_DM_reg(0x07) = { let r = handle_data_read(data3); handle_data_access_abstractauto(3); r }
+function clause read_DM_reg(0x08) = { let r = handle_data_read(data4); handle_data_access_abstractauto(4); r }
+function clause read_DM_reg(0x09) = { let r = handle_data_read(data5); handle_data_access_abstractauto(5); r }
+function clause read_DM_reg(0x0a) = { let r = handle_data_read(data6); handle_data_access_abstractauto(6); r }
+function clause read_DM_reg(0x0b) = { let r = handle_data_read(data7); handle_data_access_abstractauto(7); r }
+function clause read_DM_reg(0x0c) = { let r = handle_data_read(data8); handle_data_access_abstractauto(8); r }
+function clause read_DM_reg(0x0d) = { let r = handle_data_read(data9); handle_data_access_abstractauto(9); r }
+function clause read_DM_reg(0x0e) = { let r = handle_data_read(data10); handle_data_access_abstractauto(10); r }
+function clause read_DM_reg(0x0f) = { let r = handle_data_read(data11); handle_data_access_abstractauto(11); r }
 
 bitfield Dmcontrol : bits(32) = {
   haltreq :        31,
@@ -323,7 +658,8 @@ function legalize_active_dmcontrol(d : Dmcontrol, x : Dmcontrol) -> Dmcontrol = 
       if x[resumereq] == 0b1 & not(running) then {
         set_resumeack(false);
         send_debug_request(Resume());
-        set_resumeack(true);
+        // TODO: resumeack needs to be set after we transition from halt to running
+        //set_resumeack(true);
       };
     },
 
@@ -374,6 +710,17 @@ function send_hart_status(status : debug_module_hart_status) -> unit = {
   // Only set, never clear havereset
   if status.havereset then
     set_havereset(true);
+
+
+  // NOTE: Is resumeack at some point cleared? Besides sending a resumereeq
+  //if status.halted & halted then {
+  //  set_resumeack(false);
+ // };
+
+ // Set resumeack when hart successfully resumes
+    if running & status.running then {
+      set_resumeack(true);
+    };
 
   assert((halted & not(running)) | (not(halted) & running), "Hart cannot be both halted and running at the same time");
 }
@@ -448,224 +795,6 @@ mapping clause dm_name_map = 0x15  <-> "hawindow"
 function clause is_DM_reg_defined (0x15) = true
 function clause write_DM_reg(0x15, value) = { hawindow = legalize_hawindow(hawindow, value); }
 function clause read_DM_reg(0x15) = hawindow.bits
-
-bitfield Command : bits(32) = {
-  cmdtype: 31 .. 24,
-  control: 23 .. 0
-}
-
-val read_arg : forall 'n, 'n in {32, 64, 128}.
-  (range(0, 2), int('n)) -> bits('n)
-
-function read_arg(arg_num, argument_width) = {
-  match (arg_num, argument_width) {
-    // arg0
-    (0, 32)  => data0,
-    (0, 64)  => data1 @ data0,
-    (0, 128) => data3 @ data2 @ data1 @ data0,
-
-    // arg1
-    (1, 32)  => data1,
-    (1, 64)  => data3 @ data2,
-    (1, 128) => data7 @ data6 @ data5 @ data4,
-
-    // arg2
-    (2, 32)  => data2,
-    (2, 64)  => data5 @ data4,
-    (2, 128) => data11 @ data10 @ data9 @ data8,
-  }
-}
-
-val write_arg : forall 'n, 'n in {32, 64, 128}.
-  (range(0, 2), int('n), bits('n)) -> unit
-
-function write_arg(arg_num, argument_width, value) = {
-  match (arg_num, argument_width) {
-    // arg0
-    (0, 32)  => {
-      data0 = value;
-    },
-    (0, 64)  => {
-      data0 = value[31..0];
-      data1 = value[63..32];
-    },
-    (0, 128) => {
-      data0 = value[31..0];
-      data1 = value[63..32];
-      data2 = value[95..64];
-      data3 = value[127..96];
-    },
-
-    // arg1
-    (1, 32)  => {
-      data1 = value;
-    },
-    (1, 64)  => {
-      data2 = value[31..0];
-      data3 = value[63..32];
-    },
-    (1, 128) => {
-      data4 = value[31..0];
-      data5 = value[63..32];
-      data6 = value[95..64];
-      data7 = value[127..96];
-    },
-
-    // arg2
-    (2, 32)  => {
-      data2 = value;
-    },
-    (2, 64)  => {
-      data4 = value[31..0];
-      data5 = value[63..32];
-    },
-    (2, 128) => {
-      data8  = value[31..0];
-      data9  = value[63..32];
-      data10 = value[95..64];
-      data11 = value[127..96];
-    },
-  }
-}
-
-function handle_abstract_command(command : bits(32)) -> AbstractCommandError = {
-  let cmdtype = unsigned(command[31 .. 24]);
-  let hart_halted = dmstatus[allhalted] == 0b1;
-
-  set_abstractcs_busy(true);
-
-  let status : AbstractCommandError =
-    if cmdtype > 2 then NOT_SUPPORTED
-    else match abstract_command_type(cmdtype) {
-      ACCESS_REGISTER => {
-        let aarsize          = command[22 .. 20];
-        let reserved         = command[23 .. 23];
-        let aarpostincrement = command[19 .. 19];
-        let postexec         = command[18 .. 18];
-        let transfer         = command[17 .. 17];
-        let write            = command[16 .. 16];
-        let regno            = command[15 .. 0];
-
-        // Check for unsupported features or invalid reserved bits
-        let unsupported = reserved == 0b1 |
-                          // TODO: Add support for aarpostincrement
-                         aarpostincrement == 0b1 |
-                         (postexec == 0b1 & not(config platform.debug_module.program_buffer.supported : bool));
-
-        if unsupported then NOT_SUPPORTED
-        else if transfer == 0b1 & not(is_supported_reg_access(aarsize, regno)) then NOT_SUPPORTED
-        else if not(hart_halted) then HALT_RESUME
-        else {
-          // Hart is halted and command is valid
-          let aarsize = unsigned(aarsize);
-          assert(1 < aarsize & aarsize < 4);
-          send_debug_request(AbstractCommand(AccessRegister(
-            bits_to_bool(write),
-            regno,
-            aarsize,
-            bits_to_bool(postexec),
-            bits_to_bool(transfer)
-          )));
-          NONE
-        }
-      },
-
-      QUICK_ACCESS => {
-        if command[23 .. 0] != zeros() then NOT_SUPPORTED
-        else if hart_halted then HALT_RESUME
-        else {
-          send_debug_request(AbstractCommand(QuickAccess()));
-          NONE
-        }
-      },
-
-      ACCESS_MEMORY => {
-        let aamvirtual       = command[23 .. 23];
-        let aamsize          = command[22 .. 20];
-        let aampostincrement = command[19 .. 19];
-        let write            = command[16 .. 16];
-        let target_specific  = command[15 .. 14];
-
-        // Check for unsupported features or invalid reserved bits
-        // TODO: Add support for aampostincrement
-        let unsupported = aampostincrement == 0b1 |
-                         command[18 .. 17] != zeros() |
-                         command[13 .. 0] != zeros() |
-                         not(is_valid_aamsize(aamsize));
-
-        if unsupported then NOT_SUPPORTED
-        else if not(hart_halted) then HALT_RESUME
-        else {
-          let aamsize = aamsize_to_bytes(aamsize);
-          let addr = read_arg(1, dxlen);
-          send_debug_request(AbstractCommand(MemoryAccess(
-            bits_to_bool(aamvirtual),
-            bits_to_bool(write),
-            aamsize,
-            addr
-          )));
-          NONE
-        }
-      }
-    };
-
-  if status != NONE then set_abstractcs_busy(false);
-  status
-}
-
-function legalize_command(d : Command, x : bits(32)) -> unit = {
-  let hart_exists = dmstatus[allnonexistent] == 0b0;
-  let hart_available = dmstatus[allunavail] == 0b0;
-
-  let status =
-    if is_abstractcs_busy() then {
-      if abstractcs[cmderr] == abstract_command_error(NONE)
-      then abstract_command_error(BUSY)
-      else abstractcs[cmderr]
-    } else if not(hart_available) | not(hart_exists) then {
-      set_abstractcs_busy(false);
-      abstract_command_error(HALT_RESUME)
-    } else {
-      abstract_command_error(handle_abstract_command(x))
-  };
-  abstractcs[cmderr] = status;
-}
-
-register command: Command = Mk_Command(zeros())
-
-mapping clause dm_name_map = 0x17  <-> "command"
-
-function clause is_DM_reg_defined (0x17) = true
-function clause write_DM_reg(0x17, value) = { legalize_command(command, value); }
-function clause read_DM_reg(0x17) = zeros()
-
-bitfield Abstractauto : bits(32) = {
-  autoexecprogbuf: 31 .. 16,
-  autoexecdata:    11 ..  0,
-}
-
-function legalize_abstractauto(d : Abstractauto, x : bits(32)) -> Abstractauto = {
-  let x = Mk_Abstractauto(x);
-  // TODO/NOTE: This is not correctly implemented as of now
-  if is_abstractcs_busy() then{
-    abstractcs[cmderr] = abstract_command_error(BUSY);
-    d
-  } else {
-    [d with
-      autoexecdata = zeros(),
-      autoexecdata = zeros(),
-     ]
-  }
-}
-
-register abstractauto: Abstractauto = legalize_abstractauto(Mk_Abstractauto(zeros()), zeros())
-
-mapping clause dm_name_map = 0x18  <-> "abstractauto"
-
-// Optional Register
-function clause is_DM_reg_defined (0x18) = false
-function clause write_DM_reg(0x18, value) = { abstractauto = legalize_abstractauto(abstractauto, value); }
-function clause read_DM_reg(0x18) = abstractauto.bits
 
 bitfield Confstrptr0 : bits(32) = {
   addr : 31 .. 0
@@ -768,20 +897,16 @@ function clause write_DM_reg(0x1d, value) = ()
 function clause read_DM_reg(0x1d) = nextdm.bits
 
 function legalize_progbuf(d: bits(32), x : bits(32)) -> bits(32) = {
-  if is_abstractcs_busy() then {
-    if abstractcs[cmderr] == abstract_command_error(NONE) then {
-      abstractcs[cmderr] = abstract_command_error(BUSY);
-    };
+  if check_abstract_busy_and_set_error() then
     d
-  }
-  else {
+  else
     x
-  }
 }
 
 // Program buffer registers, initialized with EBREAK (0x00100073)
 // Ensures the hart safely exits debug mode even if the program buffer
 // is not fully populated by the debugger
+// TODO: Reinitialize after reset
 register progbuf0  : bits(32) = 0x00100073
 register progbuf1  : bits(32) = 0x00100073
 register progbuf2  : bits(32) = 0x00100073
@@ -850,22 +975,22 @@ function clause write_DM_reg(0x2d, value) = { progbuf13 = legalize_progbuf(progb
 function clause write_DM_reg(0x2e, value) = { progbuf14 = legalize_progbuf(progbuf14, value); }
 function clause write_DM_reg(0x2f, value) = { progbuf15 = legalize_progbuf(progbuf15, value); }
 
-function clause read_DM_reg(0x20) = progbuf0
-function clause read_DM_reg(0x21) = progbuf1
-function clause read_DM_reg(0x22) = progbuf2
-function clause read_DM_reg(0x23) = progbuf3
-function clause read_DM_reg(0x24) = progbuf4
-function clause read_DM_reg(0x25) = progbuf5
-function clause read_DM_reg(0x26) = progbuf6
-function clause read_DM_reg(0x27) = progbuf7
-function clause read_DM_reg(0x28) = progbuf8
-function clause read_DM_reg(0x29) = progbuf9
-function clause read_DM_reg(0x2a) = progbuf10
-function clause read_DM_reg(0x2b) = progbuf11
-function clause read_DM_reg(0x2c) = progbuf12
-function clause read_DM_reg(0x2d) = progbuf13
-function clause read_DM_reg(0x2e) = progbuf14
-function clause read_DM_reg(0x2f) = progbuf15
+function clause read_DM_reg(0x20) = { let _ = check_abstract_busy_and_set_error(); progbuf0 }
+function clause read_DM_reg(0x21) = { let _ = check_abstract_busy_and_set_error(); progbuf1 }
+function clause read_DM_reg(0x22) = { let _ = check_abstract_busy_and_set_error(); progbuf2 }
+function clause read_DM_reg(0x23) = { let _ = check_abstract_busy_and_set_error(); progbuf3 }
+function clause read_DM_reg(0x24) = { let _ = check_abstract_busy_and_set_error(); progbuf4 }
+function clause read_DM_reg(0x25) = { let _ = check_abstract_busy_and_set_error(); progbuf5 }
+function clause read_DM_reg(0x26) = { let _ = check_abstract_busy_and_set_error(); progbuf6 }
+function clause read_DM_reg(0x27) = { let _ = check_abstract_busy_and_set_error(); progbuf7 }
+function clause read_DM_reg(0x28) = { let _ = check_abstract_busy_and_set_error(); progbuf8 }
+function clause read_DM_reg(0x29) = { let _ = check_abstract_busy_and_set_error(); progbuf9 }
+function clause read_DM_reg(0x2a) = { let _ = check_abstract_busy_and_set_error(); progbuf10 }
+function clause read_DM_reg(0x2b) = { let _ = check_abstract_busy_and_set_error(); progbuf11 }
+function clause read_DM_reg(0x2c) = { let _ = check_abstract_busy_and_set_error(); progbuf12 }
+function clause read_DM_reg(0x2d) = { let _ = check_abstract_busy_and_set_error(); progbuf13 }
+function clause read_DM_reg(0x2e) = { let _ = check_abstract_busy_and_set_error(); progbuf14 }
+function clause read_DM_reg(0x2f) = { let _ = check_abstract_busy_and_set_error(); progbuf15 }
 
 bitfield Authdata : bits(32) = {
   data: 31 .. 0
@@ -1171,6 +1296,7 @@ function clause write_DM_reg(dm_reg, _) = {
 }
 end write_DM_reg
 
+
 function reset_debug_module() = {
   if get_config_print_debug()
   then print_log("Reset Debug Module");
@@ -1186,6 +1312,8 @@ function reset_debug_module() = {
   //unavail      = false;
   //keepalive    = false;
 
+  // NOTE: We dont set anyrunning or allrunning yet
+  // TODO: Check if we can just call initialize_dmstatus()
   dmstatus = [Mk_Dmstatus(zeros()) with
     impebreak       = if unsigned(MAX_PROGBUF_SIZE) == 1 | (config platform.debug_module.impebreak : bool) then 0b1 else 0b0,
     authenticated   = 0b1,

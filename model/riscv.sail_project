@@ -25,8 +25,6 @@ core {
     core/vmem_types.sail,
     core/vext_types.sail,
     core/csr_begin.sail,
-    debug_module/debug_module_types.sail,
-    debug_module/debug_module_regs.sail,
     core/callbacks.sail,
     core/reg_type.sail,
     core/regs.sail,
@@ -467,6 +465,8 @@ debug_module {
   module {
     requires core, FD_core
     files
+      debug_module/debug_module_types.sail,
+      debug_module/debug_module_regs.sail,
       debug_module/debug_module_utils.sail,
       debug_module/debug_module.sail,
       debug_module/debug_module_interface.sail
@@ -504,6 +504,7 @@ postlude {
     postlude/validate_config.sail,
     postlude/device_tree.sail,
     postlude/model.sail,
+    // TODO move handlers to a different folder
     postlude/debug_module_handlers.sail,
     postlude/step.sail,
 }

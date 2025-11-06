@@ -391,3 +391,14 @@ mapping debug_cause_bits : bits(3) <-> debug_entry_cause = {
   0b110 <-> DBGEntry_Group,
   0b111 <-> DBGEntry_Other,
 }
+
+mapping debug_entry_cause_to_str : debug_entry_cause <-> string = {
+  DBGEntry_None         <-> "None",
+  DBGEntry_EBreak       <-> "EBreak",
+  DBGEntry_Trigger      <-> "Trigger",
+  DBGEntry_HaltReq      <-> "HaltReq",
+  DBGEntry_Step         <-> "Step",
+  DBGEntry_ResetHaltReq <-> "ResetHaltReq",
+  DBGEntry_Group        <-> "Group",
+  DBGEntry_Other        <-> "Other",
+}

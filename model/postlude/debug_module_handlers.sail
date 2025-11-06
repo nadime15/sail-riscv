@@ -96,22 +96,20 @@ function handle_abstract_register_access(write : bool, regno : bits(16), width: 
       },
 
       // General Purpose Registers (0x1000-0x101f)
-      regno if regno <=_u 0x101f & not(base_E_enabled & unsigned(regno[4 .. 0]) > 15) => {
-        let value = if width == 2 & dxlen == 64
-                    then zeros() @ read_arg(0, 32)
-                    else read_arg(0, dxlen);
-        if write then X(regidx) = value
-        else write_arg(0, dxlen, X(regidx));
+      regno if 0x1000 <=_u regno & regno <=_u 0x101f & not(base_E_enabled & unsigned(regno[4 .. 0]) > 15) => {
+        if write then
+          X(regidx) = zero_extend(read_arg(0, if width == 2 & dxlen == 64 then 32 else dxlen))
+        else
+          write_arg(0, dxlen, X(regidx));
         NONE
       },
 
       // Floating Point Registers (0x1020-0x103f)
-      regno if regno <=_u 0x103f & mstatus[FS] != 0b00 => {
-        let value = if width == 2 & flen == 64
-                    then zeros() @ read_arg(0, 32)
-                    else read_arg(0, flen);
-        if write then F(fregidx) = value
-        else write_arg(0, flen, F(fregidx));
+      regno if 0x1020 <=_u regno & regno <=_u 0x103f & mstatus[FS] != 0b00 => {
+        if write then
+          F(fregidx) = zero_extend(read_arg(0, if width == 2 & flen == 64 then 32 else flen))
+        else
+          write_arg(0, flen, F(fregidx));
         NONE
       },
 
