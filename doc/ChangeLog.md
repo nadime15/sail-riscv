@@ -3,6 +3,7 @@
 - The following extensions have been added:
 
   - Zic64b
+  - Ssnpm, Smmpm, and Smnpm (Pointer Masking)
 
 # Release notes for version 0.9
 
