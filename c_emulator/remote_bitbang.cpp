@@ -309,7 +309,7 @@ void remote_bitbang_t::run(uint64_t insn_limit)
       // JTAG cycle followed by four Sail cycles, which is more realistic since
       // a real chip would typically run faster than the JTAG interface.
       // TODO: Make this a config option
-      int max_ticks_sail = 4;
+      int max_ticks_sail = 3;
       for (int i = 0; i < max_ticks_sail; i++) {
         sail_int sail_step;
         CREATE(sail_int)(&sail_step);
