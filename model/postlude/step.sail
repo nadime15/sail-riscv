@@ -284,7 +284,7 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
           update_debug_module_status(Halt(), false)
         },
         Exit_Debug_Abstract_Command() => {
-          end_debug_abstract_command(NONE);
+          end_debug_abstract_command(CMDERR_NONE);
           match debug_active_command {
             Some(QuickAccess()) => handle_debug_resume(Resume()),
             _ => (),

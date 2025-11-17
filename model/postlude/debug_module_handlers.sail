@@ -92,7 +92,7 @@ function handle_abstract_register_access(write : bool, regno : bits(16), width: 
         } else {
           write_arg(0, dxlen, read_CSR(regno[11 .. 0]))
         };
-        NONE
+        CMDERR_NONE
       },
 
       // General Purpose Registers (0x1000-0x101f)
@@ -101,7 +101,7 @@ function handle_abstract_register_access(write : bool, regno : bits(16), width: 
           X(regidx) = zero_extend(read_arg(0, if width == 2 & dxlen == 64 then 32 else dxlen))
         else
           write_arg(0, dxlen, X(regidx));
-        NONE
+        CMDERR_NONE
       },
 
       // Floating Point Registers (0x1020-0x103f)
@@ -110,16 +110,16 @@ function handle_abstract_register_access(write : bool, regno : bits(16), width: 
           F(fregidx) = zero_extend(read_arg(0, if width == 2 & flen == 64 then 32 else flen))
         else
           write_arg(0, flen, F(fregidx));
-        NONE
+        CMDERR_NONE
       },
 
-      _ => EXCEPTION
+      _ => CMDERR_EXCEPTION
     }
   } else {
-    NONE
+    CMDERR_NONE
   };
 
-  if postexec & status == NONE then {
+  if postexec & status == CMDERR_NONE then {
     execute_program_buffer();
   } else {
     end_debug_abstract_command(status);
@@ -150,7 +150,7 @@ function handle_abstract_memory_access(virtual : bool, write : bool, width : wor
     }
   };
 
-  end_debug_abstract_command(if not(success) then EXCEPTION else NONE);
+  end_debug_abstract_command(if not(success) then CMDERR_EXCEPTION else CMDERR_NONE);
 }
 
 // ----------------------------------------------------------------------------

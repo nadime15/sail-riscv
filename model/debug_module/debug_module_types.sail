@@ -71,36 +71,36 @@ mapping abstract_command_type : int <-> AbstractCommandType = {
 }
 
 enum AbstractCommandError = {
-  NONE,
-  BUSY,
-  NOT_SUPPORTED,
-  EXCEPTION,
-  HALT_RESUME,
-  BUS,
-  RESERVED,
-  OTHER,
+  CMDERR_NONE,
+  CMDERR_BUSY,
+  CMDERR_NOT_SUPPORTED,
+  CMDERR_EXCEPTION,
+  CMDERR_HALT_RESUME,
+  CMDERR_BUS,
+  CMDERR_RESERVED,
+  CMDERR_OTHER,
 }
 
 mapping abstract_command_error : bits(3) <-> AbstractCommandError = {
-  0b000 <-> NONE,
-  0b001 <-> BUSY,
-  0b010 <-> NOT_SUPPORTED,
-  0b011 <-> EXCEPTION,
-  0b100 <-> HALT_RESUME,
-  0b101 <-> BUS,
-  0b110 <-> RESERVED,
-  0b111 <-> OTHER
+  0b000 <-> CMDERR_NONE,
+  0b001 <-> CMDERR_BUSY,
+  0b010 <-> CMDERR_NOT_SUPPORTED,
+  0b011 <-> CMDERR_EXCEPTION,
+  0b100 <-> CMDERR_HALT_RESUME,
+  0b101 <-> CMDERR_BUS,
+  0b110 <-> CMDERR_RESERVED,
+  0b111 <-> CMDERR_OTHER
 }
 
 mapping abstract_command_error_name : AbstractCommandError <-> string = {
-  NONE          <-> "NONE",
-  BUSY          <-> "BUSY",
-  NOT_SUPPORTED <-> "NOT_SUPPORTED",
-  EXCEPTION     <-> "EXCEPTION",
-  HALT_RESUME   <-> "HALT_RESUME",
-  BUS           <-> "BUS",
-  RESERVED      <-> "RESERVED",
-  OTHER         <-> "OTHER",
+  CMDERR_NONE          <-> "NONE",
+  CMDERR_BUSY          <-> "BUSY",
+  CMDERR_NOT_SUPPORTED <-> "NOT_SUPPORTED",
+  CMDERR_EXCEPTION     <-> "EXCEPTION",
+  CMDERR_HALT_RESUME   <-> "HALT_RESUME",
+  CMDERR_BUS           <-> "BUS",
+  CMDERR_RESERVED      <-> "RESERVED",
+  CMDERR_OTHER         <-> "OTHER",
 }
 
 function abstract_command_error_to_string(error : bits(3)) -> string = abstract_command_error_name(abstract_command_error(error))

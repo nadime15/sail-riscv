@@ -188,7 +188,7 @@ function trap_handler(del_priv : Privilege, c : TrapCause, pc : xlenbits, info :
   // TODO: I am not sure about what the note above, if we execute the program buffer
   // we actually stop the abstract command and stop executing, we dont modify the PC
   if in_debug_abstract_command() then {
-    end_debug_abstract_command(EXCEPTION);
+    end_debug_abstract_command(CMDERR_EXCEPTION);
     return pc // debug_trap_vector
   };
 

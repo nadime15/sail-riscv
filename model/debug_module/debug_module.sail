@@ -121,8 +121,8 @@ function clause read_DM_reg(0x16) = abstractcs.bits
 
 function check_abstract_busy_and_set_error() -> bool = {
   if is_abstractcs_busy() then {
-    if abstractcs[cmderr] == abstract_command_error(NONE) then {
-      abstractcs[cmderr] = abstract_command_error(BUSY);
+    if abstractcs[cmderr] == abstract_command_error(CMDERR_NONE) then {
+      abstractcs[cmderr] = abstract_command_error(CMDERR_BUSY);
     };
     true
   }
@@ -134,7 +134,7 @@ function check_abstract_busy_and_set_error() -> bool = {
 function complete_abstract_command(status : AbstractCommandError, cmd : option(AbstractCommand)) -> unit = {
   // Debug Module never clears cmderr, only sets it or preserves it
   // https://github.com/riscv-collab/riscv-openocd/issues/1306#issuecomment-3492075576
-  if abstractcs[cmderr] == abstract_command_error(NONE) then {
+  if abstractcs[cmderr] == abstract_command_error(CMDERR_NONE) then {
     abstractcs[cmderr] = abstract_command_error(status)
   };
 
@@ -255,7 +255,7 @@ function handle_abstract_command(cmd : bits(32)) -> AbstractCommandError = {
   set_abstractcs_busy(true);
 
   let status : AbstractCommandError =
-    if cmdtype > 2 then NOT_SUPPORTED
+    if cmdtype > 2 then CMDERR_NOT_SUPPORTED
     else match abstract_command_type(cmdtype) {
       ACCESS_REGISTER => {
         let aarsize          = cmd[22 .. 20];
@@ -272,9 +272,9 @@ function handle_abstract_command(cmd : bits(32)) -> AbstractCommandError = {
                          aarpostincrement == 0b1 |
                          (postexec == 0b1 & not(config platform.debug_module.program_buffer.supported : bool));
 
-        if unsupported then NOT_SUPPORTED
-        else if transfer == 0b1 & not(is_supported_reg_access(aarsize, regno)) then NOT_SUPPORTED
-        else if not(hart_halted) then HALT_RESUME
+        if unsupported then CMDERR_NOT_SUPPORTED
+        else if transfer == 0b1 & not(is_supported_reg_access(aarsize, regno)) then CMDERR_NOT_SUPPORTED
+        else if not(hart_halted) then CMDERR_HALT_RESUME
         else {
           // Hart is halted and command is valid
           // TODO: aarsize can be 0 or >= 4 if transfer = 0, but it will trigger the assertion,
@@ -290,16 +290,16 @@ function handle_abstract_command(cmd : bits(32)) -> AbstractCommandError = {
             bits_to_bool(postexec),
             bits_to_bool(transfer)
           )));
-          NONE
+          CMDERR_NONE
         }
       },
 
       QUICK_ACCESS => {
-        if cmd[23 .. 0] != zeros() then NOT_SUPPORTED
-        else if hart_halted then HALT_RESUME
+        if cmd[23 .. 0] != zeros() then CMDERR_NOT_SUPPORTED
+        else if hart_halted then CMDERR_HALT_RESUME
         else {
           send_debug_request(AbstractCommand(QuickAccess()));
-          NONE
+          CMDERR_NONE
         }
       },
 
@@ -317,8 +317,8 @@ function handle_abstract_command(cmd : bits(32)) -> AbstractCommandError = {
                          cmd[13 .. 0] != zeros() |
                          not(is_valid_aamsize(aamsize));
 
-        if unsupported then NOT_SUPPORTED
-        else if not(hart_halted) then HALT_RESUME
+        if unsupported then CMDERR_NOT_SUPPORTED
+        else if not(hart_halted) then CMDERR_HALT_RESUME
         else {
           let aamsize = aamsize_to_bytes(aamsize);
           let addr = read_arg(1, dxlen);
@@ -328,12 +328,12 @@ function handle_abstract_command(cmd : bits(32)) -> AbstractCommandError = {
             aamsize,
             addr
           )));
-          NONE
+          CMDERR_NONE
         }
       }
     };
 
-  if status != NONE then set_abstractcs_busy(false);
+  if status != CMDERR_NONE then set_abstractcs_busy(false);
   status
 }
 
@@ -351,12 +351,12 @@ function legalize_command(d : Command, x : bits(32)) -> Command = {
   let status =
     if check_abstract_busy_and_set_error() then {
       // TODO: Refactor, check_abstract_busy_and_set_error() already handles the logic below
-      if abstractcs[cmderr] == abstract_command_error(NONE)
-      then abstract_command_error(BUSY)
+      if abstractcs[cmderr] == abstract_command_error(CMDERR_NONE)
+      then abstract_command_error(CMDERR_BUSY)
       else abstractcs[cmderr]
     } else if not(hart_available) | not(hart_exists) then {
       set_abstractcs_busy(false);
-      abstract_command_error(HALT_RESUME)
+      abstract_command_error(CMDERR_HALT_RESUME)
     } else {
       abstract_command_error(handle_abstract_command(x))
   };
