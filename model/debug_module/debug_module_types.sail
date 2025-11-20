@@ -114,6 +114,9 @@ let ARG0 : range(0, 2) = 0
 let ARG1 : range(0, 2) = 1
 let ARG2 : range(0, 2) = 2
 
+let EBREAK_INSTRUCTION : bits(32) = 0x00100073
+let C_EBREAK_INSTRUCTION : bits(16) = 0x9002
+
 function abstract_command_error_to_string(error : bits(3)) -> string = abstract_command_error_name(abstract_command_error(error))
 
 struct debug_module_hart_status = {

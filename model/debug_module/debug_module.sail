@@ -145,18 +145,7 @@ function complete_abstract_command(status : AbstractCommandError, cmd : option(A
   //}
 }
 
-register data0  : bits(32)
-register data1  : bits(32)
-register data2  : bits(32)
-register data3  : bits(32)
-register data4  : bits(32)
-register data5  : bits(32)
-register data6  : bits(32)
-register data7  : bits(32)
-register data8  : bits(32)
-register data9  : bits(32)
-register data10 : bits(32)
-register data11 : bits(32)
+register data_regs : vector(12, bits(32)) = vector_init(zeros())
 
 bitfield Command : bits(32) = {
   cmdtype: 31 .. 24,
@@ -169,19 +158,19 @@ val read_arg : forall 'n, 'n in {32, 64, 128}.
 function read_arg(arg_num, argument_width) = {
   let value : bits('n) = match (arg_num, argument_width) {
     // arg0
-    (0, 32)  => data0,
-    (0, 64)  => data1 @ data0,
-    (0, 128) => data3 @ data2 @ data1 @ data0,
+    (0, 32)  => data_regs[0],
+    (0, 64)  => data_regs[1] @ data_regs[0],
+    (0, 128) => data_regs[3] @ data_regs[2] @ data_regs[1] @ data_regs[0],
 
     // arg1
-    (1, 32)  => data1,
-    (1, 64)  => data3 @ data2,
-    (1, 128) => data7 @ data6 @ data5 @ data4,
+    (1, 32)  => data_regs[1],
+    (1, 64)  => data_regs[3] @ data_regs[2],
+    (1, 128) => data_regs[7] @ data_regs[6] @ data_regs[5] @ data_regs[4],
 
     // arg2
-    (2, 32)  => data2,
-    (2, 64)  => data5 @ data4,
-    (2, 128) => data11 @ data10 @ data9 @ data8,
+    (2, 32)  => data_regs[2],
+    (2, 64)  => data_regs[5] @ data_regs[4],
+    (2, 128) => data_regs[11] @ data_regs[10] @ data_regs[9] @ data_regs[8],
   };
   if get_config_print_debug() then
     print_log("DEBUG read_arg: arg_num=" ^ dec_str(arg_num) ^
@@ -201,47 +190,47 @@ function write_arg(arg_num, argument_width, value) = {
   match (arg_num, argument_width) {
     // arg0
     (0, 32)  => {
-      data0 = value;
+      data_regs[0] = value;
     },
     (0, 64)  => {
-      data0 = value[31..0];
-      data1 = value[63..32];
+      data_regs[0] = value[31..0];
+      data_regs[1] = value[63..32];
     },
     (0, 128) => {
-      data0 = value[31..0];
-      data1 = value[63..32];
-      data2 = value[95..64];
-      data3 = value[127..96];
+      data_regs[0] = value[31..0];
+      data_regs[1] = value[63..32];
+      data_regs[2] = value[95..64];
+      data_regs[3] = value[127..96];
     },
 
     // arg1
     (1, 32)  => {
-      data1 = value;
+      data_regs[1] = value;
     },
     (1, 64)  => {
-      data2 = value[31..0];
-      data3 = value[63..32];
+      data_regs[2] = value[31..0];
+      data_regs[3] = value[63..32];
     },
     (1, 128) => {
-      data4 = value[31..0];
-      data5 = value[63..32];
-      data6 = value[95..64];
-      data7 = value[127..96];
+      data_regs[4] = value[31..0];
+      data_regs[5] = value[63..32];
+      data_regs[6] = value[95..64];
+      data_regs[7] = value[127..96];
     },
 
     // arg2
     (2, 32)  => {
-      data2 = value;
+      data_regs[2] = value;
     },
     (2, 64)  => {
-      data4 = value[31..0];
-      data5 = value[63..32];
+      data_regs[4] = value[31..0];
+      data_regs[5] = value[63..32];
     },
     (2, 128) => {
-      data8  = value[31..0];
-      data9  = value[63..32];
-      data10 = value[95..64];
-      data11 = value[127..96];
+      data_regs[8]  = value[31..0];
+      data_regs[9]  = value[63..32];
+      data_regs[10] = value[95..64];
+      data_regs[11] = value[127..96];
     },
   };
 }
@@ -422,6 +411,12 @@ function clause is_DM_reg_defined (0x18) = true
 function clause write_DM_reg(0x18, value) = { abstractauto = legalize_abstractauto(abstractauto, value); }
 function clause read_DM_reg(0x18) = abstractauto.bits
 
+val read_data_reg : range(0, 11) -> bits(32)
+function read_data_reg(idx) = data_regs[idx]
+
+val write_data_reg : (range(0, 11), bits(32)) -> unit
+function write_data_reg(idx, value) = data_regs[idx] = value
+
 mapping clause dm_name_map = 0x04  <-> "data0"
 mapping clause dm_name_map = 0x05  <-> "data1"
 mapping clause dm_name_map = 0x06  <-> "data2"
@@ -435,46 +430,25 @@ mapping clause dm_name_map = 0x0d  <-> "data9"
 mapping clause dm_name_map = 0x0e  <-> "data10"
 mapping clause dm_name_map = 0x0f  <-> "data11"
 
-function clause is_DM_reg_defined (0x04) = unsigned(abstractcs[datacount]) > 0
-function clause is_DM_reg_defined (0x05) = unsigned(abstractcs[datacount]) > 1
-function clause is_DM_reg_defined (0x06) = unsigned(abstractcs[datacount]) > 2
-function clause is_DM_reg_defined (0x07) = unsigned(abstractcs[datacount]) > 3
-function clause is_DM_reg_defined (0x08) = unsigned(abstractcs[datacount]) > 4
-function clause is_DM_reg_defined (0x09) = unsigned(abstractcs[datacount]) > 5
-function clause is_DM_reg_defined (0x0a) = unsigned(abstractcs[datacount]) > 6
-function clause is_DM_reg_defined (0x0b) = unsigned(abstractcs[datacount]) > 7
-function clause is_DM_reg_defined (0x0c) = unsigned(abstractcs[datacount]) > 8
-function clause is_DM_reg_defined (0x0d) = unsigned(abstractcs[datacount]) > 9
-function clause is_DM_reg_defined (0x0e) = unsigned(abstractcs[datacount]) > 10
-function clause is_DM_reg_defined (0x0f) = unsigned(abstractcs[datacount]) > 11
+// Single clause with guard for the range
+function clause is_DM_reg_defined((addr) if 0x04 <=_u addr & addr <=_u 0x0f) = {
+  unsigned(abstractcs[datacount]) > unsigned(addr - 0x04)
+}
 
-// Update register FIRST, then trigger abstractauto
-function clause write_DM_reg(0x04, value) = { data0  = handle_register_access(data0, value, true);  trigger_abstractauto_if_enabled(abstractauto[autoexecdata][0]);  }
-function clause write_DM_reg(0x05, value) = { data1  = handle_register_access(data1, value, true);  trigger_abstractauto_if_enabled(abstractauto[autoexecdata][1]);  }
-function clause write_DM_reg(0x06, value) = { data2  = handle_register_access(data2, value, true);  trigger_abstractauto_if_enabled(abstractauto[autoexecdata][2]);  }
-function clause write_DM_reg(0x07, value) = { data3  = handle_register_access(data3, value, true);  trigger_abstractauto_if_enabled(abstractauto[autoexecdata][3]);  }
-function clause write_DM_reg(0x08, value) = { data4  = handle_register_access(data4, value, true);  trigger_abstractauto_if_enabled(abstractauto[autoexecdata][4]);  }
-function clause write_DM_reg(0x09, value) = { data5  = handle_register_access(data5, value, true);  trigger_abstractauto_if_enabled(abstractauto[autoexecdata][5]);  }
-function clause write_DM_reg(0x0a, value) = { data6  = handle_register_access(data6, value, true);  trigger_abstractauto_if_enabled(abstractauto[autoexecdata][6]);  }
-function clause write_DM_reg(0x0b, value) = { data7  = handle_register_access(data7, value, true);  trigger_abstractauto_if_enabled(abstractauto[autoexecdata][7]);  }
-function clause write_DM_reg(0x0c, value) = { data8  = handle_register_access(data8, value, true);  trigger_abstractauto_if_enabled(abstractauto[autoexecdata][8]);  }
-function clause write_DM_reg(0x0d, value) = { data9  = handle_register_access(data9, value, true);  trigger_abstractauto_if_enabled(abstractauto[autoexecdata][9]);  }
-function clause write_DM_reg(0x0e, value) = { data10 = handle_register_access(data10, value, true); trigger_abstractauto_if_enabled(abstractauto[autoexecdata][10]); }
-function clause write_DM_reg(0x0f, value) = { data11 = handle_register_access(data11, value, true); trigger_abstractauto_if_enabled(abstractauto[autoexecdata][11]); }
+function clause write_DM_reg((addr, value) if 0x04 <=_u addr & addr <=_u 0x0f) = {
+  let idx = unsigned(addr - 0x04);
+  assert(idx <= 11);
+  data_regs[idx] = handle_register_access(data_regs[idx], value, true);
+  trigger_abstractauto_if_enabled(abstractauto[autoexecdata][idx]);
+}
 
-// Trigger abstractauto AFTER read completes
-function clause read_DM_reg(0x04) = { data0  = handle_register_access(data0, zeros(), false);  trigger_abstractauto_if_enabled(abstractauto[autoexecdata][0]);  data0  }
-function clause read_DM_reg(0x05) = { data1  = handle_register_access(data1, zeros(), false);  trigger_abstractauto_if_enabled(abstractauto[autoexecdata][1]);  data1  }
-function clause read_DM_reg(0x06) = { data2  = handle_register_access(data2, zeros(), false);  trigger_abstractauto_if_enabled(abstractauto[autoexecdata][2]);  data2  }
-function clause read_DM_reg(0x07) = { data3  = handle_register_access(data3, zeros(), false);  trigger_abstractauto_if_enabled(abstractauto[autoexecdata][3]);  data3  }
-function clause read_DM_reg(0x08) = { data4  = handle_register_access(data4, zeros(), false);  trigger_abstractauto_if_enabled(abstractauto[autoexecdata][4]);  data4  }
-function clause read_DM_reg(0x09) = { data5  = handle_register_access(data5, zeros(), false);  trigger_abstractauto_if_enabled(abstractauto[autoexecdata][5]);  data5  }
-function clause read_DM_reg(0x0a) = { data6  = handle_register_access(data6, zeros(), false);  trigger_abstractauto_if_enabled(abstractauto[autoexecdata][6]);  data6  }
-function clause read_DM_reg(0x0b) = { data7  = handle_register_access(data7, zeros(), false);  trigger_abstractauto_if_enabled(abstractauto[autoexecdata][7]);  data7  }
-function clause read_DM_reg(0x0c) = { data8  = handle_register_access(data8, zeros(), false);  trigger_abstractauto_if_enabled(abstractauto[autoexecdata][8]);  data8  }
-function clause read_DM_reg(0x0d) = { data9  = handle_register_access(data9, zeros(), false);  trigger_abstractauto_if_enabled(abstractauto[autoexecdata][9]);  data9  }
-function clause read_DM_reg(0x0e) = { data10 = handle_register_access(data10, zeros(), false); trigger_abstractauto_if_enabled(abstractauto[autoexecdata][10]); data10 }
-function clause read_DM_reg(0x0f) = { data11 = handle_register_access(data11, zeros(), false); trigger_abstractauto_if_enabled(abstractauto[autoexecdata][11]); data11 }
+function clause read_DM_reg((addr) if 0x04 <=_u addr & addr <=_u 0x0f) = {
+  let idx = unsigned(addr - 0x04);
+  assert(idx <= 11);
+  let _ = handle_register_access(data_regs[idx], zeros(), false);
+  trigger_abstractauto_if_enabled(abstractauto[autoexecdata][idx]);
+  data_regs[idx]
+}
 
 bitfield Dmcontrol : bits(32) = {
   haltreq :        31,
@@ -845,33 +819,11 @@ function clause write_DM_reg(0x1d, value) = ()
 
 function clause read_DM_reg(0x1d) = nextdm.bits
 
-function legalize_progbuf(d: bits(32), x : bits(32)) -> bits(32) = {
-  if check_abstract_busy_and_set_error() then
-    d
-  else
-    x
-}
-
 // Program buffer registers, initialized with EBREAK (0x00100073)
 // Ensures the hart safely exits debug mode even if the program buffer
 // is not fully populated by the debugger
 // TODO: Reinitialize after reset
-register progbuf0  : bits(32) = 0x00100073
-register progbuf1  : bits(32) = 0x00100073
-register progbuf2  : bits(32) = 0x00100073
-register progbuf3  : bits(32) = 0x00100073
-register progbuf4  : bits(32) = 0x00100073
-register progbuf5  : bits(32) = 0x00100073
-register progbuf6  : bits(32) = 0x00100073
-register progbuf7  : bits(32) = 0x00100073
-register progbuf8  : bits(32) = 0x00100073
-register progbuf9  : bits(32) = 0x00100073
-register progbuf10 : bits(32) = 0x00100073
-register progbuf11 : bits(32) = 0x00100073
-register progbuf12 : bits(32) = 0x00100073
-register progbuf13 : bits(32) = 0x00100073
-register progbuf14 : bits(32) = 0x00100073
-register progbuf15 : bits(32) = 0x00100073
+register progbuf_regs : vector(16, bits(32)) = vector_init(EBREAK_INSTRUCTION)
 
 mapping clause dm_name_map = 0x20  <-> "progbuf0"
 mapping clause dm_name_map = 0x21  <-> "progbuf1"
@@ -890,56 +842,25 @@ mapping clause dm_name_map = 0x2d  <-> "progbuf13"
 mapping clause dm_name_map = 0x2e  <-> "progbuf14"
 mapping clause dm_name_map = 0x2f  <-> "progbuf15"
 
-function clause is_DM_reg_defined (0x20) = unsigned(abstractcs[progbufsize]) > 0
-function clause is_DM_reg_defined (0x21) = unsigned(abstractcs[progbufsize]) > 1
-function clause is_DM_reg_defined (0x22) = unsigned(abstractcs[progbufsize]) > 2
-function clause is_DM_reg_defined (0x23) = unsigned(abstractcs[progbufsize]) > 3
-function clause is_DM_reg_defined (0x24) = unsigned(abstractcs[progbufsize]) > 4
-function clause is_DM_reg_defined (0x25) = unsigned(abstractcs[progbufsize]) > 5
-function clause is_DM_reg_defined (0x26) = unsigned(abstractcs[progbufsize]) > 6
-function clause is_DM_reg_defined (0x27) = unsigned(abstractcs[progbufsize]) > 7
-function clause is_DM_reg_defined (0x28) = unsigned(abstractcs[progbufsize]) > 8
-function clause is_DM_reg_defined (0x29) = unsigned(abstractcs[progbufsize]) > 9
-function clause is_DM_reg_defined (0x2a) = unsigned(abstractcs[progbufsize]) > 10
-function clause is_DM_reg_defined (0x2b) = unsigned(abstractcs[progbufsize]) > 11
-function clause is_DM_reg_defined (0x2c) = unsigned(abstractcs[progbufsize]) > 12
-function clause is_DM_reg_defined (0x2d) = unsigned(abstractcs[progbufsize]) > 13
-function clause is_DM_reg_defined (0x2e) = unsigned(abstractcs[progbufsize]) > 14
-function clause is_DM_reg_defined (0x2f) = unsigned(abstractcs[progbufsize]) > 15
+// Single clause with guard for the range 0x20-0x2f
+function clause is_DM_reg_defined((addr) if 0x20 <=_u addr & addr <=_u 0x2f) = {
+  unsigned(abstractcs[progbufsize]) > unsigned(addr - 0x20)
+}
 
-function clause write_DM_reg(0x20, value) = { progbuf0  = handle_register_access(progbuf0, value, true);  trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][0]);  }
-function clause write_DM_reg(0x21, value) = { progbuf1  = handle_register_access(progbuf1, value, true);  trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][1]);  }
-function clause write_DM_reg(0x22, value) = { progbuf2  = handle_register_access(progbuf2, value, true);  trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][2]);  }
-function clause write_DM_reg(0x23, value) = { progbuf3  = handle_register_access(progbuf3, value, true);  trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][3]);  }
-function clause write_DM_reg(0x24, value) = { progbuf4  = handle_register_access(progbuf4, value, true);  trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][4]);  }
-function clause write_DM_reg(0x25, value) = { progbuf5  = handle_register_access(progbuf5, value, true);  trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][5]);  }
-function clause write_DM_reg(0x26, value) = { progbuf6  = handle_register_access(progbuf6, value, true);  trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][6]);  }
-function clause write_DM_reg(0x27, value) = { progbuf7  = handle_register_access(progbuf7, value, true);  trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][7]);  }
-function clause write_DM_reg(0x28, value) = { progbuf8  = handle_register_access(progbuf8, value, true);  trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][8]);  }
-function clause write_DM_reg(0x29, value) = { progbuf9  = handle_register_access(progbuf9, value, true);  trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][9]);  }
-function clause write_DM_reg(0x2a, value) = { progbuf10 = handle_register_access(progbuf10, value, true); trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][10]); }
-function clause write_DM_reg(0x2b, value) = { progbuf11 = handle_register_access(progbuf11, value, true); trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][11]); }
-function clause write_DM_reg(0x2c, value) = { progbuf12 = handle_register_access(progbuf12, value, true); trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][12]); }
-function clause write_DM_reg(0x2d, value) = { progbuf13 = handle_register_access(progbuf13, value, true); trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][13]); }
-function clause write_DM_reg(0x2e, value) = { progbuf14 = handle_register_access(progbuf14, value, true); trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][14]); }
-function clause write_DM_reg(0x2f, value) = { progbuf15 = handle_register_access(progbuf15, value, true); trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][15]); }
+function clause write_DM_reg((addr, value) if 0x20 <=_u addr & addr <=_u 0x2f) = {
+  let idx = unsigned(addr - 0x20);
+  assert(idx <= 15);
+  progbuf_regs[idx] = handle_register_access(progbuf_regs[idx], value, true);
+  trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][idx]);
+}
 
-function clause read_DM_reg(0x20) = { progbuf0  = handle_register_access(progbuf0, zeros(), false);  trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][0]); progbuf0   }
-function clause read_DM_reg(0x21) = { progbuf1  = handle_register_access(progbuf1, zeros(), false);  trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][1]); progbuf1   }
-function clause read_DM_reg(0x22) = { progbuf2  = handle_register_access(progbuf2, zeros(), false);  trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][2]); progbuf2   }
-function clause read_DM_reg(0x23) = { progbuf3  = handle_register_access(progbuf3, zeros(), false);  trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][3]); progbuf3   }
-function clause read_DM_reg(0x24) = { progbuf4  = handle_register_access(progbuf4, zeros(), false);  trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][4]); progbuf4   }
-function clause read_DM_reg(0x25) = { progbuf5  = handle_register_access(progbuf5, zeros(), false);  trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][5]); progbuf5   }
-function clause read_DM_reg(0x26) = { progbuf6  = handle_register_access(progbuf6, zeros(), false);  trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][6]); progbuf6   }
-function clause read_DM_reg(0x27) = { progbuf7  = handle_register_access(progbuf7, zeros(), false);  trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][7]); progbuf7   }
-function clause read_DM_reg(0x28) = { progbuf8  = handle_register_access(progbuf8, zeros(), false);  trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][8]); progbuf8   }
-function clause read_DM_reg(0x29) = { progbuf9  = handle_register_access(progbuf9, zeros(), false);  trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][9]); progbuf9   }
-function clause read_DM_reg(0x2a) = { progbuf10 = handle_register_access(progbuf10, zeros(), false); trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][10]); progbuf10 }
-function clause read_DM_reg(0x2b) = { progbuf11 = handle_register_access(progbuf11, zeros(), false); trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][11]); progbuf11 }
-function clause read_DM_reg(0x2c) = { progbuf12 = handle_register_access(progbuf12, zeros(), false); trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][12]); progbuf12 }
-function clause read_DM_reg(0x2d) = { progbuf13 = handle_register_access(progbuf13, zeros(), false); trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][13]); progbuf13 }
-function clause read_DM_reg(0x2e) = { progbuf14 = handle_register_access(progbuf14, zeros(), false); trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][14]); progbuf14 }
-function clause read_DM_reg(0x2f) = { progbuf15 = handle_register_access(progbuf15, zeros(), false); trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][15]); progbuf15 }
+function clause read_DM_reg((addr) if 0x20 <=_u addr & addr <=_u 0x2f) = {
+  let idx  = unsigned(addr - 0x20);
+  assert(idx <= 15);
+  let _ = handle_register_access(progbuf_regs[idx], zeros(), false);
+  trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][idx]);
+  progbuf_regs[idx]
+}
 
 bitfield Authdata : bits(32) = {
   data: 31 .. 0
