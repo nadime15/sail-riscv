@@ -57,7 +57,6 @@ function debug_request_to_string(request : DebugRequest) -> string = {
   }
 }
 
-
 enum AbstractCommandType = {
   ACCESS_REGISTER,
   QUICK_ACCESS,

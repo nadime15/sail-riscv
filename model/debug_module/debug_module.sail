@@ -145,8 +145,6 @@ function complete_abstract_command(status : AbstractCommandError, cmd : option(A
   //}
 }
 
-
-
 register data0  : bits(32)
 register data1  : bits(32)
 register data2  : bits(32)
@@ -348,7 +346,7 @@ function legalize_command(d : Command, x : bits(32)) -> Command = {
 
   let busy = abstractcs[busy] == 0b1;
 
-  let status =
+  abstractcs[cmderr] =
     if check_abstract_busy_and_set_error() then {
       // TODO: Refactor, check_abstract_busy_and_set_error() already handles the logic below
       if abstractcs[cmderr] == abstract_command_error(CMDERR_NONE)
@@ -360,7 +358,6 @@ function legalize_command(d : Command, x : bits(32)) -> Command = {
     } else {
       abstract_command_error(handle_abstract_command(x))
   };
-  abstractcs[cmderr] = status;
 
   if busy then d else Mk_Command(x)
 }
@@ -384,15 +381,13 @@ function trigger_abstractauto_if_enabled(autoexec_enabled: bit) -> unit = {
   };
 }
 
-
-
 bitfield Abstractauto : bits(32) = {
   autoexecprogbuf: 31 .. 16,
   autoexecdata:    11 ..  0,
 }
 
 // GDB/OpenOCD uses this for burst reads/writes
-// Even though its optional, openocd just assumes it exists...
+// This register is optional but openocd just assumes it exists...
 function legalize_abstractauto(d : Abstractauto, x : bits(32)) -> Abstractauto = {
   let x = Mk_Abstractauto(x);
   // TODO: This is not really correct yet, we have to monitor the current abstract command:
@@ -412,8 +407,6 @@ function legalize_abstractauto(d : Abstractauto, x : bits(32)) -> Abstractauto =
     let progbuf_mask : bits(16) = to_bits(16, (2 ^ num_regs_progbuf) - 1);
 
     [d with
-    // TODO modify progbuf bits in order to check for autoexecprogbuf
-    // TODO enable autoexecprogbuf
       autoexecprogbuf = x[autoexecprogbuf] & progbuf_mask,
       autoexecdata = x[autoexecdata] & data_mask,
      ]

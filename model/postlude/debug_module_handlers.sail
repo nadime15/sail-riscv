@@ -83,7 +83,7 @@ function handle_abstract_register_access(write : bool, regno : bits(16), width: 
 
     match regno {
       // Control Status Registers (0x0000-0x0fff)
-      regno if regno <=_u 0x0fff & is_CSR_accessible(regno[11 .. 0], Machine, true) => {
+      regno if regno <=_u 0x0fff & is_CSR_accessible(regno[11 .. 0], Machine, write) & check_CSR_access(regno[11 .. 0], write) => {
         if write then {
           match write_CSR(regno[11 .. 0], read_arg(0, dxlen)[dxlen - 1 .. 0]) {
             Ok(_)  => (),

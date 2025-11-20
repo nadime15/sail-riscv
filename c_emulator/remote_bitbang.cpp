@@ -308,8 +308,12 @@ void remote_bitbang_t::run(uint64_t insn_limit)
       // different timing scenarios can be explored. The new default is 1:4, one
       // JTAG cycle followed by four Sail cycles, which is more realistic since
       // a real chip would typically run faster than the JTAG interface.
-      // TODO: Make this a config option
-      int max_ticks_sail = 3;
+      // TODO: Changing these parameters can affect the outcome of certain
+      // tests. The riscv-tests repository includes interrupt-based tests (such
+      // as InterruptTest) that may fail if the hart runs too slowly compared to
+      // the JTAG module.
+      //
+      int max_ticks_sail = 2;
       for (int i = 0; i < max_ticks_sail; i++) {
         sail_int sail_step;
         CREATE(sail_int)(&sail_step);
