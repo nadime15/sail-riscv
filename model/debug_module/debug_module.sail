@@ -319,7 +319,7 @@ function handle_abstract_command(cmd : bits(32)) -> AbstractCommandError = {
         else if not(hart_halted) then CMDERR_HALT_RESUME
         else {
           let aamsize = aamsize_to_bytes(aamsize);
-          let addr = read_arg(1, dxlen);
+          let addr = read_arg(ARG1, dxlen);
           send_debug_request(AbstractCommand(MemoryAccess(
             bits_to_bool(aamvirtual),
             bits_to_bool(write),

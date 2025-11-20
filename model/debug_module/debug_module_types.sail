@@ -102,6 +102,18 @@ mapping abstract_command_error_name : AbstractCommandError <-> string = {
   CMDERR_OTHER         <-> "OTHER",
 }
 
+// Register number ranges
+let REGNO_CSR_MAX   : bits(16) = 0x0fff
+let REGNO_GPR_BASE  : bits(16) = 0x1000
+let REGNO_GPR_MAX   : bits(16) = 0x101f
+let REGNO_FPR_BASE  : bits(16) = 0x1020
+let REGNO_FPR_MAX   : bits(16) = 0x103f
+
+// Abstract command argument indices
+let ARG0 : range(0, 2) = 0
+let ARG1 : range(0, 2) = 1
+let ARG2 : range(0, 2) = 2
+
 function abstract_command_error_to_string(error : bits(3)) -> string = abstract_command_error_name(abstract_command_error(error))
 
 struct debug_module_hart_status = {
