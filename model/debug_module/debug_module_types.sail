@@ -23,7 +23,7 @@ type dmreg = bits(8)
 enum DebugHartState = {NON_EXISTENT, UNAVAILABLE, RUNNING, HALTED}
 
 union AbstractCommand = {
-  AccessRegister : (bool, bits(16), range(2, 3), bool, bool),
+  AccessRegister : (bool, bits(16), bits(3), bool, bool),
   QuickAccess    : unit,
   MemoryAccess   : (bool, bool, word_width, xlenbits),
 }
@@ -42,9 +42,9 @@ function debug_request_to_string(request : DebugRequest) -> string = {
     Reset(halt_on_reset)         => "Reset(haltonreset=" ^ (if halt_on_reset then "true" else "false") ^ ")",
     AbstractCommand(command) => {
       match command {
-        AccessRegister(write, regno, width, postexec, transfer) => "RegisterAccess(write=" ^ (if write then "true" else "false") ^
+        AccessRegister(write, regno, aarsize, postexec, transfer) => "RegisterAccess(write=" ^ (if write then "true" else "false") ^
                                                               ", regno=" ^ bits_str(regno) ^
-                                                              ", width=" ^ dec_str(width)  ^
+                                                              ", aarsize=" ^ bits_str(aarsize)  ^
                                                               ", postexec=" ^ (if postexec then "true" else "false") ^
                                                               ", transfer=" ^ (if transfer then "true" else "false") ^ ")",
         QuickAccess() => "QuickAccess()",

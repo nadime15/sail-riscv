@@ -121,7 +121,7 @@ function access_fpr(write : bool, regno : bits(5), width : range(2, 3)) -> Abstr
   }
 }
 
-function handle_abstract_register_access(write : bool, regno : bits(16), width: range(2, 3), postexec : bool, transfer : bool) -> unit = {
+function handle_abstract_register_access(write : bool, regno : bits(16), aarsize : bits(3), postexec : bool, transfer : bool) -> unit = {
   start_debug_abstract_command();
   // NOTE: In theory, we should check whether a register access exceeds the specified aarsize value.
   // If it does, the access must fail. The problem is that all CSRs return xlenbits and are
@@ -129,7 +129,9 @@ function handle_abstract_register_access(write : bool, regno : bits(16), width: 
   // additional metadata (e.g., a list tracking register sizes). For now, we allow access to CSRs
   // smaller than aarsize, even though this does not fully comply with the spec.
   let status : AbstractCommandError =
-    if transfer then
+    if transfer then {
+      let width = unsigned(aarsize);
+      assert(width == 2 | width == 3);
       match regno {
         // Control Status Registers (0x0000-0x0fff)
         regno if regno <=_u REGNO_CSR_MAX => access_csr(write, regno[11 .. 0]),
@@ -142,8 +144,9 @@ function handle_abstract_register_access(write : bool, regno : bits(16), width: 
 
         _ => CMDERR_EXCEPTION
       }
-      else
+    } else {
         CMDERR_NONE;
+    };
 
   if postexec & status == CMDERR_NONE then
     execute_program_buffer()

@@ -84,6 +84,17 @@ function clause is_DM_reg_defined (0x11) = true
 function clause write_DM_reg(0x11, value) = ()
 function clause read_DM_reg(0x11) = dmstatus.bits
 
+// Get the current hart state from dmstatus
+function get_hart_state() -> DebugHartState = {
+  if dmstatus[allnonexistent]  == 0b1 then NON_EXISTENT
+  else if dmstatus[allunavail] == 0b1 then UNAVAILABLE
+  else if dmstatus[allhalted]  == 0b1 then HALTED
+  else if dmstatus[allrunning] == 0b1 then RUNNING
+  else {
+    internal_error(__FILE__, __LINE__, "Hart in invalid state");
+  }
+}
+
 bitfield Abstractcs : bits(32) = {
   progbufsize : 28 .. 24,
   busy :        12,
@@ -235,92 +246,87 @@ function write_arg(arg_num, argument_width, value) = {
   };
 }
 
+// ============================================================================
+// Abstract Command Handlers
+// ============================================================================
+
+// Extract and validate ACCESS_REGISTER command
+function handle_access_register_cmd(cmd : bits(32)) -> AbstractCommandError = {
+  let aarsize          = cmd[22 .. 20];
+  let reserved         = cmd[23];
+  let aarpostincrement = cmd[19];
+  let postexec         = cmd[18];
+  let transfer         = cmd[17];
+  let write            = cmd[16];
+  let regno            = cmd[15 .. 0];
+
+  // Validate command format
+  if reserved == bitone then CMDERR_NOT_SUPPORTED
+  else if aarpostincrement == bitone then CMDERR_NOT_SUPPORTED  // TODO: Add support
+  else if transfer == bitone & not(is_supported_reg_access(aarsize, regno)) then CMDERR_NOT_SUPPORTED
+  else if postexec == bitone & not(config platform.debug_module.program_buffer.supported : bool) then CMDERR_NOT_SUPPORTED
+  else match get_hart_state() {
+    HALTED => {
+      send_debug_request(AbstractCommand(AccessRegister(bit_to_bool(write), regno, aarsize, bit_to_bool(postexec), bit_to_bool(transfer))));
+      CMDERR_NONE
+    },
+    _ => CMDERR_HALT_RESUME,
+  };
+}
+
+// Extract and validate QUICK_ACCESS command
+function handle_quick_access_cmd(cmd : bits(32)) -> AbstractCommandError = {
+  if cmd[23 .. 0] != zeros() then CMDERR_NOT_SUPPORTED
+  else match get_hart_state() {
+    RUNNING => {
+      send_debug_request(AbstractCommand(QuickAccess()));
+      CMDERR_NONE
+    },
+    _ => CMDERR_HALT_RESUME,
+  }
+}
+
+// Extract and validate ACCESS_MEMORY command
+function handle_access_memory_cmd(cmd : bits(32)) -> AbstractCommandError = {
+  let aamvirtual       = cmd[23];
+  let aamsize          = cmd[22 .. 20];
+  let aampostincrement = cmd[19];
+  let write            = cmd[16];
+
+  // Validate command format
+  if cmd[18 .. 17] != zeros() then CMDERR_NOT_SUPPORTED
+  else if cmd[13 .. 0] != zeros() then CMDERR_NOT_SUPPORTED
+  else if aampostincrement == bitone then CMDERR_NOT_SUPPORTED  // TODO: Add support
+  else if not(is_valid_aamsize(aamsize)) then CMDERR_NOT_SUPPORTED
+  else match get_hart_state() {
+    HALTED => {
+      let aamsize_bytes = aamsize_to_bytes(aamsize);
+      let addr = read_arg(ARG1, dxlen);
+
+      send_debug_request(AbstractCommand(MemoryAccess(bit_to_bool(aamvirtual), bit_to_bool(write), aamsize_bytes, addr)));
+      CMDERR_NONE
+    },
+    _ => CMDERR_HALT_RESUME,
+  }
+}
+
+// Main command handler - dispatches to specific command handlers
 function handle_abstract_command(cmd : bits(32)) -> AbstractCommandError = {
   let cmdtype = unsigned(cmd[31 .. 24]);
-  let hart_halted = dmstatus[allhalted] == 0b1;
 
   set_abstractcs_busy(true);
 
   let status : AbstractCommandError =
     if cmdtype > 2 then CMDERR_NOT_SUPPORTED
     else match abstract_command_type(cmdtype) {
-      ACCESS_REGISTER => {
-        let aarsize          = cmd[22 .. 20];
-        let reserved         = cmd[23 .. 23];
-        let aarpostincrement = cmd[19 .. 19];
-        let postexec         = cmd[18 .. 18];
-        let transfer         = cmd[17 .. 17];
-        let write            = cmd[16 .. 16];
-        let regno            = cmd[15 .. 0];
-
-        // Check for unsupported features or invalid reserved bits
-        let unsupported = reserved == 0b1 |
-                          // TODO: Add support for aarpostincrement
-                         aarpostincrement == 0b1 |
-                         (postexec == 0b1 & not(config platform.debug_module.program_buffer.supported : bool));
-
-        if unsupported then CMDERR_NOT_SUPPORTED
-        else if transfer == 0b1 & not(is_supported_reg_access(aarsize, regno)) then CMDERR_NOT_SUPPORTED
-        else if not(hart_halted) then CMDERR_HALT_RESUME
-        else {
-          // Hart is halted and command is valid
-          // TODO: aarsize can be 0 or >= 4 if transfer = 0, but it will trigger the assertion,
-          // needs to be fixed. That's a good moment to read the arg0 (data) here instead in the hart
-          // See riscv dmi_write 0x17 0x0
-          // will trigger the assertion
-          let aarsize = unsigned(aarsize);
-          assert(1 < aarsize & aarsize < 4);
-          send_debug_request(AbstractCommand(AccessRegister(
-            bits_to_bool(write),
-            regno,
-            aarsize,
-            bits_to_bool(postexec),
-            bits_to_bool(transfer)
-          )));
-          CMDERR_NONE
-        }
-      },
-
-      QUICK_ACCESS => {
-        if cmd[23 .. 0] != zeros() then CMDERR_NOT_SUPPORTED
-        else if hart_halted then CMDERR_HALT_RESUME
-        else {
-          send_debug_request(AbstractCommand(QuickAccess()));
-          CMDERR_NONE
-        }
-      },
-
-      ACCESS_MEMORY => {
-        let aamvirtual       = cmd[23 .. 23];
-        let aamsize          = cmd[22 .. 20];
-        let aampostincrement = cmd[19 .. 19];
-        let write            = cmd[16 .. 16];
-        let target_specific  = cmd[15 .. 14];
-
-        // Check for unsupported features or invalid reserved bits
-        // TODO: Add support for aampostincrement
-        let unsupported = aampostincrement == 0b1 |
-                         cmd[18 .. 17] != zeros() |
-                         cmd[13 .. 0] != zeros() |
-                         not(is_valid_aamsize(aamsize));
-
-        if unsupported then CMDERR_NOT_SUPPORTED
-        else if not(hart_halted) then CMDERR_HALT_RESUME
-        else {
-          let aamsize = aamsize_to_bytes(aamsize);
-          let addr = read_arg(ARG1, dxlen);
-          send_debug_request(AbstractCommand(MemoryAccess(
-            bits_to_bool(aamvirtual),
-            bits_to_bool(write),
-            aamsize,
-            addr
-          )));
-          CMDERR_NONE
-        }
-      }
+      ACCESS_REGISTER => handle_access_register_cmd(cmd),
+      QUICK_ACCESS    => handle_quick_access_cmd(cmd),
+      ACCESS_MEMORY   => handle_access_memory_cmd(cmd),
     };
 
+  // Clear busy flag if command failed validation
   if status != CMDERR_NONE then set_abstractcs_busy(false);
+
   status
 }
 
@@ -330,24 +336,22 @@ register command: Command = Mk_Command(zeros())
 // for register reads. However, we preserve the command value internally when busy
 // to ensure abstractauto re-executes the correct command.
 function legalize_command(d : Command, x : bits(32)) -> Command = {
-  let hart_exists = dmstatus[allnonexistent] == 0b0;
-  let hart_available = dmstatus[allunavail] == 0b0;
+  let busy = is_abstractcs_busy();
 
-  let busy = abstractcs[busy] == 0b1;
-
+  // Determine command error status
   abstractcs[cmderr] =
     if check_abstract_busy_and_set_error() then {
-      // TODO: Refactor, check_abstract_busy_and_set_error() already handles the logic below
-      if abstractcs[cmderr] == abstract_command_error(CMDERR_NONE)
-      then abstract_command_error(CMDERR_BUSY)
-      else abstractcs[cmderr]
-    } else if not(hart_available) | not(hart_exists) then {
-      set_abstractcs_busy(false);
-      abstract_command_error(CMDERR_HALT_RESUME)
+      // Busy flag already set by check function
+      abstractcs[cmderr]
     } else {
-      abstract_command_error(handle_abstract_command(x))
-  };
+      match get_hart_state() {
+        NON_EXISTENT => abstract_command_error(CMDERR_HALT_RESUME),
+        UNAVAILABLE  => abstract_command_error(CMDERR_HALT_RESUME),
+        _ => abstract_command_error(handle_abstract_command(x)),
+      }
+    };
 
+  // Preserve command register value while busy
   if busy then d else Mk_Command(x)
 }
 
@@ -386,19 +390,13 @@ function legalize_abstractauto(d : Abstractauto, x : bits(32)) -> Abstractauto =
   if check_abstract_busy_and_set_error() then {
     d
   } else {
-    let num_regs = unsigned(MAX_DATA_SIZE);
-    assert(num_regs <= 12, "MAX_DATA_SIZE must be <= 12");
-    let data_mask : bits(12) = to_bits(12, (2 ^ num_regs) - 1);
-
-    // TODO/NOTE: Add support for progbuf + simplify code
-    let num_regs_progbuf = unsigned(MAX_PROGBUF_SIZE);
-    assert(num_regs_progbuf <= 16, "MAX_PROGBUF_SIZE must be <= 16");
-    let progbuf_mask : bits(16) = to_bits(16, (2 ^ num_regs_progbuf) - 1);
+    let DATA_AUTOEXEC_MASK : bits(12) = to_bits_truncate(12, (2 ^ unsigned(MAX_DATA_SIZE)) - 1);
+    let PROGBUF_AUTOEXEC_MASK : bits(16) = to_bits_truncate(16, (2 ^ unsigned(MAX_PROGBUF_SIZE)) - 1);
 
     [d with
-      autoexecprogbuf = x[autoexecprogbuf] & progbuf_mask,
-      autoexecdata = x[autoexecdata] & data_mask,
-     ]
+      autoexecprogbuf = x[autoexecprogbuf] & PROGBUF_AUTOEXEC_MASK,
+      autoexecdata = x[autoexecdata] & DATA_AUTOEXEC_MASK,
+    ]
   }
 }
 
@@ -410,12 +408,6 @@ mapping clause dm_name_map = 0x18  <-> "abstractauto"
 function clause is_DM_reg_defined (0x18) = true
 function clause write_DM_reg(0x18, value) = { abstractauto = legalize_abstractauto(abstractauto, value); }
 function clause read_DM_reg(0x18) = abstractauto.bits
-
-val read_data_reg : range(0, 11) -> bits(32)
-function read_data_reg(idx) = data_regs[idx]
-
-val write_data_reg : (range(0, 11), bits(32)) -> unit
-function write_data_reg(idx, value) = data_regs[idx] = value
 
 mapping clause dm_name_map = 0x04  <-> "data0"
 mapping clause dm_name_map = 0x05  <-> "data1"
@@ -736,7 +728,7 @@ register confstrptr0: Confstrptr0 = initial_confstrptr0()
 mapping clause dm_name_map = 0x19  <-> "confstrptr0"
 
 function clause is_DM_reg_defined (0x19) = true
-// Read Only Register
+function clause write_DM_reg(0x19, value) = ()
 function clause read_DM_reg(0x19) = confstrptr0.bits
 
 
@@ -758,6 +750,7 @@ mapping clause dm_name_map = 0x1a  <-> "confstrptr1"
 
 function clause is_DM_reg_defined (0x1a) = true
 // Read Only Register
+function clause write_DM_reg(0x1a, value) = ()
 function clause read_DM_reg(0x1a) = confstrptr1.bits
 
 bitfield Confstrptr2 : bits(32) = {
@@ -776,6 +769,7 @@ mapping clause dm_name_map = 0x1b  <-> "confstrptr2"
 
 function clause is_DM_reg_defined (0x1b) = true
 // Read Only Register
+function clause write_DM_reg(0x1b, value) = ()
 function clause read_DM_reg(0x1b) = confstrptr2.bits
 
 bitfield Confstrptr3 : bits(32) = {
@@ -796,13 +790,13 @@ mapping clause dm_name_map = 0x1c  <-> "confstrptr3"
 
 function clause is_DM_reg_defined (0x1c) = true
 // Read Only Register
+function clause write_DM_reg(0x1c, value) = ()
 function clause read_DM_reg(0x1c) = confstrptr3.bits
 
 bitfield Nextdm : bits(32) = {
   addr: 31 .. 0
 }
 
-// NOT IMPLEMENTED
 function initial_nextdm() -> Nextdm = {
   [Mk_Nextdm(zeros()) with
     addr = zeros(),
@@ -954,7 +948,6 @@ function legalize_sbcs(d : Sbcs, x : bits(32)) -> Sbcs = {
     sbreadonaddr    = x[sbreadonaddr],
     sbaccess        = x[sbaccess],
     sbautoincrement = x[sbautoincrement],
-    sbreadonaddr    = x[sbreadonaddr],
     sberror         = if x[sberror] == ones() then zeros() else d[sberror], // R/W1C
     // No system bus access support yet
     sbasize     = zeros(),
@@ -1082,7 +1075,7 @@ function legalize_sbdata1(d : Sbdata1, x : bits(32)) -> Sbdata1 = {
 
 register sbdata1: Sbdata1 = legalize_sbdata1(Mk_Sbdata1(zeros()), zeros())
 mapping clause dm_name_map = 0x3d  <-> "sbdata1"
-function clause is_DM_reg_defined (0x3d) = sbcs[sbaccess64] != 0b0 & sbcs[sbaccess128] != 0b0
+function clause is_DM_reg_defined (0x3d) = sbcs[sbaccess64] == 0b1 | sbcs[sbaccess128] == 0b1
 function clause write_DM_reg(0x3d, value) = { sbdata1 = legalize_sbdata1(sbdata1, value); }
 function clause read_DM_reg(0x3d) = sbdata1.bits
 
@@ -1131,7 +1124,7 @@ bitfield Haltsum0 : bits(32) = {
 function legalize_haltsum0(d : Haltsum0, x : bits(32)) -> Haltsum0 = {
   let x = Mk_Haltsum0(x);
   [d with
-    // NOTE: Hart 0 corresponds to bit 0
+    // NOTE: Bit 0 corresponds to hart 0
     haltsum0 = zeros(31) @ dmstatus[allhalted],
   ]
 }
@@ -1174,6 +1167,8 @@ function reset_debug_module() = {
   // debug module resets. For now, we check if the hart
   // is halted and issue a resume request.
   if halted then send_debug_request(Resume());
+
+  progbuf_regs = vector_init(EBREAK_INSTRUCTION);
 
   haltrequest = false;
   resumeack   = false;
