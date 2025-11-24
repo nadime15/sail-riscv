@@ -1,12 +1,12 @@
-/*=======================================================================================*/
-/*  This Sail RISC-V architecture model, comprising all files and                        */
-/*  directories except where otherwise noted is subject the BSD                          */
-/*  two-clause license in the LICENSE file.                                              */
-/*                                                                                       */
-/*  SPDX-License-Identifier: BSD-2-Clause                                                */
-/*=======================================================================================*/
+//=======================================================================================
+//  This Sail RISC-V architecture model, comprising all files and
+//  directories except where otherwise noted is subject the BSD
+//  two-clause license in the LICENSE file.
+//
+//  SPDX-License-Identifier: BSD-2-Clause
+//=======================================================================================
 
-/* Debug mode extension Sdext: control */
+// Debug mode extension Sdext: control
 
 // The specification denotes a hart's entry into Debug mode as the hart "halting".
 function enter_debug_mode(cause : debug_entry_cause, extcause : bits(3), pc : xlenbits) -> unit = {
@@ -64,7 +64,7 @@ function end_debug_abstract_command(status : AbstractCommandError) -> unit = {
   debug_abstract_command_active = false;
   set_abstractcs_busy(false);
   progbuf_active = false;
-  complete_abstract_command(status, debug_active_command);
+  complete_abstract_command(status, debug_command);
 }
 
 // This is called internally.

@@ -234,7 +234,7 @@ function check_misc_extension_dependencies() -> bool = {
   };
   valid
 }
-
+// TODO: Check Debug Module Config
 function check_extension_param_constraints() -> bool = {
   var valid : bool = true;
   if hartSupports(Ext_Zic64b) & (plat_cache_block_size_exp != 6) then {

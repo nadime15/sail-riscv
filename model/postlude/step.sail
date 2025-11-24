@@ -243,7 +243,7 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
   let exit_wait = exit_wait | (hartSupports(Ext_Sdext) & halt_request);
   let step_val : Step = match hart_state {
       HART_WAITING(wr, instbits)         => run_hart_waiting(step_no, wr, instbits, exit_wait),
-      HART_ACTIVE() if progbuf_active => run_hart_active(step_no),
+      HART_ACTIVE() if progbuf_active    => run_hart_active(step_no),
       HART_ACTIVE() if debug_mode_active => Step_Halt(),
       HART_ACTIVE()                      => run_hart_active(step_no),
     };
@@ -285,14 +285,13 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
         },
         Exit_Debug_Abstract_Command() => {
           end_debug_abstract_command(CMDERR_NONE);
-          match debug_active_command {
+          match debug_command {
             Some(QuickAccess()) => handle_debug_resume(Resume()),
             _ => (),
           };
         },
         Exit_Debug_Mode() => {
-          exit_debug_mode();
-          update_debug_module_status(Resume(), false)
+          handle_debug_resume(Resume());
         },
       };
     },

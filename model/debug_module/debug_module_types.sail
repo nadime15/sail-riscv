@@ -128,10 +128,10 @@ struct debug_module_hart_status = {
 let MAX_DATA_SIZE : bits(4) = to_bits_truncate(config platform.debug_module.num_data_reg : int )
 let MAX_PROGBUF_SIZE : bits(5) = to_bits_truncate(config platform.debug_module.num_prog_reg : int)
 
-register debug_active_command : option(AbstractCommand) = None()
+register debug_command : option(AbstractCommand) = None()
 
 function debug_uses_virtual_addressing() -> bool = {
-  match debug_active_command {
+  match debug_command {
     Some(MemoryAccess(virtual, _, _, _)) => virtual,
     _ => false,
   }

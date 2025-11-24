@@ -111,7 +111,7 @@ function access_fpr(write : bool, regno : bits(5), width : range(2, 3)) -> Abstr
   } else {
     let fregidx = encdec_freg(regno);
     if write then {
-      // width==2 means 32-bit accessm on 64-bit FPU, only read 32 bits
+      // width==2 means 32-bit access on 64-bit FPU, only read 32 bits
       let effective_width = if width == 2 & flen == 64 then 32 else flen;
       F(fregidx) = zero_extend(read_arg(ARG0, effective_width))
     } else {
@@ -202,7 +202,7 @@ function handle_debug_module_request() -> option(DebugRequest) = {
       Resume() => handle_debug_resume(debug_module_request),
       Reset(_) => handle_debug_reset(debug_module_request),
       AbstractCommand(cmd) => {
-        debug_active_command = Some(cmd);
+        debug_command = Some(cmd);
         match cmd {
           AccessRegister(write, regno, width, postexec, transfer) =>
             handle_abstract_register_access(write, regno, width, postexec, transfer),

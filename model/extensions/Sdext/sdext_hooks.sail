@@ -1,10 +1,10 @@
-/*=======================================================================================*/
-/*  This Sail RISC-V architecture model, comprising all files and                        */
-/*  directories except where otherwise noted is subject the BSD                          */
-/*  two-clause license in the LICENSE file.                                              */
-/*                                                                                       */
-/*  SPDX-License-Identifier: BSD-2-Clause                                                */
-/*=======================================================================================*/
+//=======================================================================================
+//  This Sail RISC-V architecture model, comprising all files and
+//  directories except where otherwise noted is subject the BSD
+//  two-clause license in the LICENSE file.
+//
+//  SPDX-License-Identifier: BSD-2-Clause
+//=======================================================================================
 
 // When executing abstract commands, most instructions that change the
 // privilege mode have UNSPECIFIED behavior.  The below functions provide
@@ -24,7 +24,7 @@ function debug_mode_mret_hook() -> ExecutionResult =
 function debug_mode_sret_hook() -> ExecutionResult =
   RETIRE_SUCCESS
 
-/* Configuration for the debugger's memory. */
+// Configuration for the debugger's memory.
 
 // This checks whether a control transfer destination is a legal
 // target when executing an abstract command.  This applies to all

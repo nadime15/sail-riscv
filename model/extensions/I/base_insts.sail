@@ -630,7 +630,7 @@ mapping clause encdec = WFI()
   <-> 0b000100000101 @ 0b00000 @ 0b000 @ 0b00000 @ 0b1110011
 
 function clause execute WFI() =
-  if   in_debug_abstract_command() | in_single_step()
+  if   in_debug_abstract_command()
   then RETIRE_SUCCESS else
   match cur_privilege {
     Machine           => Enter_Wait(WAIT_WFI),

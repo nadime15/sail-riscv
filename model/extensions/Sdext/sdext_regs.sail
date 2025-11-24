@@ -1,16 +1,16 @@
-/*=======================================================================================*/
-/*  This Sail RISC-V architecture model, comprising all files and                        */
-/*  directories except where otherwise noted is subject the BSD                          */
-/*  two-clause license in the LICENSE file.                                              */
-/*                                                                                       */
-/*  SPDX-License-Identifier: BSD-2-Clause                                                */
-/*=======================================================================================*/
+//=======================================================================================
+//  This Sail RISC-V architecture model, comprising all files and
+//  directories except where otherwise noted is subject the BSD
+//  two-clause license in the LICENSE file.
+//
+//  SPDX-License-Identifier: BSD-2-Clause
+//=======================================================================================
 
-/* Debug mode extension Sdext: registers */
+// Debug mode extension Sdext: registers
 
-/* Sdext : Debug mode */
+// Sdext : Debug mode
 
-/* model-internal state */
+// model-internal state
 register debug_mode_active : bool = false
 register debug_abstract_command_active : bool = false
 register debug_abstract_command_error  : bool = false

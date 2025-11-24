@@ -18,9 +18,9 @@ function is_supported_reg_access(aarsize : bits(3), regno : bits(16)) -> bool = 
   else {
     match regno {
       // Cover both CSRs and GPRs
-      regno if regno <=_u 0x101f => not(aarsize == 3 & dxlen == 32),
+      regno if regno <=_u REGNO_GPR_MAX => not(aarsize == 3 & dxlen == 32),
       // Cover FPRs
-      regno if regno <=_u 0x103f => not(aarsize == 3 & flen == 32),
+      regno if regno <=_u REGNO_FPR_MAX => not(aarsize == 3 & flen == 32),
       _ => false
     };
   }

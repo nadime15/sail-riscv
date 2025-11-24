@@ -398,6 +398,10 @@ function init_platform() -> unit = {
 // Platform-specific wait-for-interrupt
 function platform_wfi() -> unit = ()
 
+// NOTE: According to the debug specification, any control transfer
+// instruction that jumps into or out of the Program Buffer may trigger
+// an illegal instruction exception. However, our implementation currently
+// permits jumps in both directions without enforcing this restriction.
 function program_buffer_read forall 'n, 0 < 'n <= max_mem_access . (t : AccessType(ext_access_type), paddr : physaddr, width : int('n)) -> MemoryOpResult(bits(8 * 'n)) = {
   match t {
     InstructionFetch() => {

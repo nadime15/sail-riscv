@@ -712,7 +712,7 @@ int inner_main(int argc, char **argv)
     do {
       run_sail();
       // `run_sail` only returns in the case of rvfi.
-    if (rvfi) {
+      if (rvfi) {
         /* Reset for next test */
         reinit_sail(entry, config_file.c_str());
       }

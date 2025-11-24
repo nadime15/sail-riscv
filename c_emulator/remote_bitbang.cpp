@@ -270,6 +270,10 @@ void remote_bitbang_t::run(uint64_t insn_limit)
   uint64_t insns_per_tick
       = get_config_uint64({"platform", "instructions_per_tick"});
 
+  uint64_t max_ticks_jtag
+      = get_config_uint64({"platform", "debug_module", "max_ticks_jtag"});
+  uint64_t max_ticks_sail
+      = get_config_uint64({"platform", "debug_module", "max_ticks_sail"});
   // Run until either HTIF signals completion, the instruction limit
   // is reached, or the debugger closed the connection.
   while (!zhtif_done && (insn_limit == 0 || total_insns < insn_limit)
@@ -277,8 +281,6 @@ void remote_bitbang_t::run(uint64_t insn_limit)
     // Advances the bit banging protocol and sends
     // data to the debugger (over OpenOCD) or reads from it
     {
-      // Make this a config option
-      int max_ticks_jtag = 1;
       // Since OpenOCD could disconnect anytime in the loop,
       // ensure the socket is valid before calling `tick()`.
       for (int i = 0; i < max_ticks_jtag && client_fd > 0; i++) {
@@ -307,18 +309,15 @@ void remote_bitbang_t::run(uint64_t insn_limit)
       // allowing users to adjust the relative speed of these two components,
       // different timing scenarios can be explored. The new default is 1:4, one
       // JTAG cycle followed by four Sail cycles, which is more realistic since
-      // a real chip would typically run faster than the JTAG interface.
+      // a real core would typically run faster than the JTAG module.
       // TODO: Changing these parameters can affect the outcome of certain
       // tests. The riscv-tests repository includes interrupt-based tests (such
       // as InterruptTest) that may fail if the hart runs too slowly compared to
       // the JTAG module.
-      //
-      int max_ticks_sail = 2;
       for (int i = 0; i < max_ticks_sail; i++) {
         sail_int sail_step;
         CREATE(sail_int)(&sail_step);
         CONVERT_OF(sail_int, mach_int)(&sail_step, step_no);
-        // TODO we might have to skip as long we are in Debug Mode?
         step_result = ztry_step(sail_step, exit_wait);
         KILL(sail_int)(&sail_step);
         // Check for Sail-internal exception.
@@ -328,9 +327,6 @@ void remote_bitbang_t::run(uint64_t insn_limit)
         }
       }
     }
-    // TODO: better handling of entry into debug mode (step_result.zin_debug),
-    // e.g, by connecting to a debugger interface.
-    // For now, we just request an immediate resume above.
     if (!step_result.zin_wait) {
       // TODO: Dont increment the variables when hart halted
       step_no++;
