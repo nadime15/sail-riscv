@@ -280,18 +280,18 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
         // When entering Debug via an execution of `ebreak`, DPC is set
         // to the address of the `ebreak`.
         Enter_Debug_Mode(cause)       => {
-          enter_debug_mode(cause, zeros(), get_arch_pc());
-          update_debug_module_status(Halt(), false)
+          handle_debug_halt(cause)
         },
         Exit_Debug_Abstract_Command() => {
           end_debug_abstract_command(CMDERR_NONE);
           match debug_command {
-            Some(QuickAccess()) => handle_debug_resume(Resume()),
+            // Resume execution
+            Some(QuickAccess()) => handle_debug_resume(),
             _ => (),
           };
         },
         Exit_Debug_Mode() => {
-          handle_debug_resume(Resume());
+          handle_debug_resume();
         },
       };
     },

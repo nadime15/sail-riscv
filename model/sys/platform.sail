@@ -402,8 +402,8 @@ function platform_wfi() -> unit = ()
 // instruction that jumps into or out of the Program Buffer may trigger
 // an illegal instruction exception. However, our implementation currently
 // permits jumps in both directions without enforcing this restriction.
-function program_buffer_read forall 'n, 0 < 'n <= max_mem_access . (t : AccessType(ext_access_type), paddr : physaddr, width : int('n)) -> MemoryOpResult(bits(8 * 'n)) = {
-  match t {
+function program_buffer_read forall 'n, 0 < 'n <= max_mem_access . (access_type : MemoryAccessType(ext_access_type), paddr : physaddr, width : int('n)) -> MemoryOpResult(bits(8 * 'n)) = {
+  match access_type {
     InstructionFetch() => {
       let Physaddr(addr) = paddr;
 
@@ -449,7 +449,7 @@ function program_buffer_read forall 'n, 0 < 'n <= max_mem_access . (t : AccessTy
         else Err(E_Fetch_Access_Fault())
       };
     },
-  Read(Data) => Err(E_Load_Access_Fault()),
+  Load(Data) => Err(E_Load_Access_Fault()),
   _          => Err(E_SAMO_Access_Fault())
   }
 }
