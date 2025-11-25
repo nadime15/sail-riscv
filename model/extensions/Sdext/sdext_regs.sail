@@ -133,7 +133,7 @@ function legalize_dcsr(d : Dcsr, v : xlenbits) -> Dcsr = {
  let v = Mk_Dcsr(v[31 .. 0]);
  [d with
    // CETrig   = if hartSupports(Ext_Smdbltrp) then v[CETrig] else 0b0,
-   // PELP     = if hartSupports(Ext_Zicfilp)  then v[PELP]   else 0b0,
+   PELP      = if hartSupports(Ext_Zicfilp) then v[PELP] else 0b0,
    // EBreakVS = ...
    // EBreakVU = ...
    EBreakM   = v[EBreakM],

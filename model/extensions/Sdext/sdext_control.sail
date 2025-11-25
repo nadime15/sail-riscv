@@ -14,6 +14,7 @@ function enter_debug_mode(cause : debug_entry_cause, extcause : bits(3), pc : xl
   dpc = pc;
   dcsr = [dcsr with
            Prv = privLevel_to_bits(cur_privilege),
+           PELP = elp,
            // TODO: V from hypervisor mode, ELP from Zicfilp
            // TODO: intra-instruction interruption, e.g. vstart for vector instructions
            Cause    = debug_cause_bits(cause),
@@ -24,6 +25,9 @@ function enter_debug_mode(cause : debug_entry_cause, extcause : bits(3), pc : xl
 
   // Store the time of entry into Debug mode.
   dtime = mtime;
+
+  // Set elp to NO_LP_EXPECTED
+  reset_elp();
 
   debug_mode_active = true;
 
@@ -36,13 +40,18 @@ function exit_debug_mode() -> unit = {
   assert(debug_mode_active, "exit_debug_mode: not in Debug mode.");
   set_next_pc(dpc);
   tick_pc();
+
+  // Restore elp from pelp or clear it if unsupported
+  elp = if hartSupports(Ext_Zicfilp) then dcsr[PELP] else landing_pad_bits(NO_LP_EXPECTED);
+  dcsr[PELP] = landing_pad_bits(NO_LP_EXPECTED);
+
   cur_privilege = privLevel_bits(dcsr[Prv], bitzero);
   if cur_privilege != Machine then {
-    mstatus = [mstatus with MPRV = 0b0];
+    mstatus[MPRV] = 0b0;
     // TODO: If Smdbltrp is enabled, clear mstatus.MDT
     // and adjust sstatus.SDT and (for hypervisor) vsstatus.SDT.
   };
-  // TODO: V from hypervisor mode, ELP from Zicfilp
+  // TODO: V from hypervisor mode
 
   debug_mode_active = false;
 

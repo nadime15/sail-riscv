@@ -431,7 +431,7 @@ extensions {
     }
 
     Sdext_control {
-      requires core, exceptions, Sdext_regs, debug_module
+      requires core, exceptions, Sdext_regs, debug_module, Zicfilp_regs
       before sys
       files
         extensions/Sdext/sdext_control.sail
