@@ -15,7 +15,7 @@ function enter_debug_mode(cause : debug_entry_cause, extcause : bits(3), pc : xl
   dcsr = [dcsr with
            Prv = privLevel_to_bits(cur_privilege),
            PELP = elp,
-           // TODO: V from hypervisor mode, ELP from Zicfilp
+           // TODO: V from hypervisor mode
            // TODO: intra-instruction interruption, e.g. vstart for vector instructions
            Cause    = debug_cause_bits(cause),
            ExtCause = extcause,
@@ -71,7 +71,6 @@ function end_debug_abstract_command(status : AbstractCommandError) -> unit = {
   assert(currentlyEnabled(Ext_Sdext), "Cannot end Debug abstract command: Sdext is not currently enabled");
   if get_config_print_debug() then print_log("End Abstract Command: Status(" ^ abstract_command_error_name(status) ^ ")");
   debug_abstract_command_active = false;
-  set_abstractcs_busy(false);
   progbuf_active = false;
   complete_abstract_command(status, debug_command);
 }

@@ -110,7 +110,7 @@ function access_fpr(write : bool, regno : bits(5), width : range(2, 3)) -> Abstr
   }
 }
 
-function handle_abstract_register_access(write : bool, regno : bits(16), aarsize : bits(3), postexec : bool, transfer : bool) -> unit = {
+function handle_abstract_register_access(ac : AbstractCommand, write : bool, regno : bits(16), aarsize : bits(3), postexec : bool, transfer : bool) -> unit = {
   start_debug_abstract_command();
   let status : AbstractCommandError =
     if transfer then {
@@ -133,13 +133,13 @@ function handle_abstract_register_access(write : bool, regno : bits(16), aarsize
     end_debug_abstract_command(status);
 }
 
-function handle_abstract_quick_access() -> unit = {
+function handle_abstract_quick_access(ac : AbstractCommand) -> unit = {
   handle_debug_halt(DBGEntry_HaltReq);
   start_debug_abstract_command();
   execute_program_buffer();
 }
 
-function handle_abstract_memory_access(virtual : bool, write : bool, width : word_width, addr : xlenbits) -> unit = {
+function handle_abstract_memory_access(ac : AbstractCommand, virtual : bool, write : bool, width : word_width, addr : xlenbits) -> unit = {
   start_debug_abstract_command();
 
   assert(width <= dxlen_bytes);
@@ -171,31 +171,29 @@ function handle_abstract_memory_access(virtual : bool, write : bool, width : wor
 
 // This function only handles external debug requests coming from the debug module.
 // There are other ways to enter debug mode, through ebreak etc.
-function handle_debug_module_request() -> option(DebugRequest) = {
-  if debug_module_active_request then {
-    if get_config_print_debug()
-    then print_log("Hart received request from debug module: " ^ debug_request_to_string(debug_module_request));
-
-    match debug_module_request {
-      Halt()   => handle_debug_halt(DBGEntry_HaltReq),
-      Resume() => handle_debug_resume(),
-      Reset(halt_on_reset) => handle_debug_reset(halt_on_reset),
-      AbstractCommand(cmd) => {
-        debug_command = Some(cmd);
-        match cmd {
-          AccessRegister(write, regno, width, postexec, transfer) =>
-            handle_abstract_register_access(write, regno, width, postexec, transfer),
-          QuickAccess() =>
-            handle_abstract_quick_access(),
-          MemoryAccess(virtual, write, size, addr) =>
-            handle_abstract_memory_access(virtual, write, size, addr),
-        }
-      },
-    };
-
-    debug_module_active_request = false;
-    Some(debug_module_request)
-  } else {
-    None()
+function process_external_debug_request() -> option(DebugRequest) = {
+  match pending_debug_request {
+    Some(request) if hartSupports(Ext_Sdext) => {
+      if get_config_print_debug()
+      then print_log("Hart received request from debug module: " ^ debug_request_to_string(request));
+      match request {
+        Halt()   => handle_debug_halt(DBGEntry_HaltReq),
+        Resume() => handle_debug_resume(),
+        Reset(halt_on_reset) => handle_debug_reset(halt_on_reset),
+        AbstractCommand(ac) => {
+          match ac {
+            AccessRegister(write, regno, width, postexec, transfer) =>
+              handle_abstract_register_access(ac, write, regno, width, postexec, transfer),
+            QuickAccess() =>
+              handle_abstract_quick_access(ac),
+            MemoryAccess(virtual, write, size, addr) =>
+              handle_abstract_memory_access(ac, virtual, write, size, addr),
+          };
+        },
+      };
+      pending_debug_request = None();
+      Some(request)
+    },
+    _ => None(),
   }
 }

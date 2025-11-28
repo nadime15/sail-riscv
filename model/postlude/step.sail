@@ -218,19 +218,16 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
   /* for step extensions */
   ext_pre_step_hook();
 
-  // handle_debug_module_request() processes external requests from the debug module.
+  // process_external_debug_request() processes external requests from the debug module.
   // Internal debug requests are handled separately in the step_val match construct.
+  let debug_request = process_external_debug_request();
 
-  let debug_request = if hartSupports(Ext_Sdext) then handle_debug_module_request() else None();
-
-  /*
-   * This records whether or not minstret should be incremented when
-   * the instruction is retired. Since retirement occurs before CSR
-   * writes we initialise it based on mcountinhibit here, before it is
-   * potentially changed. This is also set to false if minstret is
-   * written.  See the note near the minstret declaration for more
-   * information.
-   */
+  // This records whether or not minstret should be incremented when
+  // the instruction is retired. Since retirement occurs before CSR
+  // writes we initialise it based on mcountinhibit here, before it is
+  // potentially changed. This is also set to false if minstret is
+  // written.  See the note near the minstret declaration for more
+  // information.
   minstret_increment = should_inc_minstret(cur_privilege);
 
   // When halting to enter Debug mode, any waiting instructions should
@@ -240,7 +237,7 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
     _            => false,
   };
 
-  let exit_wait = exit_wait | (hartSupports(Ext_Sdext) & halt_request);
+  let exit_wait = exit_wait | halt_request;
   let step_val : Step = match hart_state {
       HART_WAITING(wr, instbits)         => run_hart_waiting(step_no, wr, instbits, exit_wait),
       HART_ACTIVE() if progbuf_active    => run_hart_active(step_no),

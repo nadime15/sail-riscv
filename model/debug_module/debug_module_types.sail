@@ -6,34 +6,10 @@
 //  SPDX-License-Identifier: BSD-2-Clause
 //=======================================================================================
 
-// Debug module uses same XLEN as the hart
-type dxlen : Int = xlen
-
-type log2_dxlen  : Int = if dxlen == 32 then 5 else 6
-type dxlen_bytes : Int = if dxlen == 32 then 4 else 8
-
-let log2_dxlen = sizeof(log2_dxlen)
-let dxlen_bytes = sizeof(dxlen_bytes)
-let dxlen = sizeof(dxlen)
-type dxlenbits = bits(dxlen)
-
 type dmreg = bits(8)
 
 // State of the Hart from the Debug Module's point of view
 enum DebugHartState = {NON_EXISTENT, UNAVAILABLE, RUNNING, HALTED}
-
-union AbstractCommand = {
-  AccessRegister : (bool, bits(16), bits(3), bool, bool),
-  QuickAccess    : unit,
-  MemoryAccess   : (bool, bool, word_width, xlenbits),
-}
-
-union DebugRequest = {
-  Resume : unit,
-  Halt   : unit,
-  Reset  : bool, // Halt on reset
-  AbstractCommand : AbstractCommand,
-}
 
 function debug_request_to_string(request : DebugRequest) -> string = {
   match request {
@@ -69,39 +45,6 @@ mapping abstract_command_type : int <-> AbstractCommandType = {
   2 <-> ACCESS_MEMORY,
 }
 
-enum AbstractCommandError = {
-  CMDERR_NONE,
-  CMDERR_BUSY,
-  CMDERR_NOT_SUPPORTED,
-  CMDERR_EXCEPTION,
-  CMDERR_HALT_RESUME,
-  CMDERR_BUS,
-  CMDERR_RESERVED,
-  CMDERR_OTHER,
-}
-
-mapping abstract_command_error : bits(3) <-> AbstractCommandError = {
-  0b000 <-> CMDERR_NONE,
-  0b001 <-> CMDERR_BUSY,
-  0b010 <-> CMDERR_NOT_SUPPORTED,
-  0b011 <-> CMDERR_EXCEPTION,
-  0b100 <-> CMDERR_HALT_RESUME,
-  0b101 <-> CMDERR_BUS,
-  0b110 <-> CMDERR_RESERVED,
-  0b111 <-> CMDERR_OTHER
-}
-
-mapping abstract_command_error_name : AbstractCommandError <-> string = {
-  CMDERR_NONE          <-> "NONE",
-  CMDERR_BUSY          <-> "BUSY",
-  CMDERR_NOT_SUPPORTED <-> "NOT_SUPPORTED",
-  CMDERR_EXCEPTION     <-> "EXCEPTION",
-  CMDERR_HALT_RESUME   <-> "HALT_RESUME",
-  CMDERR_BUS           <-> "BUS",
-  CMDERR_RESERVED      <-> "RESERVED",
-  CMDERR_OTHER         <-> "OTHER",
-}
-
 // Register number ranges
 let REGNO_CSR_MAX   : bits(16) = 0x0fff
 let REGNO_GPR_BASE  : bits(16) = 0x1000
@@ -116,8 +59,6 @@ let ARG2 : range(0, 2) = 2
 
 let EBREAK_INSTRUCTION : bits(32) = 0x00100073
 let C_EBREAK_INSTRUCTION : bits(16) = 0x9002
-
-function abstract_command_error_to_string(error : bits(3)) -> string = abstract_command_error_name(abstract_command_error(error))
 
 struct debug_module_hart_status = {
   running  : bool,

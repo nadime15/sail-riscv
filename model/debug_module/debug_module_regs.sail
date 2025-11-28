@@ -8,8 +8,7 @@
 
 register debug_hart_state : DebugHartState = RUNNING
 
-register debug_module_active_request : bool = false
-register debug_module_request : DebugRequest = Resume()
+register pending_debug_request : option(DebugRequest) = None()
 
 // Conceptual bits of hart state
 // NOTE: In theory, we should have individual bits for each hart.

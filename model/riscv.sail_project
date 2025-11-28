@@ -55,7 +55,7 @@ pmp {
 }
 
 sys {
-  requires core, exceptions, pmp, V_core, Smcntrpmf, Zicfilp_regs, A_types, Sdext_regs, Sdext_control, debug_module
+  requires core, exceptions, pmp, V_core, Smcntrpmf, Zicfilp_regs, A_types, Sdext_types, Sdext_regs, Sdext_control, debug_module
 
   files
     sys/sys_control.sail,
@@ -424,6 +424,11 @@ extensions {
   }
 
   Sdext {
+    Sdext_types {
+      files
+        extensions/Sdext/sdext_types.sail
+    }
+
     Sdext_regs {
       requires core
       files
@@ -431,7 +436,7 @@ extensions {
     }
 
     Sdext_control {
-      requires core, exceptions, Sdext_regs, debug_module, Zicfilp_regs
+      requires core, exceptions, debug_module, Zicfilp_regs, Sdext_types, Sdext_regs
       before sys
       files
         extensions/Sdext/sdext_control.sail
@@ -463,7 +468,7 @@ extensions {
 
 debug_module {
   module {
-    requires core, FD_core
+    requires core, FD_core, Sdext_types
     files
       debug_module/debug_module_types.sail,
       debug_module/debug_module_regs.sail,
@@ -491,7 +496,7 @@ mops {
 postlude {
   after extensions, mops
 
-  requires core, sys, exceptions, Smcntrpmf, pmp, Sdext_regs, Sdext_control, debug_module, FD_core, Zicfilp_regs, Zicfilp_insts
+  requires core, sys, exceptions, Smcntrpmf, pmp, Sdext_types, Sdext_regs, Sdext_control, debug_module, FD_core, Zicfilp_regs, Zicfilp_insts
 
   files
     postlude/insts_end.sail,

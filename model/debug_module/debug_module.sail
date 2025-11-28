@@ -149,6 +149,8 @@ function complete_abstract_command(status : AbstractCommandError, cmd : option(A
     abstractcs[cmderr] = abstract_command_error(status)
   };
 
+  set_abstractcs_busy(false);
+
   //TODO: handle aarmpostincrement etc
   // match cmd {
   //  Some(_)
