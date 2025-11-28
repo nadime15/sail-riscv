@@ -612,13 +612,17 @@ function ebreak_into_debug() -> bool = match cur_privilege {
 }
 
 function clause execute EBREAK() = {
-  if in_debug_abstract_command() then {
-    Debug(Exit_Debug_Abstract_Command())
-  } else if ebreak_into_debug() then {
-    Debug(Enter_Debug_Mode(DBGEntry_EBreak))
-  } else {
-    Memory_Exception(Virtaddr(PC), E_Breakpoint())
-  }
+  print_endline("EXECUTE EBREAK");
+  print_endline("IN DEBUG MODE" ^ ( if debug_state == Debug_Inactive() then "debug inactive" else "debug active"));
+
+  match debug_state {
+    Debug_Active(Some(_)) => print_endline("Debug abstract command active" ^ ( if in_debug_abstract_command() then " IN DEBUG" else "NOT IN DEBUG")),
+    _ => print_endline("Debug abstract command not active"),
+  };
+
+  if in_debug_abstract_command() then Debug(Exit_Debug_Abstract_Command(get_abstract_command()))
+  else if ebreak_into_debug() then Debug(Enter_Debug_Mode(DBGEntry_EBreak))
+  else Memory_Exception(Virtaddr(PC), E_Breakpoint())
 }
 
 mapping clause assembly = EBREAK() <-> "ebreak"

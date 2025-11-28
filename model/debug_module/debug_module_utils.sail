@@ -7,8 +7,7 @@
 /*=======================================================================================*/
 
 function send_debug_request(request : DebugRequest) -> unit = {
-  debug_module_request = request;
-  debug_module_active_request = true;
+  pending_debug_request = Some(request);
 }
 
 function is_supported_reg_access(aarsize : bits(3), regno : bits(16)) -> bool = {

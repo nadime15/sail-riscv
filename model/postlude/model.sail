@@ -10,7 +10,6 @@
 function reset() -> unit = {
   // Come out of WFI/WRS.
   hart_state = HART_ACTIVE();
-
   reset_debug();
 
   reset_sys();

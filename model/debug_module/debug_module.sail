@@ -142,12 +142,14 @@ function check_abstract_busy_and_set_error() -> bool = {
   }
 }
 
-function complete_abstract_command(status : AbstractCommandError, cmd : option(AbstractCommand)) -> unit = {
+function complete_abstract_command(status : AbstractCommandError) -> unit = {
   // Debug Module never clears cmderr, only sets it or preserves it
   // https://github.com/riscv-collab/riscv-openocd/issues/1306#issuecomment-3492075576
   if abstractcs[cmderr] == abstract_command_error(CMDERR_NONE) then {
     abstractcs[cmderr] = abstract_command_error(status)
   };
+
+  set_abstractcs_busy(false);
 
   //TODO: handle aarmpostincrement etc
   // match cmd {

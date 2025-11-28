@@ -284,17 +284,6 @@ void remote_bitbang_t::run(uint64_t insn_limit)
       // Since OpenOCD could disconnect anytime in the loop,
       // ensure the socket is valid before calling `tick()`.
       for (int i = 0; i < max_ticks_jtag && client_fd > 0; i++) {
-        // By tracking whether a request was sent from OpenOCD, we can avoid
-        // timing issues (request timing out due no responses) and no longer
-        // need to tweak 'max_ticks_jtag'. As soon as a new request is detected,
-        // we immediately exit the loop to enter try_step().
-
-        // NOTE/TODO: Remove this or add an option (this is needed when the jtag
-        // module is much faster than the sail model otherwise openocd will
-        // timeout for certain requests)
-        if (zdebug_module_active_request) {
-          break;
-        }
         tick();
       }
     }
@@ -307,8 +296,8 @@ void remote_bitbang_t::run(uint64_t insn_limit)
       // example, timeouts or burst read/write operations failing because
       // OpenOCD didn’t check between writes whether they actually succeeded. By
       // allowing users to adjust the relative speed of these two components,
-      // different timing scenarios can be explored. The new default is 1:4, one
-      // JTAG cycle followed by four Sail cycles, which is more realistic since
+      // different timing scenarios can be explored. The new default is 1:2, one
+      // JTAG cycle followed by two Sail cycles, which is more realistic since
       // a real core would typically run faster than the JTAG module.
       // TODO: Changing these parameters can affect the outcome of certain
       // tests. The riscv-tests repository includes interrupt-based tests (such

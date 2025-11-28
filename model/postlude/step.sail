@@ -162,7 +162,7 @@ function wait_is_nop(wr : WaitReason) -> bool =
 // state.  It is set to true when the `hart_state` is `HART_WAITING`
 // at the end of `try_step`.
 // `.in_debug_mode` indicates whether the hart is in Debug Mode at the
-// end of `try_step` (i.e. `debug_mode_active` is true).
+// end of `try_step` (i.e. `debug_mode_active()` is true).
 // `.in_debug_cmd` indicates whether the model is in Debug mode and
 // executing an abstract command (such as instructions from a program
 // buffer).
@@ -194,9 +194,6 @@ struct step_result = {
 // step_result.in_debug_cmd is set to true when the hart is in Debug
 // Mode and executing a debug abstract command.
 //
-// step_result.debug_cmd_error is set to true if the hart experienced
-// an exception when executing a debug abstract command.
-//
 // * step_no: the current step number; this is maintained by by the
 //            non-Sail harness and is incremented when `try_step()`
 //            returns true.
@@ -218,19 +215,16 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
   /* for step extensions */
   ext_pre_step_hook();
 
-  // handle_debug_module_request() processes external requests from the debug module.
+  // Check external requests from the debug module.
   // Internal debug requests are handled separately in the step_val match construct.
+  let debug_request = process_external_debug_request();
 
-  let debug_request = if hartSupports(Ext_Sdext) then handle_debug_module_request() else None();
-
-  /*
-   * This records whether or not minstret should be incremented when
-   * the instruction is retired. Since retirement occurs before CSR
-   * writes we initialise it based on mcountinhibit here, before it is
-   * potentially changed. This is also set to false if minstret is
-   * written.  See the note near the minstret declaration for more
-   * information.
-   */
+  // This records whether or not minstret should be incremented when
+  // the instruction is retired. Since retirement occurs before CSR
+  // writes we initialise it based on mcountinhibit here, before it is
+  // potentially changed. This is also set to false if minstret is
+  // written. See the note near the minstret declaration for more
+  // information.
   minstret_increment = should_inc_minstret(cur_privilege);
 
   // When halting to enter Debug mode, any waiting instructions should
@@ -240,13 +234,29 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
     _            => false,
   };
 
-  let exit_wait = exit_wait | (hartSupports(Ext_Sdext) & halt_request);
-  let step_val : Step = match hart_state {
-      HART_WAITING(wr, instbits)         => run_hart_waiting(step_no, wr, instbits, exit_wait),
-      HART_ACTIVE() if progbuf_active    => run_hart_active(step_no),
-      HART_ACTIVE() if debug_mode_active => Step_Halt(),
-      HART_ACTIVE()                      => run_hart_active(step_no),
-    };
+  let exit_wait = exit_wait | halt_request;
+
+  // TODO this needs to be changed because we dont consider quickaccess ac
+  let exec_progbuf : bool = match debug_state {
+    Debug_Active(Some(ac)) => ac.run_progbuf,
+    _ => false,
+  };
+  // Determine what the hart should do this step
+  let step_val : Step = match (hart_state, debug_state) {
+    (HART_WAITING(wr, instbits), _) => run_hart_waiting(step_no, wr, instbits, exit_wait),
+    //(HART_ACTIVE(), Debug_Active(_)) if not(is_executing_progbuf()) => Step_Halt(),
+    (HART_ACTIVE(), Debug_Active(_)) => { if exec_progbuf then run_hart_active(step_no) else Step_Halt() },
+    (HART_ACTIVE(), Debug_Inactive()) => run_hart_active(step_no),
+
+    //(HART_ACTIVE(), Debug_Active(_)) if not(is_executing_progbuf()) => Step_Halt(),
+    //(HART_ACTIVE(), Debug_Active(_)) if is_executing_progbuf() => run_hart_active(step_no),
+    //(HART_ACTIVE(), _) => run_hart_active(step_no),
+
+
+    // Execute an instruction if Debug Mode is inactive, or if Debug Mode
+    // is active and we are executing the program buffer.
+    //(HART_ACTIVE(), _) => run_hart_active(step_no),
+};
 
   match step_val {
     Step_Pending_Interrupt(intr, priv) => {
@@ -277,21 +287,11 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
       },
     Step_Execute(Debug(action), _) => {
       match action {
-        // When entering Debug via an execution of `ebreak`, DPC is set
-        // to the address of the `ebreak`.
-        Enter_Debug_Mode(cause)       => {
-          handle_debug_halt(cause)
-        },
-        Exit_Debug_Abstract_Command() => {
+        Enter_Debug_Mode(cause)       => handle_debug_halt(cause),
+        Exit_Debug_Mode()             => handle_debug_resume(),
+        Exit_Debug_Abstract_Command(ac) => {
           end_debug_abstract_command(CMDERR_NONE);
-          match debug_command {
-            // Resume execution
-            Some(QuickAccess()) => handle_debug_resume(),
-            _ => (),
-          };
-        },
-        Exit_Debug_Mode() => {
-          handle_debug_resume();
+          if ac == QuickAccess() then handle_debug_resume();
         },
       };
     },
@@ -339,13 +339,15 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
     }
   };
 
-  if hartSupports(Ext_Sdext) then handle_debug_single_step();
+  // Determine if single stepping is enabled and, if so, halt the hart
+  check_and_halt_on_single_step();
 
   // TODO: We should not increment the instruction code (on the c++ side) if we are in the HALT state
   struct { in_wait,
-           in_debug_mode   = debug_mode_active,
-           in_debug_cmd    = debug_abstract_command_active,
-           debug_cmd_error = debug_abstract_command_error }
+           in_debug_mode   = debug_mode_active(),
+           in_debug_cmd    = in_debug_abstract_command(),
+           // TODO
+           debug_cmd_error = false }
 }
 
 function loop () : unit -> unit = {

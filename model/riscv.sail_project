@@ -79,7 +79,7 @@ extensions {
       files extensions/I/base_types.sail
     }
     I_insts {
-      requires exceptions, sys, I_types, Zicfilp_regs, Sdext_regs, Sdext_hooks
+      requires exceptions, sys, I_types, Zicfilp_regs, Sdext_regs, Sdext_control, Sdext_hooks
 
       files
         extensions/I/base_insts.sail,
@@ -463,7 +463,7 @@ extensions {
 
 debug_module {
   module {
-    requires core, FD_core
+    requires core, FD_core, Sdext_regs
     files
       debug_module/debug_module_types.sail,
       debug_module/debug_module_regs.sail,

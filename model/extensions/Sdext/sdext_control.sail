@@ -10,12 +10,12 @@
 
 // The specification denotes a hart's entry into Debug mode as the hart "halting".
 function enter_debug_mode(cause : debug_entry_cause, extcause : bits(3), pc : xlenbits) -> unit = {
-  assert(not(debug_mode_active), "enter_debug_mode: already in Debug mode.");
+  assert(not(debug_mode_active()), "enter_debug_mode: already in Debug mode.");
   dpc = pc;
   dcsr = [dcsr with
            Prv = privLevel_to_bits(cur_privilege),
            PELP = elp,
-           // TODO: V from hypervisor mode, ELP from Zicfilp
+           // TODO: V from hypervisor mode
            // TODO: intra-instruction interruption, e.g. vstart for vector instructions
            Cause    = debug_cause_bits(cause),
            ExtCause = extcause,
@@ -29,7 +29,7 @@ function enter_debug_mode(cause : debug_entry_cause, extcause : bits(3), pc : xl
   // Set elp to NO_LP_EXPECTED
   reset_elp();
 
-  debug_mode_active = true;
+  debug_state = Debug_Active(None());
 
   if get_config_print_debug()
   then print_log("entering Debug mode from " ^ to_str(privLevel_bits(dcsr[Prv], bitzero)) ^ " Cause: " ^ debug_entry_cause_to_str(cause));
@@ -37,7 +37,7 @@ function enter_debug_mode(cause : debug_entry_cause, extcause : bits(3), pc : xl
 
 // The specification denotes a hart's exit from Debug mode as the hart "resuming".
 function exit_debug_mode() -> unit = {
-  assert(debug_mode_active, "exit_debug_mode: not in Debug mode.");
+  assert(debug_mode_active(), "exit_debug_mode: not in Debug mode.");
   set_next_pc(dpc);
   tick_pc();
 
@@ -53,39 +53,53 @@ function exit_debug_mode() -> unit = {
   };
   // TODO: V from hypervisor mode
 
-  debug_mode_active = false;
+  debug_state = Debug_Inactive();
 
   if get_config_print_debug()
   then print_log("exiting Debug mode to " ^ to_str(cur_privilege));
 }
 
-// This function must be called by the debugger/external-harness
-// before executing any instructions from a Debug program buffer.
-function start_debug_abstract_command() -> unit = {
+function is_executing_progbuf() -> bool = {
+  match debug_state {
+    Debug_Active(Some(ac)) => ac.run_progbuf,
+    _ => false
+  };
+}
+
+function debug_uses_virtual_addressing() -> bool =
+  match debug_state {
+    Debug_Active(Some(ac)) => match ac.cmd {
+      MemoryAccess(virtual, _, _, _) => virtual,
+      _ => false
+    },
+    _ => false
+  }
+
+function start_debug_abstract_command(cmd : AbstractCommand, run_progbuf : bool) -> unit = {
   assert(currentlyEnabled(Ext_Sdext), "Cannot start Debug abstract command: Sdext is not currently enabled");
   if get_config_print_debug() then print_log("Start Abstract Command");
-  debug_abstract_command_active = true
+
+ debug_state = Debug_Active(Some(struct RunningAbstractCommand {
+    cmd = cmd,
+    error = CMDERR_NONE,
+    run_progbuf = run_progbuf,
+  }));
 }
 
 function end_debug_abstract_command(status : AbstractCommandError) -> unit = {
   assert(currentlyEnabled(Ext_Sdext), "Cannot end Debug abstract command: Sdext is not currently enabled");
   if get_config_print_debug() then print_log("End Abstract Command: Status(" ^ abstract_command_error_name(status) ^ ")");
-  debug_abstract_command_active = false;
-  set_abstractcs_busy(false);
-  progbuf_active = false;
-  complete_abstract_command(status, debug_command);
+
+  complete_abstract_command(status);
+  debug_state = Debug_Active(None());
+}
+
+function get_abstract_command() -> AbstractCommand = match debug_state {
+  Debug_Active(Some(ac)) => ac.cmd,
+  _ => internal_error(__FILE__, __LINE__, "no active abstract command"),
 }
 
 // This is called internally.
-function set_debug_abstract_command_error() -> unit = {
-  assert(currentlyEnabled(Ext_Sdext), "Cannot set Debug abstract command error: Sdext is not currently enabled");
-  debug_abstract_command_error = true
-}
-
-// This is called from the external harness, so there is no assert.
-function clear_debug_abstract_command_error() -> unit = {
-  debug_abstract_command_error = false
-}
 
 function reset_sdext() -> unit = {
   init_sdext();
@@ -94,8 +108,4 @@ function reset_sdext() -> unit = {
 
 // This is independent of the Sdext spec, we use this
 // function when the hart is reset from the debug module
-function reset_debug() -> unit = {
-  debug_abstract_command_active = false;
-  debug_abstract_command_error = false;
-  debug_mode_active = false;
-}
+function reset_debug() -> unit = debug_state = Debug_Inactive()

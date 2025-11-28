@@ -8,7 +8,7 @@
 
 union DebugAction = {
   Enter_Debug_Mode            : debug_entry_cause,
-  Exit_Debug_Abstract_Command : unit,
+  Exit_Debug_Abstract_Command : AbstractCommand,
   Exit_Debug_Mode             : unit,
 }
 
