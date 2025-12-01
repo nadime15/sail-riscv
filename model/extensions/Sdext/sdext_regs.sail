@@ -11,35 +11,19 @@
 // Sdext : Debug mode
 
 // model-internal state
-register debug_mode_active : bool = false
+
+register debug_state : DebugState = Debug_Inactive()
+
+function in_debug_mode() -> bool =
+  debug_state == Debug_Active()
+
+//register debug_mode_active : bool = false
 register debug_abstract_command_active : bool = false
 register debug_abstract_command_error  : bool = false
 
 // NOTE: While not explicitly stated in the spec, Sdext implicitly requires Zicsr
 // for accessing debug CSRs (dcsr, dpc, dscratch0/1).
-function clause currentlyEnabled(Ext_Sdext) = hartSupports(Ext_Sdext) & currentlyEnabled(Ext_Zicsr) & debug_mode_active
-
-// Defined with type `xlenbits` since it needs to be a return value of `trap_handler`.
-register debug_mem_base : physaddrbits = zeros()
-
-let debug_mem_size : nat =
-  if   hartSupports(Ext_Sdext)
-  then config extensions.Sdext.mem_size
-  else 0
-
-// When traps occur when executing an abstract command, control transfers to this
-// address in the debugger's memory.  It has type xlenbits to be compatible with
-// the return type of `trap_handler()`.
-register debug_trap_vector : xlenbits = zeros()
-
-// Checked conversions are not pure and cannot be used to initialize top-level
-// values; hence, registers are used for these values, with initialization
-// effected through this function.
-function init_sdext() -> unit =
-  if hartSupports(Ext_Sdext) then {
-    debug_mem_base = to_bits_checked(config extensions.Sdext.mem_base : nat);
-    debug_trap_vector = to_bits_checked(config extensions.Sdext.trap_vector : int);
-  }
+function clause currentlyEnabled(Ext_Sdext) = hartSupports(Ext_Sdext) & currentlyEnabled(Ext_Zicsr) & in_debug_mode()
 
 // Other configuration elements.
 let dcsr_stepie_writable : bool =
@@ -107,16 +91,10 @@ function reset_Dcsr() -> Dcsr = {
 }
 
 register dcsr : Dcsr
+register dpc       : dxlenbits
+register dscratch0 : dxlenbits
+register dscratch1 : dxlenbits
 
-// The below three registers are specified to be DXLEN bits wide,
-// which is the widest XLEN supported by a hart, ignoring misa[MXL].
-// For now, these just use xlenbits.  These registers do not have
-// specified reset values.
-register dpc       : xlenbits
-register dscratch0 : xlenbits
-register dscratch1 : xlenbits
-
-// Internal register tracking the mtime when Debug Mode was entered.
 register dtime : bits(64)
 
 function clause is_CSR_accessible(0x7b0, _, _) = currentlyEnabled(Ext_Sdext)
@@ -132,16 +110,12 @@ function clause read_CSR(0x7b3) = dscratch1
 function legalize_dcsr(d : Dcsr, v : xlenbits) -> Dcsr = {
  let v = Mk_Dcsr(v[31 .. 0]);
  [d with
-   // CETrig   = if hartSupports(Ext_Smdbltrp) then v[CETrig] else 0b0,
    PELP      = if hartSupports(Ext_Zicfilp) then v[PELP] else 0b0,
-   // EBreakVS = ...
-   // EBreakVU = ...
    EBreakM   = v[EBreakM],
    EBreakS   = if hartSupports(Ext_S) then v[EBreakS] else 0b0,
    EBreakU   = if hartSupports(Ext_U) then v[EBreakU] else 0b0,
    StepIE    = if dcsr_stepie_writable then v[StepIE] else d[StepIE],
    StopCount = if dcsr_stopcount_writable then v[StopCount] else d[StopCount],
-   // V = ...
    MPRVEn    = if dcsr_mprven_writable then v[MPRVEn] else d[MPRVEn],
    Step      = v[Step],
    Prv       = if have_nominal_privLevel(v[Prv]) then v[Prv] else d[Prv],
@@ -156,7 +130,7 @@ function clause write_CSR(0x7b3, value) = { dscratch1 = value; Ok(dscratch1) }
 function in_debug_abstract_command() -> bool =
   currentlyEnabled(Ext_Sdext) & debug_abstract_command_active
 
-// The hart is resumed when single stepping, so debug_mode_active is false.
+// The hart is resumed when single stepping, so debug_mode is inactive.
 // This function hence uses hartSupports() instead of currentlyEnabled().
 function in_single_step() -> bool =
   hartSupports(Ext_Sdext) & bool_bits(dcsr[Step])

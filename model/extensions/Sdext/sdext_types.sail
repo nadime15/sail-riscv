@@ -6,7 +6,7 @@
 //  SPDX-License-Identifier: BSD-2-Clause
 //=======================================================================================
 
-// Debug module uses same XLEN as the hart
+// Dxlen is supposed to be mxlen
 type dxlen : Int = xlen
 
 type log2_dxlen  : Int = if dxlen == 32 then 5 else 6
@@ -18,9 +18,9 @@ let dxlen = sizeof(dxlen)
 type dxlenbits = bits(dxlen)
 
 union AbstractCommand = {
-  AccessRegister : (bool, bits(16), bits(3), bool, bool),
+  AccessRegister : (bool, bits(16), bits(3), bool, bool), // (write, regno, aarsize, postexec, transfer)
   QuickAccess    : unit,
-  MemoryAccess   : (bool, bool, word_width, xlenbits),
+  MemoryAccess   : (bool, bool, word_width, xlenbits),    // (virtual, write, width, addr)
 }
 
 union DebugRequest = {
@@ -71,7 +71,12 @@ struct RunningAbstractCommand = {
   run_progbuf    : bool,
 }
 
+//union DebugState = {
+//  Debug_Active   : option(RunningAbstractCommand),
+//  Debug_Inactive : unit,
+//}
+
 union DebugState = {
-  Debug_Active   : option(RunningAbstractCommand),
+  Debug_Active   : unit,
   Debug_Inactive : unit,
 }

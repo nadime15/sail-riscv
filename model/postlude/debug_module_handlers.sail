@@ -48,7 +48,7 @@ function handle_debug_reset(halt_on_reset : bool) -> unit = {
 }
 
 function handle_debug_single_step() -> unit = {
-  if in_single_step() & not(debug_mode_active) then {
+  if in_single_step() & not(in_debug_mode()) then {
     if get_config_print_debug() then print_log("Entering debug mode via single step");
     handle_debug_halt(DBGEntry_Step)
   }

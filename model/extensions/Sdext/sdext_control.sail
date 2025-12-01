@@ -10,7 +10,7 @@
 
 // The specification denotes a hart's entry into Debug mode as the hart "halting".
 function enter_debug_mode(cause : debug_entry_cause, extcause : bits(3), pc : xlenbits) -> unit = {
-  assert(not(debug_mode_active), "enter_debug_mode: already in Debug mode.");
+  assert(not(in_debug_mode()), "enter_debug_mode: already in Debug mode.");
   dpc = pc;
   dcsr = [dcsr with
            Prv = privLevel_to_bits(cur_privilege),
@@ -29,7 +29,8 @@ function enter_debug_mode(cause : debug_entry_cause, extcause : bits(3), pc : xl
   // Set elp to NO_LP_EXPECTED
   reset_elp();
 
-  debug_mode_active = true;
+  //debug_mode_active = true;
+  debug_state = Debug_Active();
 
   if get_config_print_debug()
   then print_log("entering Debug mode from " ^ to_str(privLevel_bits(dcsr[Prv], bitzero)) ^ " Cause: " ^ debug_entry_cause_to_str(cause));
@@ -37,7 +38,7 @@ function enter_debug_mode(cause : debug_entry_cause, extcause : bits(3), pc : xl
 
 // The specification denotes a hart's exit from Debug mode as the hart "resuming".
 function exit_debug_mode() -> unit = {
-  assert(debug_mode_active, "exit_debug_mode: not in Debug mode.");
+  assert(in_debug_mode(), "exit_debug_mode: not in Debug mode.");
   set_next_pc(dpc);
   tick_pc();
 
@@ -53,15 +54,24 @@ function exit_debug_mode() -> unit = {
   };
   // TODO: V from hypervisor mode
 
-  debug_mode_active = false;
+//  debug_mode_active = false;
+  debug_state = Debug_Inactive();
 
   if get_config_print_debug()
   then print_log("exiting Debug mode to " ^ to_str(cur_privilege));
 }
 
+function trigger_bug() -> unit = {
+  debug_state = Debug_Active();
+  print_endline("What is in_debug_mode() " ^ (if in_debug_mode() then "true" else "false"));
+  print_endline("What is debug_state == Debug_Active()" ^ (if debug_state == Debug_Active() then "true" else "false"));
+  assert((debug_state == Debug_Active()) == in_debug_mode(), "This should never fail")
+}
+
 // This function must be called by the debugger/external-harness
 // before executing any instructions from a Debug program buffer.
 function start_debug_abstract_command() -> unit = {
+  trigger_bug();
   assert(currentlyEnabled(Ext_Sdext), "Cannot start Debug abstract command: Sdext is not currently enabled");
   if get_config_print_debug() then print_log("Start Abstract Command");
   debug_abstract_command_active = true
@@ -87,7 +97,6 @@ function clear_debug_abstract_command_error() -> unit = {
 }
 
 function reset_sdext() -> unit = {
-  init_sdext();
   dcsr = reset_Dcsr();
 }
 
@@ -96,5 +105,7 @@ function reset_sdext() -> unit = {
 function reset_debug() -> unit = {
   debug_abstract_command_active = false;
   debug_abstract_command_error = false;
-  debug_mode_active = false;
+//  debug_mode_active = false;
+
+  debug_state = Debug_Inactive();
 }
