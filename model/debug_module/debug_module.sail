@@ -86,8 +86,7 @@ function clause read_debug_module_reg(0x11) = dmstatus.bits
 
 // Get the current hart state from dmstatus
 function get_hart_state() -> DebugHartState = {
-  if dmstatus[allnonexistent]  == 0b1 then NON_EXISTENT
-  else if dmstatus[allunavail] == 0b1 then UNAVAILABLE
+  if dmstatus[allunavail] == 0b1 then UNAVAILABLE
   else if dmstatus[allhalted]  == 0b1 then HALTED
   else if dmstatus[allrunning] == 0b1 then RUNNING
   else {
@@ -96,8 +95,11 @@ function get_hart_state() -> DebugHartState = {
 }
 
 function set_hart_state(state : DebugHartState) -> unit = {
-  dmstatus[allnonexistent] = bool_to_bits(state == NON_EXISTENT);
-  dmstatus[anynonexistent] = bool_to_bits(state == NON_EXISTENT);
+  // Set sticky bit when becoming unavailable
+  if state == UNAVAILABLE then {
+    dmstatus[stickyunavail] = 0b1;
+  };
+
   dmstatus[allunavail]     = bool_to_bits(state == UNAVAILABLE);
   dmstatus[anyunavail]     = bool_to_bits(state == UNAVAILABLE);
   dmstatus[allhalted]      = bool_to_bits(state == HALTED);
@@ -354,7 +356,8 @@ function legalize_command(d : Command, x : bits(32)) -> Command = {
       abstractcs[cmderr]
     } else {
       match get_hart_state() {
-        NON_EXISTENT => abstract_command_error(CMDERR_HALT_RESUME),
+        // TODO: Check that nonexist is not set to 1
+        //NON_EXISTENT => abstract_command_error(CMDERR_HALT_RESUME),
         UNAVAILABLE  => abstract_command_error(CMDERR_HALT_RESUME),
         _ => abstract_command_error(handle_abstract_command(x)),
       }
@@ -468,37 +471,19 @@ bitfield Dmcontrol : bits(32) = {
   dmactive:        0
 }
 
-
-//function set_nonexistent(ext)
-
-function set_running(r : bool) -> unit = {
-  running = r;
-  dmstatus[allrunning] = bool_to_bits(running);
-  dmstatus[anyrunning] = bool_to_bits(running);
-}
-
-function set_halted(h : bool) -> unit = {
-  halted = h;
-  dmstatus[allhalted] = bool_to_bits(halted);
-  dmstatus[anyhalted] = bool_to_bits(halted);
-}
-
-function set_havereset(hr : bool) -> unit = {
-  havereset = hr;
+function set_havereset(havereset : bool) -> unit = {
   dmstatus[allhavereset] = bool_to_bits(havereset);
   dmstatus[anyhavereset] = bool_to_bits(havereset);
 }
 
-function set_resumeack(ra : bool) -> unit = {
-  resumeack = ra;
+function set_resumeack(resumeack : bool) -> unit = {
   dmstatus[allresumeack] = bool_to_bits(resumeack);
   dmstatus[anyresumeack] = bool_to_bits(resumeack);
 }
 
-function set_unavail(un : bool) -> unit = {
-  unavail = un;
-  dmstatus[allunavail] = bool_to_bits(unavail);
-  dmstatus[anyunavail] = bool_to_bits(unavail);
+function set_hart_exists(exists : bool) -> unit = {
+  dmstatus[allnonexistent] = bool_to_bits(not(exists));
+  dmstatus[anynonexistent] = bool_to_bits(not(exists));
 }
 
 function update_halt_on_reset_config(x : Dmcontrol) -> unit = {
@@ -537,8 +522,7 @@ function legalize_active_dmcontrol(d : Dmcontrol, x : Dmcontrol) -> Dmcontrol = 
   let hart_exists = hartsel == zeros();
 
   // Update hart existence status
-  dmstatus[allnonexistent] = bool_to_bits(not(hart_exists));
-  dmstatus[anynonexistent] = bool_to_bits(not(hart_exists));
+  set_hart_exists(hart_exists);
 
   if hart_exists then {
     // Handle halt-on-reset config
@@ -546,43 +530,41 @@ function legalize_active_dmcontrol(d : Dmcontrol, x : Dmcontrol) -> Dmcontrol = 
     // Example: ndmreset is deasserted while haltonreset is asserted
     update_halt_on_reset_config(x);
     if x[ackhavereset] == 0b1 then set_havereset(false);
-    if x[ackunavail]   == 0b1 then set_unavail(false);
+    if x[ackunavail]   == 0b1 then dmstatus[stickyunavail] = 0b0;
   };
+
+  let current_state = get_hart_state();
 
   // Handle state transition logic
   match (d[ndmreset], x[ndmreset], d[hartreset], x[hartreset]) {
     // NDM reset deassert
+    // NOTE: We trigger a reset even if the selected hart does not exist.
     (0b1, 0b0, _, _) => {
       handle_halt_or_reset(x, haltonreset);
-      set_unavail(false);
     },
 
     // NDM reset assert
     (0b0, 0b1, _, _) => {
-      set_unavail(true);
+      set_hart_state(UNAVAILABLE);
     },
 
     // Hart reset deassert
     (_, _, 0b1, 0b0) if hart_exists => {
       handle_halt_or_reset(x, haltonreset);
-      set_unavail(false);
     },
 
     // Hart reset assert
     (_, _, 0b0, 0b1) if hart_exists => {
-      set_unavail(true);
+      set_hart_state(UNAVAILABLE);
     },
 
     // Normal hart operation
     (_, _, _, _) if hart_exists => {
-      haltrequest = x[haltreq] == 0b1;
-
-      if haltrequest & not(halted) then {
-        haltrequest = true;
+      if x[haltreq] == 0b1 & current_state != HALTED then {
         send_debug_request(Halt());
       };
 
-      if x[resumereq] == 0b1 & not(running) then {
+      if x[resumereq] == 0b1 & current_state != RUNNING then {
         set_resumeack(false);
         send_debug_request(Resume());
         // TODO: resumeack needs to be set after we transition from halt to running
@@ -632,8 +614,13 @@ function clause write_debug_module_reg(0x10, value) = { dmcontrol = legalize_dmc
 function clause read_debug_module_reg(0x10) = dmcontrol.bits
 
 function send_hart_status(status : debug_module_hart_status) -> unit = {
-  set_running(status.running);
-  set_halted(status.halted);
+  let prev_state = get_hart_state();  // ← Capture BEFORE updating
+
+  if status.running then
+    set_hart_state(RUNNING)
+  else if status.halted then
+    set_hart_state(HALTED);
+
   // Only set, never clear havereset
   if status.havereset then
     set_havereset(true);
@@ -644,12 +631,11 @@ function send_hart_status(status : debug_module_hart_status) -> unit = {
   //  set_resumeack(false);
  // };
 
- // Set resumeack when hart successfully resumes
-    if running & status.running then {
+  // Set resumeack when hart successfully resumes (transition to running)
+    if prev_state != RUNNING & status.running then
       set_resumeack(true);
-    };
 
-  assert((halted & not(running)) | (not(halted) & running), "Hart cannot be both halted and running at the same time");
+  assert((status.halted & not(status.running)) | (not(status.halted) & status.running), "Hart cannot be both halted and running at the same time");
 }
 
 bitfield Hartinfo : bits(32) = {
@@ -1166,29 +1152,16 @@ end write_debug_module_reg
 function reset_debug_module() = {
   if get_config_print_debug()
   then print_log("Reset Debug Module");
-  // Behavior is undefined if a hart is halted when the
-  // debug module resets. For now, we check if the hart
-  // is halted and issue a resume request.
-  if halted then send_debug_request(Resume());
+  // The behavior is undefined if a hart is halted when the debug module resets.
+  // For now, we detect a halted hart and issue a resume request, since dmstatus
+  // resets to its default state with allrunning/anyrunning = 1.
+  if get_hart_state() == HALTED then send_debug_request(Resume());
 
   progbuf_regs = vector_init(EBREAK_INSTRUCTION);
 
-  haltrequest = false;
-  resumeack   = false;
-  hartreset   = false;
   haltonreset = false;
-  //unavail      = false;
-  //keepalive    = false;
 
-  // NOTE: We dont set anyrunning or allrunning yet
-  // TODO: Check if we can just call initialize_dmstatus()
-  dmstatus = [Mk_Dmstatus(zeros()) with
-    impebreak       = if unsigned(MAX_PROGBUF_SIZE) == 1 | (config platform.debug_module.impebreak : bool) then 0b1 else 0b0,
-    authenticated   = 0b1,
-    authbusy        = 0b0,
-    hasresethaltreq = 0b1,
-    version         = 0b0011,
-  ];
+  dmstatus = initial_dmstatus();
 
   dmcontrol.bits = zeros();
 

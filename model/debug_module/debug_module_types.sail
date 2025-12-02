@@ -9,7 +9,7 @@
 type debug_module_reg = bits(8)
 
 // State of the Hart from the Debug Module's point of view
-enum DebugHartState = {NON_EXISTENT, UNAVAILABLE, RUNNING, HALTED}
+enum DebugHartState = {UNAVAILABLE, RUNNING, HALTED}
 
 function debug_request_to_string(request : DebugRequest) -> string = {
   match request {
