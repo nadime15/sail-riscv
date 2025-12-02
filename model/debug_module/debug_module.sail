@@ -14,7 +14,6 @@ val debug_module_reg_name_map : debug_module_reg <-> string
 val reset_debug_module : unit -> unit
 
 // initialize scattered definitions
-
 scattered mapping debug_module_reg_name_map
 
 val debug_module_reg_name : debug_module_reg -> string
@@ -62,7 +61,8 @@ bitfield Dmstatus : bits(32) = {
 function initial_dmstatus() -> Dmstatus = {
   [Mk_Dmstatus(zeros()) with
     impebreak = if unsigned(MAX_PROGBUF_SIZE) == 1 | (config platform.debug_module.impebreak : bool) then 0b1 else 0b0,
-    // NOTE: By default, the hart is running (riscv-openocd expects it to be either running or halted during initialization).
+    // NOTE: By default, the hart is running (OpenOCD expects the
+    // hart to be either running or halted during initialization).
     allrunning = 0b1,
     anyrunning = 0b1,
     // TODO: For now authentication is not supported
@@ -71,8 +71,7 @@ function initial_dmstatus() -> Dmstatus = {
     // OpenOCD will not continue after failed authentication
     authenticated   = 0b1,
     hasresethaltreq = 0b1,
-    // Version 1.0
-    version         = 0b0011
+    version         = DM_VERSION
   ]
 }
 
@@ -120,8 +119,8 @@ function legalize_abstractcs(d : Abstractcs, x : bits(32)) -> Abstractcs = {
   let x = Mk_Abstractcs(x);
   [d with
     progbufsize = MAX_PROGBUF_SIZE,
-    // TODO: Check if this is the case
-    relaxedpriv = 0b1,
+    // TODO: Support relaxed permission check
+    relaxedpriv = 0b0,
     cmderr      = if x[cmderr] == ones() then zeros() else d[cmderr], // R/W1C
     datacount   = MAX_DATA_SIZE,
   ]
@@ -144,15 +143,10 @@ function clause write_debug_module_reg(0x16, value) = { abstractcs = legalize_ab
 function clause read_debug_module_reg(0x16) = abstractcs.bits
 
 function check_abstract_busy_and_set_error() -> bool = {
-  if is_abstractcs_busy() then {
-    if abstractcs[cmderr] == abstract_command_error(CMDERR_NONE) then {
-      abstractcs[cmderr] = abstract_command_error(CMDERR_BUSY);
-    };
-    true
-  }
-  else {
-    false
-  }
+  let busy = is_abstractcs_busy();
+  if busy & abstractcs[cmderr] == abstract_command_error(CMDERR_NONE) then
+    abstractcs[cmderr] = abstract_command_error(CMDERR_BUSY);
+  busy
 }
 
 function complete_abstract_command(status : AbstractCommandError, cmd : option(AbstractCommand)) -> unit = {
@@ -163,12 +157,6 @@ function complete_abstract_command(status : AbstractCommandError, cmd : option(A
   };
 
   set_abstractcs_busy(false);
-
-  //TODO: handle aarmpostincrement etc
-  // match cmd {
-  //  Some(_)
-  //  None() =>
-  //}
 }
 
 register data_regs : vector(12, bits(32)) = vector_init(zeros())
@@ -297,17 +285,15 @@ function handle_quick_access_cmd(cmd : bits(32)) -> AbstractCommandError = {
   }
 }
 
-// Extract and validate ACCESS_MEMORY command
 function handle_access_memory_cmd(cmd : bits(32)) -> AbstractCommandError = {
   let aamvirtual       = cmd[23];
   let aamsize          = cmd[22 .. 20];
   let aampostincrement = cmd[19];
   let write            = cmd[16];
 
-  // Validate command format
   if cmd[18 .. 17] != zeros() then CMDERR_NOT_SUPPORTED
   else if cmd[13 .. 0] != zeros() then CMDERR_NOT_SUPPORTED
-  else if aampostincrement == bitone then CMDERR_NOT_SUPPORTED  // TODO: Add support
+  else if aampostincrement == bitone then CMDERR_NOT_SUPPORTED  // TODO: Add support aampostincrement
   else if not(is_valid_aamsize(aamsize)) then CMDERR_NOT_SUPPORTED
   else match get_hart_state() {
     HALTED => {
@@ -357,7 +343,7 @@ function legalize_command(d : Command, x : bits(32)) -> Command = {
     } else {
       match get_hart_state() {
         // TODO: Check that nonexist is not set to 1
-        //NON_EXISTENT => abstract_command_error(CMDERR_HALT_RESUME),
+        // NON_EXISTENT => abstract_command_error(CMDERR_HALT_RESUME),
         UNAVAILABLE  => abstract_command_error(CMDERR_HALT_RESUME),
         _ => abstract_command_error(handle_abstract_command(x)),
       }
@@ -373,7 +359,7 @@ function clause is_debug_module_reg_defined (0x17) = true
 function clause write_debug_module_reg(0x17, value) = { command = legalize_command(command, value); }
 function clause read_debug_module_reg(0x17) = zeros()
 
-function handle_register_access(old_value: bits(32), new_value : bits(32), is_write: bool) -> bits(32) = {
+function handle_debug_module_register_access(old_value: bits(32), new_value : bits(32), is_write: bool) -> bits(32) = {
   let is_busy = check_abstract_busy_and_set_error();
   if is_busy | not(is_write) then old_value else new_value
 }
@@ -391,8 +377,8 @@ bitfield Abstractauto : bits(32) = {
   autoexecdata:    11 ..  0,
 }
 
-// GDB/OpenOCD uses this for burst reads/writes
-// This register is optional but openocd just assumes it exists...
+// NOTE: This register is optional but OpenOCD just assumes it exists and uses it
+// see https://github.com/riscv-collab/riscv-openocd/issues/587
 function legalize_abstractauto(d : Abstractauto, x : bits(32)) -> Abstractauto = {
   let x = Mk_Abstractauto(x);
   // TODO: This is not really correct yet, we have to monitor the current abstract command:
@@ -416,7 +402,6 @@ register abstractauto: Abstractauto = legalize_abstractauto(Mk_Abstractauto(zero
 
 mapping clause debug_module_reg_name_map = 0x18  <-> "abstractauto"
 
-// Optional Register
 function clause is_debug_module_reg_defined (0x18) = true
 function clause write_debug_module_reg(0x18, value) = { abstractauto = legalize_abstractauto(abstractauto, value); }
 function clause read_debug_module_reg(0x18) = abstractauto.bits
@@ -442,14 +427,14 @@ function clause is_debug_module_reg_defined((addr) if DATA_REG_BASE <=_u addr & 
 function clause write_debug_module_reg((addr, value) if DATA_REG_BASE <=_u addr & addr <=_u DATA_REG_END) = {
   let idx = unsigned(addr - DATA_REG_BASE);
   assert(idx <= 11);
-  data_regs[idx] = handle_register_access(data_regs[idx], value, true);
+  data_regs[idx] = handle_debug_module_register_access(data_regs[idx], value, true);
   trigger_abstractauto_if_enabled(abstractauto[autoexecdata][idx]);
 }
 
 function clause read_debug_module_reg((addr) if DATA_REG_BASE <=_u addr & addr <=_u DATA_REG_END) = {
   let idx = unsigned(addr - DATA_REG_BASE);
   assert(idx <= 11);
-  let _ = handle_register_access(data_regs[idx], zeros(), false);
+  let _ = handle_debug_module_register_access(data_regs[idx], zeros(), false);
   trigger_abstractauto_if_enabled(abstractauto[autoexecdata][idx]);
   data_regs[idx]
 }
@@ -498,15 +483,9 @@ function handle_halt_or_reset(x : Dmcontrol, halt_on_reset : bool) -> unit = {
   send_debug_request(Reset(x[haltreq] == 0b1 | halt_on_reset));
 }
 
-function legalize_active_dmcontrol(d : Dmcontrol, x : Dmcontrol) -> Dmcontrol = {
-
-  // TODO: On any given write, a debugger may only write 1 to at most
-  // one of the following bits: resumereq, hartreset, ackhavereset,
-  // setresethaltreq, and clrresethaltreq. The others must be written
-  // 0.
-
-  // Ignore the bits below if abstract command is executed
-  let x = if is_abstractcs_busy() then [x with
+// Mask control fields that must be ignored while abstract command is executing
+function mask_dmcontrol_when_busy(x : Dmcontrol) -> Dmcontrol = {
+  [x with
     haltreq         = 0b0,
     resumereq       = 0b0,
     ackhavereset    = 0b0,
@@ -514,81 +493,79 @@ function legalize_active_dmcontrol(d : Dmcontrol, x : Dmcontrol) -> Dmcontrol = 
     hartselhi       = zeros(),
     setresethaltreq = 0b0,
     clrresethaltreq = 0b0,
-  ] else x;
-
-  // Validate hart selection
-  let hartsel = x[hartselhi] @ x[hartsello];
-  // Only hart 0 exists in minimal implementation
-  let hart_exists = hartsel == zeros();
-
-  // Update hart existence status
-  set_hart_exists(hart_exists);
-
-  if hart_exists then {
-    // Handle halt-on-reset config
-    // If haltonreset is set, it takes priority before deciding whether to send HaltOnReset or Reset
-    // Example: ndmreset is deasserted while haltonreset is asserted
-    update_halt_on_reset_config(x);
-    if x[ackhavereset] == 0b1 then set_havereset(false);
-    if x[ackunavail]   == 0b1 then dmstatus[stickyunavail] = 0b0;
-  };
-
-  let current_state = get_hart_state();
-
-  // Handle state transition logic
-  match (d[ndmreset], x[ndmreset], d[hartreset], x[hartreset]) {
-    // NDM reset deassert
-    // NOTE: We trigger a reset even if the selected hart does not exist.
-    (0b1, 0b0, _, _) => {
-      handle_halt_or_reset(x, haltonreset);
-    },
-
-    // NDM reset assert
-    (0b0, 0b1, _, _) => {
-      set_hart_state(UNAVAILABLE);
-    },
-
-    // Hart reset deassert
-    (_, _, 0b1, 0b0) if hart_exists => {
-      handle_halt_or_reset(x, haltonreset);
-    },
-
-    // Hart reset assert
-    (_, _, 0b0, 0b1) if hart_exists => {
-      set_hart_state(UNAVAILABLE);
-    },
-
-    // Normal hart operation
-    (_, _, _, _) if hart_exists => {
-      if x[haltreq] == 0b1 & current_state != HALTED then {
-        send_debug_request(Halt());
-      };
-
-      if x[resumereq] == 0b1 & current_state != RUNNING then {
-        set_resumeack(false);
-        send_debug_request(Resume());
-        // TODO: resumeack needs to be set after we transition from halt to running
-        //set_resumeack(true);
-      };
-    },
-
-    // Fallback
-    _ => (),
-  };
-
-  [d with
-    // Control bits - preserve written values for pulse-type operations
-    haltreq         = if not(is_abstractcs_busy()) then x[haltreq] else d[haltreq],
-    hartreset       = x[hartreset],
-    // Hart selection - minimal implementation supports only hart 0
-    hasel           = 0b0,
-    hartsello       = zeros(),
-    hartselhi       = zeros(),
-    // System control
-    ndmreset        = x[ndmreset],
-    dmactive        = x[dmactive]
   ]
 }
+
+// Process acknowledgment bits for existing harts
+function process_acks(x : Dmcontrol) -> unit = {
+  update_halt_on_reset_config(x);
+  if x[ackhavereset] == 0b1 then set_havereset(false);
+  if x[ackunavail]   == 0b1 then dmstatus[stickyunavail] = 0b0;
+}
+
+// Handle halt and resume requests during normal operation
+function handle_halt_resume_requests(x : Dmcontrol) -> unit = {
+  let state = get_hart_state();
+
+  if x[haltreq] == 0b1 & state != HALTED then
+    send_debug_request(Halt());
+
+  if x[resumereq] == 0b1 & state != RUNNING then {
+    set_resumeack(false);
+    send_debug_request(Resume());
+  };
+}
+
+// Handle reset signal transitions, returns true if a transition occurred
+function handle_reset_transitions(d : Dmcontrol, x : Dmcontrol, hart_exists : bool) -> bool = {
+  match (d[ndmreset], x[ndmreset], d[hartreset], x[hartreset]) {
+    // NDM reset deassert - applies even if hart doesn't exist
+    (0b1, 0b0, _, _) => { send_debug_request(Reset(x[haltreq] == 0b1 | haltonreset)); true },
+    // NDM reset assert
+    (0b0, 0b1, _, _) => { set_hart_state(UNAVAILABLE); true },
+    // Hart reset deassert
+    (_, _, 0b1, 0b0) if hart_exists => { send_debug_request(Reset(x[haltreq] == 0b1 | haltonreset)); true },
+    // Hart reset assert
+    (_, _, 0b0, 0b1) if hart_exists => { set_hart_state(UNAVAILABLE); true },
+    _ => false
+  }
+}
+
+// Build the return value with legalized fields
+function build_dmcontrol_result(d : Dmcontrol, x : Dmcontrol, busy : bool) -> Dmcontrol = {
+  [d with
+    haltreq    = if busy then d[haltreq] else x[haltreq],
+    hartreset  = x[hartreset],
+    hasel      = 0b0,      // Minimal implementation: single hart only
+    hartsello  = zeros(),
+    hartselhi  = zeros(),
+    ndmreset   = x[ndmreset],
+    dmactive   = x[dmactive]
+  ]
+}
+
+function legalize_active_dmcontrol(d : Dmcontrol, x : Dmcontrol) -> Dmcontrol = {
+  let busy = is_abstractcs_busy();
+  let x = if busy then mask_dmcontrol_when_busy(x) else x;
+
+  // Validate hart selection (only hart 0 exists in minimal implementation)
+  let hartsel = x[hartselhi] @ x[hartsello];
+  let hart_exists = hartsel == zeros();
+  set_hart_exists(hart_exists);
+
+  // Process acknowledgments for existing harts
+  if hart_exists then process_acks(x);
+
+  // Handle reset transitions first (they take priority)
+  let reset_occurred = handle_reset_transitions(d, x, hart_exists);
+
+  // Handle normal halt/resume only if no reset transition and hart exists
+  if not(reset_occurred) & hart_exists then
+    handle_halt_resume_requests(x);
+
+  build_dmcontrol_result(d, x, busy)
+}
+
 
 function legalize_dmcontrol(d : Dmcontrol, x : bits(32)) -> Dmcontrol = {
   let x = Mk_Dmcontrol(x);
@@ -614,28 +591,23 @@ function clause write_debug_module_reg(0x10, value) = { dmcontrol = legalize_dmc
 function clause read_debug_module_reg(0x10) = dmcontrol.bits
 
 function send_hart_status(status : debug_module_hart_status) -> unit = {
-  let prev_state = get_hart_state();  // ← Capture BEFORE updating
+  assert((status.halted & not(status.running)) | (not(status.halted) & status.running),
+         "Hart must be either halted or running, not both");
+
+  let prev_state = get_hart_state();
 
   if status.running then
     set_hart_state(RUNNING)
   else if status.halted then
     set_hart_state(HALTED);
 
-  // Only set, never clear havereset
+  // Stickybit only set, never clear
   if status.havereset then
     set_havereset(true);
 
-
-  // NOTE: Is resumeack at some point cleared? Besides sending a resumereeq
-  //if status.halted & halted then {
-  //  set_resumeack(false);
- // };
-
-  // Set resumeack when hart successfully resumes (transition to running)
-    if prev_state != RUNNING & status.running then
-      set_resumeack(true);
-
-  assert((status.halted & not(status.running)) | (not(status.halted) & status.running), "Hart cannot be both halted and running at the same time");
+  // Successful resume transition
+  if prev_state != RUNNING & status.running then
+    set_resumeack(true);
 }
 
 bitfield Hartinfo : bits(32) = {
@@ -684,7 +656,6 @@ register hawindowsel: Hawindowsel = Mk_Hawindowsel(zeros())
 
 mapping clause debug_module_reg_name_map = 0x14  <-> "hawindowsel"
 
-// Optional Register
 function clause is_debug_module_reg_defined (0x14) = false
 function clause write_debug_module_reg(0x14, value) = ()
 function clause read_debug_module_reg(0x14) = hawindowsel.bits
@@ -716,7 +687,6 @@ bitfield Confstrptr0 : bits(32) = {
 function initial_confstrptr0() -> Confstrptr0 = {
   [Mk_Confstrptr0(zeros()) with
     // TODO
-    // NOTE: Part of System Bus Access
     addr = zeros()
   ]
 }
@@ -737,7 +707,6 @@ bitfield Confstrptr1 : bits(32) = {
 function initial_confstrptr1() -> Confstrptr1 = {
   [Mk_Confstrptr1(zeros()) with
     // TODO
-    // NOTE: Part of System Bus Access
     addr = zeros(),
   ]
 }
@@ -747,7 +716,7 @@ register confstrptr1: Confstrptr1 = initial_confstrptr1()
 mapping clause debug_module_reg_name_map = 0x1a  <-> "confstrptr1"
 
 function clause is_debug_module_reg_defined (0x1a) = true
-// Read Only Register
+
 function clause write_debug_module_reg(0x1a, value) = ()
 function clause read_debug_module_reg(0x1a) = confstrptr1.bits
 
@@ -766,7 +735,7 @@ register confstrptr2: Confstrptr2 = initial_confstrptr2()
 mapping clause debug_module_reg_name_map = 0x1b  <-> "confstrptr2"
 
 function clause is_debug_module_reg_defined (0x1b) = true
-// Read Only Register
+
 function clause write_debug_module_reg(0x1b, value) = ()
 function clause read_debug_module_reg(0x1b) = confstrptr2.bits
 
@@ -777,7 +746,6 @@ bitfield Confstrptr3 : bits(32) = {
 function initial_confstrptr3() -> Confstrptr3 = {
   [Mk_Confstrptr3(zeros()) with
     // TODO
-    // NOTE: Part of System Bus Access
     addr = zeros(),
   ]
 }
@@ -787,7 +755,7 @@ register confstrptr3: Confstrptr3 = initial_confstrptr3()
 mapping clause debug_module_reg_name_map = 0x1c  <-> "confstrptr3"
 
 function clause is_debug_module_reg_defined (0x1c) = true
-// Read Only Register
+
 function clause write_debug_module_reg(0x1c, value) = ()
 function clause read_debug_module_reg(0x1c) = confstrptr3.bits
 
@@ -795,13 +763,7 @@ bitfield Nextdm : bits(32) = {
   addr: 31 .. 0
 }
 
-function initial_nextdm() -> Nextdm = {
-  [Mk_Nextdm(zeros()) with
-    addr = zeros(),
-  ]
-}
-
-register nextdm: Nextdm = initial_nextdm()
+register nextdm: Nextdm = Mk_Nextdm(zeros())
 
 mapping clause debug_module_reg_name_map = 0x1d  <-> "nextdm"
 
@@ -811,10 +773,9 @@ function clause write_debug_module_reg(0x1d, value) = ()
 
 function clause read_debug_module_reg(0x1d) = nextdm.bits
 
-// Program buffer registers, initialized with EBREAK (0x00100073)
+// Program buffer registers, initialized with EBREAK (0x00100073) instruction
 // Ensures the hart safely exits debug mode even if the program buffer
 // is not fully populated by the debugger
-// TODO: Reinitialize after reset
 register progbuf_regs : vector(16, bits(32)) = vector_init(EBREAK_INSTRUCTION)
 
 mapping clause debug_module_reg_name_map = 0x20  <-> "progbuf0"
@@ -842,14 +803,14 @@ function clause is_debug_module_reg_defined((addr) if 0x20 <=_u addr & addr <=_u
 function clause write_debug_module_reg((addr, value) if 0x20 <=_u addr & addr <=_u 0x2f) = {
   let idx = unsigned(addr - 0x20);
   assert(idx <= 15);
-  progbuf_regs[idx] = handle_register_access(progbuf_regs[idx], value, true);
+  progbuf_regs[idx] = handle_debug_module_register_access(progbuf_regs[idx], value, true);
   trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][idx]);
 }
 
 function clause read_debug_module_reg((addr) if 0x20 <=_u addr & addr <=_u 0x2f) = {
   let idx  = unsigned(addr - 0x20);
   assert(idx <= 15);
-  let _ = handle_register_access(progbuf_regs[idx], zeros(), false);
+  let _ = handle_debug_module_register_access(progbuf_regs[idx], zeros(), false);
   trigger_abstractauto_if_enabled(abstractauto[autoexecprogbuf][idx]);
   progbuf_regs[idx]
 }
@@ -941,7 +902,7 @@ bitfield Sbcs : bits(32) = {
 function legalize_sbcs(d : Sbcs, x : bits(32)) -> Sbcs = {
   let x = Mk_Sbcs(x);
   [d with
-    sbversion       = 0b001,
+    sbversion       = SB_VERSION,
     sbbusyerror     = if x[sbbusyerror] == ones() then zeros() else d[sbbusyerror], // R/W1C
     sbreadonaddr    = x[sbreadonaddr],
     sbaccess        = x[sbaccess],
@@ -1190,7 +1151,7 @@ function reset_debug_module() = {
   ];
 
   sbcs = [Mk_Sbcs(zeros()) with
-    sbversion = 0b001,
+    sbversion = SB_VERSION,
     sbaccess  = 0b010,
     sbasize   = zeros(),
   ];

@@ -45,6 +45,9 @@ mapping abstract_command_type : int <-> AbstractCommandType = {
   2 <-> ACCESS_MEMORY,
 }
 
+let DM_VERSION : bits(4) = 0b0011
+let SB_VERSION : bits(3) = 0b001
+
 // Debug Module register number ranges
 let DATA_REG_BASE : bits(8) = 0x04
 let DATA_REG_END  : bits(8) = 0x0f
