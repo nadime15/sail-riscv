@@ -95,6 +95,17 @@ function get_hart_state() -> DebugHartState = {
   }
 }
 
+function set_hart_state(state : DebugHartState) -> unit = {
+  dmstatus[allnonexistent] = bool_to_bits(state == NON_EXISTENT);
+  dmstatus[anynonexistent] = bool_to_bits(state == NON_EXISTENT);
+  dmstatus[allunavail]     = bool_to_bits(state == UNAVAILABLE);
+  dmstatus[anyunavail]     = bool_to_bits(state == UNAVAILABLE);
+  dmstatus[allhalted]      = bool_to_bits(state == HALTED);
+  dmstatus[anyhalted]      = bool_to_bits(state == HALTED);
+  dmstatus[allrunning]     = bool_to_bits(state == RUNNING);
+  dmstatus[anyrunning]     = bool_to_bits(state == RUNNING);
+}
+
 bitfield Abstractcs : bits(32) = {
   progbufsize : 28 .. 24,
   busy :        12,

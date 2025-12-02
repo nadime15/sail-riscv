@@ -12,11 +12,13 @@ register pending_debug_request : option(DebugRequest) = None()
 // NOTE: In theory, we should have individual bits for each hart.
 register haltrequest : bool = false
 register resumeack   : bool = false
-register unavail     : bool = false
 register haltonreset : bool = false
 register hartreset   : bool = false
+// TODO REMOVE
+register unavail     : bool = false
 register keepalive   : bool = false
 
+// TODO REMOVE
 // Signals from hart to debug module
 // Indicates that the hart is running
 register running   : bool = true
