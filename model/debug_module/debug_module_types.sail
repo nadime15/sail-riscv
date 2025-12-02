@@ -6,7 +6,7 @@
 //  SPDX-License-Identifier: BSD-2-Clause
 //=======================================================================================
 
-type dmreg = bits(8)
+type debug_module_reg = bits(8)
 
 // State of the Hart from the Debug Module's point of view
 enum DebugHartState = {NON_EXISTENT, UNAVAILABLE, RUNNING, HALTED}
@@ -44,6 +44,12 @@ mapping abstract_command_type : int <-> AbstractCommandType = {
   1 <-> QUICK_ACCESS,
   2 <-> ACCESS_MEMORY,
 }
+
+// Debug Module register number ranges
+let DATA_REG_BASE : bits(8) = 0x04
+let DATA_REG_END  : bits(8) = 0x0f
+let PROGBUF_BASE  : bits(8) = 0x20
+let PROGBUF_END   : bits(8) = 0x2f
 
 // Register number ranges
 let REGNO_CSR_MAX   : bits(16) = 0x0fff

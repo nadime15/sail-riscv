@@ -15,7 +15,7 @@
 // Returns success status and 32-bit data read from the given 32-bit address
 function dmi_read(address : nat) -> (bool, nat) = {
   let address = to_bits_truncate(8, address);
-  let read = read_DM_reg(address);
+  let read = read_debug_module_reg(address);
   //print_log("DMI Read: Address = " ^ bits_str(address) ^ " Read = " ^ bits_str(read) ^ ", Register = " ^ dm_name_map(address));
   (true, unsigned(read))
 }
@@ -26,6 +26,6 @@ function dmi_write(address : nat, value : nat) -> bool = {
   let address = to_bits_truncate(8, address);
   let value = to_bits_truncate(32, value);
   //print_log("DMI Write: Address = " ^ bits_str(address) ^ ", Write = " ^ bits_str(value) ^ ", Register = " ^ dm_name_map(address));
-  write_DM_reg(address, value);
+  write_debug_module_reg(address, value);
   true
 }
