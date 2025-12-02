@@ -11,28 +11,6 @@ type debug_module_reg = bits(8)
 // State of the Hart from the Debug Module's point of view
 enum DebugHartState = {UNAVAILABLE, RUNNING, HALTED}
 
-function debug_request_to_string(request : DebugRequest) -> string = {
-  match request {
-    Resume()                     => "Resume()",
-    Halt()                       => "Halt()",
-    Reset(halt_on_reset)         => "Reset(haltonreset=" ^ (if halt_on_reset then "true" else "false") ^ ")",
-    AbstractCommand(command) => {
-      match command {
-        AccessRegister(write, regno, aarsize, postexec, transfer) => "RegisterAccess(write=" ^ (if write then "true" else "false") ^
-                                                              ", regno=" ^ bits_str(regno) ^
-                                                              ", aarsize=" ^ bits_str(aarsize)  ^
-                                                              ", postexec=" ^ (if postexec then "true" else "false") ^
-                                                              ", transfer=" ^ (if transfer then "true" else "false") ^ ")",
-        QuickAccess() => "QuickAccess()",
-        MemoryAccess(virtual, write, width, addr) => "MemoryAccess(virtual=" ^ (if virtual then "true" else "false") ^
-                                              ", write=" ^ (if write then "true" else "false") ^
-                                              ", width=" ^ dec_str(width) ^
-                                              ", addr="  ^ bits_str(addr) ^ ")",
-      };
-    },
-  }
-}
-
 enum AbstractCommandType = {
   ACCESS_REGISTER,
   QUICK_ACCESS,
@@ -66,8 +44,12 @@ let ARG0 : range(0, 2) = 0
 let ARG1 : range(0, 2) = 1
 let ARG2 : range(0, 2) = 2
 
-let EBREAK_INSTRUCTION : bits(32) = 0x00100073
+let EBREAK_INSTRUCTION   : bits(32) = 0x00100073
 let C_EBREAK_INSTRUCTION : bits(16) = 0x9002
+
+// Platform configuration
+let MAX_DATA_SIZE    : bits(4) = to_bits_truncate(config platform.debug_module.num_data_reg : int)
+let MAX_PROGBUF_SIZE : bits(5) = to_bits_truncate(config platform.debug_module.num_prog_reg : int)
 
 struct debug_module_hart_status = {
   running  : bool,
@@ -75,16 +57,200 @@ struct debug_module_hart_status = {
   havereset: bool,
 }
 
-let MAX_DATA_SIZE : bits(4) = to_bits_truncate(config platform.debug_module.num_data_reg : int )
-let MAX_PROGBUF_SIZE : bits(5) = to_bits_truncate(config platform.debug_module.num_prog_reg : int)
-
-register debug_command : option(AbstractCommand) = None()
-
-function debug_uses_virtual_addressing() -> bool = {
-  match debug_command {
-    Some(MemoryAccess(virtual, _, _, _)) => virtual,
-    _ => false,
-  }
+bitfield Dmstatus : bits(32) = {
+  ndmresetpending: 24,
+  stickyunavail:   23,
+  impebreak:       22,
+  allhavereset:    19,
+  anyhavereset:    18,
+  allresumeack:    17,
+  anyresumeack:    16,
+  allnonexistent:  15,
+  anynonexistent:  14,
+  allunavail:      13,
+  anyunavail:      12,
+  allrunning:      11,
+  anyrunning:      10,
+  allhalted:        9,
+  anyhalted:        8,
+  authenticated:    7,
+  authbusy:         6,
+  hasresethaltreq:  5,
+  confstrptrvalid:  4,
+  version:          3 .. 0
 }
 
-register progbuf_active : bool = false
+bitfield Abstractcs : bits(32) = {
+  progbufsize : 28 .. 24,
+  busy :        12,
+  relaxedpriv:  11,
+  cmderr:       10 .. 8,
+  datacount:     3 .. 0
+}
+
+bitfield Command : bits(32) = {
+  cmdtype: 31 .. 24,
+  control: 23 .. 0
+}
+
+bitfield Abstractauto : bits(32) = {
+  autoexecprogbuf: 31 .. 16,
+  autoexecdata:    11 ..  0,
+}
+
+bitfield Dmcontrol : bits(32) = {
+  haltreq :        31,
+  resumereq:       30,
+  hartreset:       29,
+  ackhavereset:    28,
+  ackunavail:      27,
+  hasel:           26,
+  hartsello:       25 .. 16,
+  hartselhi:       15 ..  6,
+  setkeepalive:    5,
+  clrkeepalive:    4,
+  setresethaltreq: 3,
+  clrresethaltreq: 2,
+  ndmreset:        1,
+  dmactive:        0
+}
+
+bitfield Hartinfo : bits(32) = {
+  nscratch:   23 .. 20,
+  dataaccess: 16,
+  datasize:   15 .. 12,
+  dataaddr:   11 .. 0
+}
+
+bitfield Haltsum0 : bits(32) = {
+  haltsum0: 31 .. 0
+}
+
+bitfield Haltsum1 : bits(32) = {
+  haltsum1: 31 .. 0
+}
+
+bitfield Haltsum2 : bits(32) = {
+  haltsum2: 31 .. 0
+}
+
+bitfield Haltsum3 : bits(32) = {
+  haltsum3: 31 .. 0
+}
+
+bitfield Hawindowsel : bits(32) = {
+  hawindowsel : 14 .. 0,
+}
+
+bitfield Hawindow : bits(32) = {
+  maskdata : 31 .. 0,
+}
+
+bitfield Confstrptr0 : bits(32) = {
+  addr : 31 .. 0
+}
+
+bitfield Confstrptr1 : bits(32) = {
+  addr: 31 .. 0
+}
+
+bitfield Confstrptr2 : bits(32) = {
+  addr: 31 .. 0
+}
+
+bitfield Confstrptr3 : bits(32) = {
+  addr: 31 .. 0
+}
+
+bitfield Nextdm : bits(32) = {
+  addr: 31 .. 0
+}
+
+bitfield Authdata : bits(32) = {
+  data: 31 .. 0
+}
+
+bitfield Dmcs2 : bits(32) = {
+  grouptype:    11,
+  dmexttrigger: 10 .. 7,
+  group:        6  .. 2,
+  hgwrite:      1,
+  hgselect:     0
+}
+
+bitfield Sbcs : bits(32) = {
+  sbversion:       31 .. 29,
+  sbbusyerror:     22,
+  sbbusy:          21,
+  sbreadonaddr:    20,
+  sbaccess:        19 .. 17,
+  sbautoincrement: 16,
+  sbreadondata:    15,
+  sberror:         14 .. 12,
+  sbasize:         11 .. 5,
+  sbaccess128:     4,
+  sbaccess64:      3,
+  sbaccess32:      2,
+  sbaccess16:      1,
+  sbaccess8 :      0
+}
+
+bitfield Sbaddress0 : bits(32) = {
+  address: 31 .. 0
+}
+
+bitfield Sbaddress1 : bits(32) = {
+  address: 31 .. 0
+}
+
+bitfield Sbaddress2 : bits(32) = {
+  address: 31 .. 0
+}
+
+bitfield Sbaddress3 : bits(32) = {
+  address: 31 .. 0
+}
+
+bitfield Sbdata0 : bits(32) = {
+  data: 31 .. 0
+}
+
+bitfield Sbdata1 : bits(32) = {
+  data: 31 .. 0
+}
+
+bitfield Sbdata2 : bits(32) = {
+  data: 31 .. 0
+}
+
+bitfield Sbdata3 : bits(32) = {
+  data: 31 .. 0
+}
+
+// ============================================================================
+// Debug Request Types (if not defined elsewhere)
+// ============================================================================
+
+function debug_request_to_string(request : DebugRequest) -> string = {
+  match request {
+    Resume()                 => "Resume()",
+    Halt()                   => "Halt()",
+    Reset(halt_on_reset)     => "Reset(haltonreset=" ^ (if halt_on_reset then "true" else "false") ^ ")",
+    AbstractCommand(command) => {
+      match command {
+        AccessRegister(write, regno, aarsize, postexec, transfer) =>
+          "RegisterAccess(write=" ^ (if write then "true" else "false") ^
+          ", regno=" ^ bits_str(regno) ^
+          ", aarsize=" ^ bits_str(aarsize)  ^
+          ", postexec=" ^ (if postexec then "true" else "false") ^
+          ", transfer=" ^ (if transfer then "true" else "false") ^ ")",
+        QuickAccess() => "QuickAccess()",
+        MemoryAccess(virtual, write, width, addr) =>
+          "MemoryAccess(virtual=" ^ (if virtual then "true" else "false") ^
+          ", write=" ^ (if write then "true" else "false") ^
+          ", width=" ^ dec_str(width) ^
+          ", addr="  ^ bits_str(addr) ^ ")",
+      };
+    },
+  }
+}
