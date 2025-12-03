@@ -6,27 +6,29 @@
 //  SPDX-License-Identifier: BSD-2-Clause
 //=======================================================================================
 
+// Interface to the hart
 function send_debug_request(request : DebugRequest) -> unit = {
   pending_debug_request = Some(request);
 }
 
-// Abstract Command Error Handling
+/// Set cmderr if no error already recorded (cmderr is sticky)
+function set_cmderr_if_none(err : AbstractCommandError) -> unit = {
+  if abstractcs[cmderr] == abstract_command_error(CMDERR_NONE) then
+    abstractcs[cmderr] = abstract_command_error(err);
+}
 
-// Check if busy and set CMDERR_BUSY if no error already set. Returns busy state.
+// Sets CMDERR_BUSY immediately, for data/progbuf
 function check_abstract_busy_and_set_error() -> bool = {
   let busy = is_abstractcs_busy();
-  if busy & abstractcs[cmderr] == abstract_command_error(CMDERR_NONE) then
-    abstractcs[cmderr] = abstract_command_error(CMDERR_BUSY);
+  if busy then set_cmderr_if_none(CMDERR_BUSY);
   busy
 }
 
-// Complete an abstract command, setting error status if needed
-function complete_abstract_command(status : AbstractCommandError, cmd : option(AbstractCommand)) -> unit = {
-  // Debug Module never clears cmderr, only sets it or preserves it
-  // https://github.com/riscv-collab/riscv-openocd/issues/1306#issuecomment-3492075576
-  if abstractcs[cmderr] == abstract_command_error(CMDERR_NONE) then
-    abstractcs[cmderr] = abstract_command_error(status);
-  set_abstractcs_busy(false);
+// Defers error until command completes for abstractauto/commands/abstractcs
+function check_abstract_busy_and_set_pending_error() -> bool = {
+  let busy = is_abstractcs_busy();
+  if busy then pending_cmderr_busy = true;
+  busy
 }
 
 function handle_access_register_cmd(cmd : bits(32)) -> AbstractCommandError = {
@@ -103,25 +105,30 @@ function handle_abstract_command(cmd : bits(32)) -> AbstractCommandError = {
   status
 }
 
+function legalize_abstractcs(d : Abstractcs, x : bits(32)) -> Abstractcs = {
+  let x = Mk_Abstractcs(x);
+  if check_abstract_busy_and_set_pending_error() then d
+  else [d with
+    // W1C: clear bits that are written as 1
+    cmderr = d[cmderr] & ~(x[cmderr]),
+  ]
+}
+
 // NOTE: The command register is WARZ, so the stored value doesn't matter
 // for register reads. However, we preserve the command value internally when busy
 // to ensure abstractauto re-executes the correct command.
 function legalize_command(d : Command, x : bits(32)) -> Command = {
-  let busy = is_abstractcs_busy();
-
-  abstractcs[cmderr] =
-    if check_abstract_busy_and_set_error() then
-      abstractcs[cmderr]
-    else match get_hart_state() {
-      UNAVAILABLE => abstract_command_error(CMDERR_HALT_RESUME),
-      _           => abstract_command_error(handle_abstract_command(x)),
+  // If busy, set pending error flag and preserve command value
+  if check_abstract_busy_and_set_pending_error() then d
+  else {
+    let status : AbstractCommandError = match get_hart_state() {
+      UNAVAILABLE => CMDERR_HALT_RESUME,
+      _           => handle_abstract_command(x),
     };
-
-  // Preserve command register value while busy
-  if busy then d else Mk_Command(x)
+    set_cmderr_if_none(status);
+    Mk_Command(x)
+  }
 }
-
-// Register Access Helpers
 
 // Handle register access during abstract commands (busy check)
 function handle_debug_module_register_access(old_value: bits(32), new_value : bits(32), is_write: bool) -> bits(32) = {
@@ -136,14 +143,11 @@ function trigger_abstractauto_if_enabled(autoexec_enabled: bit) -> unit = {
   };
 }
 
-// Abstractauto Legalization
-
 // NOTE: This register is optional but OpenOCD assumes it exists
 // see https://github.com/riscv-collab/riscv-openocd/issues/587
 function legalize_abstractauto(d : Abstractauto, x : bits(32)) -> Abstractauto = {
   let x = Mk_Abstractauto(x);
-  // TODO: We need to check the error after!
-  if check_abstract_busy_and_set_error() then d
+  if check_abstract_busy_and_set_pending_error() then d
   else {
     let DATA_AUTOEXEC_MASK    : bits(12) = to_bits_truncate(12, (2 ^ unsigned(MAX_DATA_SIZE)) - 1);
     let PROGBUF_AUTOEXEC_MASK : bits(16) = to_bits_truncate(16, (2 ^ unsigned(MAX_PROGBUF_SIZE)) - 1);
@@ -153,8 +157,6 @@ function legalize_abstractauto(d : Abstractauto, x : bits(32)) -> Abstractauto =
     ]
   }
 }
-
-// Dmcontrol Helpers
 
 function update_halt_on_reset_config(x : Dmcontrol) -> unit = {
   match (x[setresethaltreq], x[clrresethaltreq]) {
@@ -274,9 +276,18 @@ function legalize_dmcontrol(d : Dmcontrol, x : bits(32)) -> Dmcontrol = {
   }
 }
 
-// ============================================================================
 // Hart Status Callback
-// ============================================================================
+
+// Called by hart to signal the completion of an abstract command
+function complete_abstract_command(status : AbstractCommandError, cmd : option(AbstractCommand)) -> unit = {
+  set_cmderr_if_none(status);
+  set_abstractcs_busy(false);
+
+  // NOTE: if abstractauto/commands/abstractcs was written while busy,
+  // cmderr becomes CMDERR_BUSY once the command completes (if no other error)
+  if pending_cmderr_busy then set_cmderr_if_none(CMDERR_BUSY);
+  pending_cmderr_busy = false;
+}
 
 // Called by hart to report its current state to the Debug Module
 function send_hart_status(status : debug_module_hart_status) -> unit = {

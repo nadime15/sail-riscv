@@ -6,10 +6,6 @@
 //  SPDX-License-Identifier: BSD-2-Clause
 //=======================================================================================
 
-// ============================================================================
-// Debug Module Register Declarations
-// ============================================================================
-
 // Conceptual bits of hart state
 register haltonreset : bool = false
 
@@ -22,9 +18,9 @@ register debug_command : option(AbstractCommand) = None()
 // Program buffer execution active
 register progbuf_active : bool = false
 
-// ============================================================================
-// Debug Module Registers (simple initializers - call reset_debug_module at startup)
-// ============================================================================
+register pending_cmderr_busy : bool = false
+
+// Debug Module Registers
 
 function initialize_dmstatus() -> Dmstatus = {
   [Mk_Dmstatus(zeros()) with
@@ -82,7 +78,6 @@ register nextdm       : Nextdm       = Mk_Nextdm(zeros())
 register authdata     : Authdata     = Mk_Authdata(zeros())
 register dmcs2        : Dmcs2        = Mk_Dmcs2(zeros())
 
-
 function initialize_Sbcs() -> Sbcs = {
   [Mk_Sbcs(zeros()) with
     sbversion = SB_VERSION,
@@ -100,10 +95,6 @@ register sbdata0      : Sbdata0      = Mk_Sbdata0(zeros())
 register sbdata1      : Sbdata1      = Mk_Sbdata1(zeros())
 register sbdata2      : Sbdata2      = Mk_Sbdata2(zeros())
 register sbdata3      : Sbdata3      = Mk_Sbdata3(zeros())
-
-// ============================================================================
-// Forward Declarations
-// ============================================================================
 
 // Forward declaration so the implementation can be defined after all registers
 val reset_debug_module : unit -> unit

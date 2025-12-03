@@ -241,7 +241,7 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
   let step_val : Step = match hart_state {
       HART_WAITING(wr, instbits)         => run_hart_waiting(step_no, wr, instbits, exit_wait),
       HART_ACTIVE() if progbuf_active    => run_hart_active(step_no),
-      HART_ACTIVE() if debug_mode_active => Step_Halt(),
+      HART_ACTIVE() if in_debug_mode() => Step_Halt(),
       HART_ACTIVE()                      => run_hart_active(step_no),
     };
 
@@ -340,7 +340,7 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
 
   // TODO: We should not increment the instruction code (on the c++ side) if we are in the HALT state
   struct { in_wait,
-           in_debug_mode   = debug_mode_active,
+           in_debug_mode   = in_debug_mode(),
            in_debug_cmd    = debug_abstract_command_active,
            debug_cmd_error = debug_abstract_command_error }
 }

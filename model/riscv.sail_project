@@ -425,12 +425,13 @@ extensions {
 
   Sdext {
     Sdext_types {
+      requires core
       files
         extensions/Sdext/sdext_types.sail
     }
 
     Sdext_regs {
-      requires core
+      requires core, Sdext_types
       files
         extensions/Sdext/sdext_regs.sail
     }

@@ -13,4 +13,4 @@ function ext_fetch_hook(f : FetchResult) -> FetchResult = f
 function ext_pre_step_hook()  -> unit = ()
 function ext_post_step_hook() -> unit = ()
 
-function ext_reset() -> unit = ()
+function ext_reset() -> unit = {}

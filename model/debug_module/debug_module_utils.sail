@@ -159,13 +159,6 @@ function aamsize_to_bytes(aamsize : bits(3)) -> word_width = {
   }
 }
 
-function legalize_abstractcs(d : Abstractcs, x : bits(32)) -> Abstractcs = {
-  let x = Mk_Abstractcs(x);
-  [d with
-    cmderr = if x[cmderr] == ones() then zeros() else d[cmderr], // R/W1C
-  ]
-}
-
 function legalize_hawindow(d : Hawindow, x : bits(32)) -> Hawindow = {
   // Currently, we only support one hart
   [d with maskdata = zeros()]
