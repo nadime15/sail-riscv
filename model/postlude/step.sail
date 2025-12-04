@@ -150,7 +150,9 @@ function run_hart_active(step_no: nat) -> Step = {
 }
 
 function wait_is_nop(wr : WaitReason) -> bool =
-  match wr {
+  if in_debug_abstract_command() | in_single_step()
+  then true
+  else match wr {
     WAIT_WFI     => config platform.wfi_is_nop,
     WAIT_WRS_STO => config extensions.Zawrs.sto.is_nop,
     WAIT_WRS_NTO => config extensions.Zawrs.nto.is_nop,
@@ -166,14 +168,11 @@ function wait_is_nop(wr : WaitReason) -> bool =
 // `.in_debug_cmd` indicates whether the model is in Debug mode and
 // executing an abstract command (such as instructions from a program
 // buffer).
-// `.debug_cmd_error` indicates whether an exception was encountered
-// when executing an abstract command.
 
 struct step_result = {
   in_wait         : bool,
   in_debug_mode   : bool,
   in_debug_cmd    : bool,
-  debug_cmd_error : bool,
 }
 
 // The `try_step` function is the main internal driver of the Sail
@@ -194,9 +193,6 @@ struct step_result = {
 // step_result.in_debug_cmd is set to true when the hart is in Debug
 // Mode and executing a debug abstract command.
 //
-// step_result.debug_cmd_error is set to true if the hart experienced
-// an exception when executing a debug abstract command.
-//
 // * step_no: the current step number; this is maintained by by the
 //            non-Sail harness and is incremented when `try_step()`
 //            returns true.
@@ -209,17 +205,14 @@ struct step_result = {
 //              waiting from a previous WFI/WRS. It doesn't affect
 //              WFI/WRS instructions executed in the same call of
 //              `try_step()` (but see `wait_is_nop()`).
-// * debug_request: controls entry into and exit from Debug Mode as
-//              described above. `exit_wait` is ignored when
-//              `debug_request` is either `DR_Halt` or `DR_Resume`.
-//              When single-stepping is set, DR_Resume should be specified.
-
+//
 function try_step(step_no : nat, exit_wait : bool) -> step_result = {
   /* for step extensions */
   ext_pre_step_hook();
 
-  // process_external_debug_request() processes external requests from the debug module.
-  // Internal debug requests are handled separately in the step_val match construct.
+  // Processe external requests from the debug module.
+  // Internal debug requests are handled separately in
+  // the step_val match construct.
   let debug_request = process_external_debug_request();
 
   // This records whether or not minstret should be incremented when
@@ -239,11 +232,17 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
 
   let exit_wait = exit_wait | halt_request;
   let step_val : Step = match hart_state {
-      HART_WAITING(wr, instbits)         => run_hart_waiting(step_no, wr, instbits, exit_wait),
-      HART_ACTIVE() if progbuf_active    => run_hart_active(step_no),
-      HART_ACTIVE() if in_debug_mode() => Step_Halt(),
-      HART_ACTIVE()                      => run_hart_active(step_no),
-    };
+  HART_WAITING(wr, instbits) => run_hart_waiting(step_no, wr, instbits, exit_wait),
+  HART_ACTIVE() => match debug_state {
+      Debug_Inactive()             => run_hart_active(step_no),
+      Debug_Active(Debug_Halted()) => Step_Halt(),
+      Debug_Active(Debug_AbstractCommand(rac)) => {
+        if should_execute_program_buffer(rac.acmd)
+        then run_hart_active(step_no)
+        else Step_Halt()
+      },
+    },
+  };
 
   match step_val {
     Step_Pending_Interrupt(intr, priv) => {
@@ -276,19 +275,11 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
       match action {
         // When entering Debug via an execution of `ebreak`, DPC is set
         // to the address of the `ebreak`.
-        Enter_Debug_Mode(cause)       => {
-          handle_debug_halt(cause)
-        },
-        Exit_Debug_Abstract_Command() => {
+        Enter_Debug_Mode(cause) => handle_debug_halt(cause),
+        Exit_Debug_Mode()       => handle_debug_resume(),
+        Exit_Debug_Abstract_Command(resume) => {
           end_debug_abstract_command(CMDERR_NONE);
-          match debug_command {
-            // Resume execution
-            Some(QuickAccess()) => handle_debug_resume(),
-            _ => (),
-          };
-        },
-        Exit_Debug_Mode() => {
-          handle_debug_resume();
+          if resume then handle_debug_resume();
         },
       };
     },
@@ -338,11 +329,9 @@ function try_step(step_no : nat, exit_wait : bool) -> step_result = {
 
   if hartSupports(Ext_Sdext) then handle_debug_single_step();
 
-  // TODO: We should not increment the instruction code (on the c++ side) if we are in the HALT state
   struct { in_wait,
            in_debug_mode   = in_debug_mode(),
-           in_debug_cmd    = debug_abstract_command_active,
-           debug_cmd_error = debug_abstract_command_error }
+           in_debug_cmd    = in_debug_abstract_command() }
 }
 
 function loop () : unit -> unit = {

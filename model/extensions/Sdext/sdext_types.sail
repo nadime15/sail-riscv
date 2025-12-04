@@ -66,17 +66,16 @@ mapping abstract_command_error_name : AbstractCommandError <-> string = {
 function abstract_command_error_to_string(error : bits(3)) -> string = abstract_command_error_name(abstract_command_error(error))
 
 struct RunningAbstractCommand = {
-  cmd            : AbstractCommand,
-  error          : AbstractCommandError,
-  run_progbuf    : bool,
+  acmd        : AbstractCommand,
+  error       : AbstractCommandError,
 }
 
-//union DebugState = {
-//  Debug_Active   : option(RunningAbstractCommand),
-//  Debug_Inactive : unit,
-//}
+union DebugActiveState = {
+  Debug_Halted          : unit,
+  Debug_AbstractCommand : RunningAbstractCommand,
+}
 
 union DebugState = {
-  Debug_Active   : unit,
+  Debug_Active   : DebugActiveState,
   Debug_Inactive : unit,
 }

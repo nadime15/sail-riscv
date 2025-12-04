@@ -259,7 +259,7 @@ void remote_bitbang_t::run(uint64_t insn_limit)
   accept_connection();
   fprintf(stdout, "Accepted debug connection.\n");
 
-  struct zstep_result step_result = {false, false, false, false};
+  struct zstep_result step_result = {false, false, false};
   bool exit_wait = true;
 
   // initialize the step number

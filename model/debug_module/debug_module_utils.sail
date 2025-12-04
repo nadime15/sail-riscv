@@ -115,14 +115,6 @@ function write_arg(arg_num, argument_width, value) = {
   };
 }
 
-// TODO and replace with pending...
-function debug_uses_virtual_addressing() -> bool = {
-  match debug_command {
-    Some(MemoryAccess(virtual, _, _, _)) => virtual,
-    _ => false,
-  }
-}
-
 function is_supported_reg_access(aarsize : bits(3), regno : bits(16)) -> bool = {
   let aarsize = unsigned(aarsize);
   // We only support 32-bit and 64-bit access

@@ -6,40 +6,23 @@
 //  SPDX-License-Identifier: BSD-2-Clause
 //=======================================================================================
 
-// Debug mode extension Sdext: registers
-
-// Sdext : Debug mode
-
-// model-internal state
-
 register debug_state : DebugState = Debug_Inactive()
 
-function in_debug_mode() -> bool =
-  debug_state == Debug_Active()
+function in_debug_mode() -> bool = {
+  match debug_state {
+    Debug_Active(_) => true,
+    Debug_Inactive() => false,
+  }
+}
 
-//register debug_mode_active : bool = false
-register debug_abstract_command_active : bool = false
-register debug_abstract_command_error  : bool = false
-
-// NOTE: While not explicitly stated in the spec, Sdext implicitly requires Zicsr
-// for accessing debug CSRs (dcsr, dpc, dscratch0/1).
 function clause currentlyEnabled(Ext_Sdext) = hartSupports(Ext_Sdext) & currentlyEnabled(Ext_Zicsr) & in_debug_mode()
 
 // Other configuration elements.
-let dcsr_stepie_writable : bool =
-  hartSupports(Ext_Sdext) & config extensions.Sdext.writable_stepie
-
-let dcsr_stopcount_preset_enabled : bool =
-  hartSupports(Ext_Sdext) & config extensions.Sdext.stopcount.preset_value
-
-let dcsr_stopcount_writable : bool =
-  hartSupports(Ext_Sdext) & config extensions.Sdext.stopcount.writable
-
-let dcsr_mprven_preset_enabled : bool =
-  hartSupports(Ext_Sdext) & config extensions.Sdext.mprven.preset_value
-
-let dcsr_mprven_writable : bool =
-  hartSupports(Ext_Sdext) & config extensions.Sdext.mprven.writable
+let dcsr_stepie_writable          : bool = hartSupports(Ext_Sdext) & config extensions.Sdext.writable_stepie
+let dcsr_stopcount_preset_enabled : bool = hartSupports(Ext_Sdext) & config extensions.Sdext.stopcount.preset_value
+let dcsr_stopcount_writable       : bool = hartSupports(Ext_Sdext) & config extensions.Sdext.stopcount.writable
+let dcsr_mprven_preset_enabled    : bool = hartSupports(Ext_Sdext) & config extensions.Sdext.mprven.preset_value
+let dcsr_mprven_writable          : bool = hartSupports(Ext_Sdext) & config extensions.Sdext.mprven.writable
 
 mapping clause csr_name_map = 0x7b0  <-> "dcsr"
 mapping clause csr_name_map = 0x7b1  <-> "dpc"
@@ -50,7 +33,7 @@ bitfield Dcsr : bits(32) = {
   Debugver  : 31 .. 28,
   ExtCause  : 26 .. 24,
   CETrig    : 19,
-  PELP      : 18,
+  Pelp      : 18,
   EBreakVS  : 17,
   EBreakVU  : 16,
   EBreakM   : 15,
@@ -72,7 +55,7 @@ function reset_Dcsr() -> Dcsr = {
     Debugver  = 0b0100,  // Sdext as per Debug Spec v1.0
     ExtCause  = zeros(),
     CETrig    = 0b0,
-    PELP      = 0b0,
+    Pelp      = 0b0,
     EBreakVS  = 0b0,
     EBreakVU  = 0b0,
     EBreakM   = 0b0,
@@ -110,7 +93,7 @@ function clause read_CSR(0x7b3) = dscratch1
 function legalize_dcsr(d : Dcsr, v : xlenbits) -> Dcsr = {
  let v = Mk_Dcsr(v[31 .. 0]);
  [d with
-   PELP      = if hartSupports(Ext_Zicfilp) then v[PELP] else 0b0,
+   Pelp      = if hartSupports(Ext_Zicfilp) then v[Pelp] else 0b0,
    EBreakM   = v[EBreakM],
    EBreakS   = if hartSupports(Ext_S) then v[EBreakS] else 0b0,
    EBreakU   = if hartSupports(Ext_U) then v[EBreakU] else 0b0,
@@ -126,11 +109,3 @@ function clause write_CSR(0x7b0, value) = { dcsr = legalize_dcsr(dcsr, value); O
 function clause write_CSR(0x7b1, value) = { dpc = legalize_xepc(value); Ok(dpc) }
 function clause write_CSR(0x7b2, value) = { dscratch0 = value; Ok(dscratch0) }
 function clause write_CSR(0x7b3, value) = { dscratch1 = value; Ok(dscratch1) }
-
-function in_debug_abstract_command() -> bool =
-  currentlyEnabled(Ext_Sdext) & debug_abstract_command_active
-
-// The hart is resumed when single stepping, so debug_mode is inactive.
-// This function hence uses hartSupports() instead of currentlyEnabled().
-function in_single_step() -> bool =
-  hartSupports(Ext_Sdext) & bool_bits(dcsr[Step])

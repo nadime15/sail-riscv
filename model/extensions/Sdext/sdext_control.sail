@@ -6,98 +6,128 @@
 //  SPDX-License-Identifier: BSD-2-Clause
 //=======================================================================================
 
-// Debug mode extension Sdext: control
+// Returns true if dcsr.step is set. Uses hartSupports() instead of currentlyEnabled()
+// because the hart is resumed (not in debug mode) when single stepping.
+function in_single_step() -> bool = hartSupports(Ext_Sdext) & bool_bits(dcsr[Step])
 
-// The specification denotes a hart's entry into Debug mode as the hart "halting".
-function enter_debug_mode(cause : debug_entry_cause, extcause : bits(3), pc : xlenbits) -> unit = {
-  assert(not(in_debug_mode()), "enter_debug_mode: already in Debug mode.");
-  dpc = pc;
-  dcsr = [dcsr with
-           Prv = privLevel_to_bits(cur_privilege),
-           PELP = elp,
-           // TODO: V from hypervisor mode
-           // TODO: intra-instruction interruption, e.g. vstart for vector instructions
-           Cause    = debug_cause_bits(cause),
-           ExtCause = extcause,
-         ];
-  cur_privilege = Machine;
-  cancel_reservation(); // TODO: Make this configurable?
-
-  // Store the time of entry into Debug mode.
-  dtime = mtime;
-
-  // Set elp to NO_LP_EXPECTED
-  reset_elp();
-
-  //debug_mode_active = true;
-  debug_state = Debug_Active();
-
-  if get_config_print_debug()
-  then print_log("entering Debug mode from " ^ to_str(privLevel_bits(dcsr[Prv], bitzero)) ^ " Cause: " ^ debug_entry_cause_to_str(cause));
+// Returns true if the hart is executing a debug abstract command.
+function in_debug_abstract_command() -> bool = {
+  match debug_state {
+    Debug_Active(Debug_AbstractCommand(_)) => true,
+    _                                      => false,
+  }
 }
 
-// The specification denotes a hart's exit from Debug mode as the hart "resuming".
+// Returns true if the abstract command requires execution of the program buffer.
+// AccessRegister executes program buffer when postexec=1, QuickAccess always does.
+function should_execute_program_buffer(acmd : AbstractCommand) -> bool = {
+  match acmd {
+    AccessRegister(_, _, _, postexec, _) => postexec,
+    QuickAccess()                        => true,
+    _                                    => false,
+  }
+}
+
+// Returns the currently executing abstract command.
+function get_debug_abstract_command() -> AbstractCommand = {
+  match debug_state {
+    Debug_Active(Debug_AbstractCommand(rac)) => rac.acmd,
+    _                                        => internal_error(__FILE__, __LINE__, "no abstract command active"),
+  }
+}
+
+// Returns true if the current debug abstract command is a memory access
+// with aamvirtual=1, indicating virtual address translation should be used.
+function aamvirtual_set() -> bool = {
+  if not(in_debug_abstract_command()) then false
+  else match get_debug_abstract_command() {
+    MemoryAccess(virtual, _, _, _) => virtual,
+    _                              => false,
+  }
+}
+
+// Enters debug mode. The spec refers to this as the hart "halting".
+function enter_debug_mode(cause : debug_entry_cause, extcause : bits(3), pc : xlenbits) -> unit = {
+  assert(not(in_debug_mode()), "enter_debug_mode: already in Debug mode");
+
+  // Save hart state
+  dpc  = pc;
+  dcsr = [dcsr with
+    Prv      = privLevel_to_bits(cur_privilege),
+    Pelp     = elp,
+    Cause    = debug_cause_bits(cause),
+    ExtCause = extcause,
+    // TODO: set V from virtualization mode when hypervisor is supported
+  ];
+
+  // Freeze time register
+  dtime = mtime;
+
+  // Switch to machine mode
+  cur_privilege = Machine;
+
+  // Disable landing pad
+  reset_elp();
+
+  // Reservation may be lost when entering debug mode
+  cancel_reservation();
+
+  debug_state = Debug_Active(Debug_Halted());
+
+  if get_config_print_debug() then
+    print_log("entering Debug mode from " ^ to_str(privLevel_bits(dcsr[Prv], bitzero))
+              ^ " cause: " ^ debug_entry_cause_to_str(cause));
+}
+
+// Exits debug mode. The spec refers to this as the hart "resuming".
 function exit_debug_mode() -> unit = {
-  assert(in_debug_mode(), "exit_debug_mode: not in Debug mode.");
+  assert(in_debug_mode(), "exit_debug_mode: not in Debug mode");
+
+  // Restore PC
   set_next_pc(dpc);
   tick_pc();
 
-  // Restore elp from pelp or clear it if unsupported
-  elp = if hartSupports(Ext_Zicfilp) then dcsr[PELP] else landing_pad_bits(NO_LP_EXPECTED);
-  dcsr[PELP] = landing_pad_bits(NO_LP_EXPECTED);
+  // Restore landing pad state
+  elp = if currentlyEnabled(Ext_Zicfilp)
+        then dcsr[Pelp]
+        else landing_pad_bits(NO_LP_EXPECTED);
+  dcsr[Pelp] = landing_pad_bits(NO_LP_EXPECTED);
 
+  // Restore privilege mode
   cur_privilege = privLevel_bits(dcsr[Prv], bitzero);
+  // TODO: restore V from dcsr when hypervisor is supported
+
+  // Clear MPRV when returning to less privileged mode
   if cur_privilege != Machine then {
     mstatus[MPRV] = 0b0;
-    // TODO: If Smdbltrp is enabled, clear mstatus.MDT
-    // and adjust sstatus.SDT and (for hypervisor) vsstatus.SDT.
+    // TODO: clear mstatus.MDT if Smdbltrp is enabled
+    // TODO: clear sstatus.SDT and vsstatus.SDT if Ssdbltrp is enabled
   };
-  // TODO: V from hypervisor mode
 
-//  debug_mode_active = false;
   debug_state = Debug_Inactive();
 
-  if get_config_print_debug()
-  then print_log("exiting Debug mode to " ^ to_str(cur_privilege));
+  if get_config_print_debug() then
+    print_log("exiting Debug mode to " ^ to_str(cur_privilege));
 }
 
-// This function must be called by the debugger/external-harness
-// before executing any instructions from a Debug program buffer.
-function start_debug_abstract_command() -> unit = {
-  assert(currentlyEnabled(Ext_Sdext), "Cannot start Debug abstract command: Sdext is not currently enabled");
-  if get_config_print_debug() then print_log("Start Abstract Command");
-  debug_abstract_command_active = true
+// Starts execution of a debug abstract command.
+function start_debug_abstract_command(acmd : AbstractCommand) -> unit = {
+  assert(currentlyEnabled(Ext_Sdext), "start_debug_abstract_command: not in Debug mode");
+  debug_state = Debug_Active(Debug_AbstractCommand(struct RunningAbstractCommand {
+    acmd  = acmd,
+    error = CMDERR_NONE,
+  }));
 }
 
+// Ends execution of a debug abstract command with the given status.
 function end_debug_abstract_command(status : AbstractCommandError) -> unit = {
-  assert(currentlyEnabled(Ext_Sdext), "Cannot end Debug abstract command: Sdext is not currently enabled");
-  if get_config_print_debug() then print_log("End Abstract Command: Status(" ^ abstract_command_error_name(status) ^ ")");
-  debug_abstract_command_active = false;
-  progbuf_active = false;
-  complete_abstract_command(status, debug_command);
+  assert(currentlyEnabled(Ext_Sdext), "end_debug_abstract_command: not in Debug mode");
+  debug_state = Debug_Active(Debug_Halted());
+  complete_abstract_command(status);
 }
 
-// This is called internally.
-function set_debug_abstract_command_error() -> unit = {
-  assert(currentlyEnabled(Ext_Sdext), "Cannot set Debug abstract command error: Sdext is not currently enabled");
-  debug_abstract_command_error = true
-}
+// Resets debug CSRs to their initial values.
+function reset_sdext() -> unit = dcsr = reset_Dcsr()
 
-// This is called from the external harness, so there is no assert.
-function clear_debug_abstract_command_error() -> unit = {
-  debug_abstract_command_error = false
-}
-
-function reset_sdext() -> unit = {
-  dcsr = reset_Dcsr();
-}
-
-// This is independent of the Sdext spec, we use this
-// function when the hart is reset from the debug module
-function reset_debug() -> unit = {
-  debug_abstract_command_active = false;
-  debug_abstract_command_error = false;
-//  debug_mode_active = false;
-
-  debug_state = Debug_Inactive();
-}
+// Resets debug state. Called when the hart is reset from the debug module.
+function reset_debug() -> unit = debug_state = Debug_Inactive()

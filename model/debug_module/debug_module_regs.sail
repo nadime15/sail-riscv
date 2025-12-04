@@ -15,9 +15,6 @@ register pending_debug_request : option(DebugRequest) = None()
 // Current abstract command being executed
 register debug_command : option(AbstractCommand) = None()
 
-// Program buffer execution active
-register progbuf_active : bool = false
-
 register pending_cmderr_busy : bool = false
 
 // Debug Module Registers

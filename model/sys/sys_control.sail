@@ -14,12 +14,11 @@ function effectivePrivilege(access_type : MemoryAccessType(ext_access_type), m :
   let mprv_active = if   in_debug_abstract_command()
                     then dcsr[MPRVEn] == 0b1
                     else true;
-
-  // For debug abstract commands: force MPRV behavior when
-  // aamvirtual=1 (virtual mode) for access memory abstract command
-  let apply_mprv_for_debug = in_debug_abstract_command() & debug_uses_virtual_addressing();
-
-  if   mprv_active & access_type != InstructionFetch() & (m[MPRV] == 0b1 | apply_mprv_for_debug)
+  // For debug abstract commands with aamvirtual=1: addresses are virtual,
+  // translated the way they would be from M-mode with MPRV set. The debugger
+  // must configure mstatus.MPP to the desired privilege level for translation.
+  let force_mprv = in_debug_abstract_command() & aamvirtual_set();
+  if   mprv_active & access_type != InstructionFetch() & (m[MPRV] == 0b1 | force_mprv)
   then privLevel_bits(m[MPP], bitzero) // TODO: use m[MPV] if hypervisor enabled
   else priv
 }
@@ -78,8 +77,8 @@ function findPendingInterrupt(ip : xlenbits) -> option(InterruptType) = {
 // TODO: check hip/hie if hypervisor enabled.
 function getPendingSet(priv : Privilege) -> option((xlenbits, Privilege)) = {
   // All interrupts (including NMI) are masked when executing a Debug mode
-  // abstract command.
-  if   in_debug_abstract_command()
+  // abstract command or during single step if stepie=0
+  if in_debug_abstract_command() | (in_single_step() & dcsr[StepIE] == 0b0)
   then return None();
 
   // mideleg can only be non-zero if we support Supervisor mode.

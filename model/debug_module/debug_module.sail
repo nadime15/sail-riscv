@@ -279,7 +279,7 @@ function legalize_dmcontrol(d : Dmcontrol, x : bits(32)) -> Dmcontrol = {
 // Hart Status Callback
 
 // Called by hart to signal the completion of an abstract command
-function complete_abstract_command(status : AbstractCommandError, cmd : option(AbstractCommand)) -> unit = {
+function complete_abstract_command(status : AbstractCommandError) -> unit = {
   set_cmderr_if_none(status);
   set_abstractcs_busy(false);
 

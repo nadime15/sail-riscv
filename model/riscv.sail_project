@@ -47,7 +47,7 @@ exceptions {
 }
 
 pmp {
-  requires core, Sdext_regs
+  requires core
 
   files
     pmp/pmp_regs.sail,
@@ -79,7 +79,7 @@ extensions {
       files extensions/I/base_types.sail
     }
     I_insts {
-      requires exceptions, sys, I_types, Zicfilp_regs, Sdext_regs, Sdext_hooks
+      requires exceptions, sys, I_types, Zicfilp_regs, Sdext
 
       files
         extensions/I/base_insts.sail,
@@ -314,7 +314,7 @@ extensions {
       files extensions/Zawrs/zawrs_types.sail
     }
     Zawrs_insts {
-      requires sys, Zawrs_types, Sdext_regs
+      requires sys, Zawrs_types
       files extensions/Zawrs/zawrs_insts.sail
     }
   }
@@ -437,7 +437,7 @@ extensions {
     }
 
     Sdext_control {
-      requires core, exceptions, debug_module, Zicfilp_regs, Sdext_types, Sdext_regs
+      requires core, exceptions, Sdext_types, Sdext_regs, debug_module, Zicfilp_regs
       before sys
       files
         extensions/Sdext/sdext_control.sail
@@ -451,7 +451,7 @@ extensions {
     }
 
     Sdext_instructions {
-      requires sys, Sdext_regs
+      requires sys, Sdext_control
       files
         extensions/Sdext/sdext_insts.sail
     }

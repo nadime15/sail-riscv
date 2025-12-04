@@ -603,22 +603,21 @@ mapping clause encdec = EBREAK()
   <-> 0b000000000001 @ 0b00000 @ 0b000 @ 0b00000 @ 0b1110011
 
 function ebreak_into_debug() -> bool = match cur_privilege {
-  User       => bool_bits(dcsr[EBreakU]),
-  Supervisor => bool_bits(dcsr[EBreakS]),
   Machine    => bool_bits(dcsr[EBreakM]),
+  Supervisor => bool_bits(dcsr[EBreakS]),
+  User       => bool_bits(dcsr[EBreakU]),
   // TODO: VS/VU modes
-  VirtualSupervisor => { internal_error(__FILE__, __LINE__, "Invalid privilege level or virtual mode"); false },
   VirtualUser       => { internal_error(__FILE__, __LINE__, "Invalid privilege level or virtual mode"); false },
+  VirtualSupervisor => { internal_error(__FILE__, __LINE__, "Invalid privilege level or virtual mode"); false },
 }
 
 function clause execute EBREAK() = {
-  if in_debug_abstract_command() then {
-    Debug(Exit_Debug_Abstract_Command())
-  } else if ebreak_into_debug() then {
+  if in_debug_abstract_command() then
+    Debug(Exit_Debug_Abstract_Command(get_debug_abstract_command() == QuickAccess()))
+  else if ebreak_into_debug() then
     Debug(Enter_Debug_Mode(DBGEntry_EBreak))
-  } else {
+  else
     Memory_Exception(Virtaddr(PC), E_Breakpoint())
-  }
 }
 
 mapping clause assembly = EBREAK() <-> "ebreak"
@@ -630,8 +629,6 @@ mapping clause encdec = WFI()
   <-> 0b000100000101 @ 0b00000 @ 0b000 @ 0b00000 @ 0b1110011
 
 function clause execute WFI() =
-  if   in_debug_abstract_command()
-  then RETIRE_SUCCESS else
   match cur_privilege {
     Machine           => Enter_Wait(WAIT_WFI),
     Supervisor        => if   mstatus[TW] == 0b1

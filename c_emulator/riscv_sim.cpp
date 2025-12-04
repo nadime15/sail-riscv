@@ -427,7 +427,7 @@ void flush_logs(void)
 
 void run_sail(void)
 {
-  struct zstep_result step_result = {false, false, false, false};
+  struct zstep_result step_result = {false, false, false};
   bool exit_wait = true;
 
   /* initialize the step number */
@@ -472,9 +472,6 @@ void run_sail(void)
         rvfi->send_trace(config_print_rvfi);
       }
     }
-    // TODO: better handling of entry into debug mode (step_result.zin_debug),
-    // e.g, by connecting to a debugger interface.
-    // For now, we just request an immediate resume above.
     if (!step_result.zin_wait) {
       if (config_print_step) {
         fprintf(trace_log, "\n");
