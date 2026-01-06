@@ -167,6 +167,7 @@ extensions {
   // Floating point (F and D extensions)
   FD {
     FD_core {
+      // for Zfinx
       requires Stateen_regs
       before sys
       files
@@ -440,7 +441,9 @@ extensions {
     Stateen_csrs {
       requires Stateen_regs
       before sys
-      files extensions/Stateen/stateen_csrs.sail
+      files
+        extensions/Stateen/stateen_csrs.sail,
+        extensions/Stateen/stateen_access_checks.sail,
     }
   }
 
