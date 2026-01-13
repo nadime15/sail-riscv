@@ -86,18 +86,18 @@ function clause execute AMO(op, aq, rl, rs2, rs1, width, rd) = {
       AccessFault        => E_SAMO_Access_Fault(),
       AlignmentException => E_SAMO_Addr_Align(),
     };
-    return memory_exception(vaddr, exc)
+    return Memory_Exception(exception_context(exc, bits_of(vaddr)))
   };
 
   let (addr, pbmt) : (physaddr, page_based_mem_type) = match translateAddr(vaddr, access) {
-    Err(e, _) => return memory_exception(vaddr, e),
+    Err(e, _) => return Memory_Exception(e),
     Ok(addr, pbmt, _) => (addr, pbmt),
   };
 
   let loaded : bits('width * 8) = match mem_write_ea(addr, width, access, pbmt, aq & rl, rl, true) {
-    Err(e) => return memory_exception(vaddr, e),
+    Err(e) => return Memory_Exception(exception_context(e, bits_of(vaddr))),
     Ok(_)  => match mem_read(access, pbmt, addr, width, aq, aq & rl, true) {
-      Err(e)     => return memory_exception(vaddr, e),
+      Err(e) => return Memory_Exception(exception_context(e, bits_of(vaddr))),
       Ok(loaded) => loaded,
     },
   };
@@ -139,7 +139,7 @@ function clause execute AMO(op, aq, rl, rs2, rs1, width, rd) = {
       RETIRE_SUCCESS
     },
     Ok(false) => internal_error(__FILE__, __LINE__, "AMO got false from mem_write_value"),
-    Err(e)    => memory_exception(vaddr, e),
+    Err(e) => Memory_Exception(exception_context(e, bits_of(vaddr))),
   }
 }
 
