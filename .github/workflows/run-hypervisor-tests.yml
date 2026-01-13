@@ -1,0 +1,69 @@
+# This workflow is intended for internal testing only.
+# It is not meant to be pushed upstream.
+# Some steps may appear duplicated or unnecessary because
+# this workflow is designed to run with ACT in a containerized environment.
+# Dependent workflows (e.g., sail-setup) detect this context and may skip steps accordingly.
+
+name: Run hypervisor tests
+on: [push, pull_request, workflow_dispatch, merge_group]
+jobs:
+  run-hypervisor-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v6
+        with:
+          # Git history is needed for `git describe` in the build to work.
+          fetch-depth: 0
+
+      - name: Common setup
+        uses: ./.github/actions/sail-setup
+        with:
+          install-clang: "true"
+
+      - name: Cache RISC-V toolchain
+        id: cache-riscv
+        uses: actions/cache@v4
+        with:
+          path: /opt/riscv
+          key: riscv-toolchain-2026.03.13
+
+      - name: Install RISC-V toolchains
+        if: steps.cache-riscv.outputs.cache-hit != 'true'
+        run: |
+          wget -q https://github.com/riscv-collab/riscv-gnu-toolchain/releases/download/2026.03.13/riscv64-elf-ubuntu-22.04-gcc.tar.xz
+          mkdir -p /opt/riscv
+          tar -xf riscv64-elf-ubuntu-22.04-gcc.tar.xz --strip-components=1 -C /opt/riscv
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld ninja-build gcc g++ cmake
+
+      - name: Add toolchain to PATH
+        run: echo "/opt/riscv/bin" >> $GITHUB_PATH
+
+      - name: Install Python dependencies
+        run: pip3 install pyyaml --break-system-packages
+
+      - name: Set environment variables
+        run: |
+          echo "RISCV=/opt/riscv" >> $GITHUB_ENV
+          echo "SAIL=$(pwd)/build/c_emulator/sail_riscv_sim" >> $GITHUB_ENV
+
+      - name: Checkout riscv-hypervisor-tests fork
+        shell: bash
+        run: |
+          git clone --recurse-submodules -b main https://github.com/nadime15/riscv-hypervisor-tests.git
+          make -C riscv-hypervisor-tests build
+
+      - name: Build simulator
+        run: |
+          cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          ninja -C build all
+
+      - name: Run hypervisor tests
+        run: |
+          make -C riscv-hypervisor-tests run SAIL=${{ env.SAIL }}
