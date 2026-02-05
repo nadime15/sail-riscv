@@ -1,7 +1,5 @@
 name: "sail-riscv CI setup"
 description: "Composite action to install packages, setup CMake, and install/build Sail"
-env:
-  CLANG_VERSION: 21
 inputs:
   cmake-version:
     description: "CMake version to install"
@@ -26,6 +24,7 @@ runs:
 
         curl -O https://apt.llvm.org/llvm.sh
         chmod +x llvm.sh
+        CLANG_VERSION=21
         sudo ./llvm.sh $CLANG_VERSION
         sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-$CLANG_VERSION 100
         sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-$CLANG_VERSION 100
