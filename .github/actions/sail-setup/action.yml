@@ -9,7 +9,6 @@ inputs:
     description: 'Sail version to install (use "latest" to build from source)'
     required: false
     default: "0.20.1"
-
 runs:
   using: "composite"
   steps:
@@ -18,6 +17,12 @@ runs:
       shell: bash
       run: |
         sudo apt install -y --no-install-recommends pkg-config libgmp-dev curl ninja-build
+
+    - name: Set up Clang (Linux)
+      if: runner.os == 'Linux'
+      uses: egor-tensin/setup-clang@v2
+      with:
+        version: latest
 
     - name: Install packages (macOS)
       if: runner.os == 'macOS'
@@ -35,6 +40,7 @@ runs:
           cmake_suffix="universal"
         fi
         curl --location https://github.com/Kitware/CMake/releases/download/v${{ inputs.cmake-version }}/cmake-${{ inputs.cmake-version }}-${{ runner.os }}-$cmake_suffix.tar.gz | sudo tar xvz --directory=/usr/local --strip-components=1
+
     - name: Restore cached opam (macOS or latest Sail)
       if: runner.os == 'macOS' || inputs.sail-version == 'latest'
       id: cache-opam-restore
