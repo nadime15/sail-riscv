@@ -1,7 +1,7 @@
 name: "sail-riscv CI setup"
 description: "Composite action to install packages, setup CMake, and install/build Sail"
 env:
-  CLANG_VARIABLE: 21
+  CLANG_VERSION: 21
 inputs:
   cmake-version:
     description: "CMake version to install"
