@@ -9,6 +9,10 @@ inputs:
     description: 'Sail version to install (use "latest" to build from source)'
     required: false
     default: "0.20.1"
+  install-clang:
+    description: "Install latest Clang"
+    required: false
+    default: "false"
 
 runs:
   using: "composite"
@@ -19,9 +23,12 @@ runs:
       run: |
         sudo apt install -y --no-install-recommends pkg-config libgmp-dev curl ninja-build lsb-release
 
+    - name: Install latest Clang (Linux)
+      if: runner.os == 'Linux' && inputs.install-clang == 'true'
+      shell: bash
+      run: |
         # Install newer clang manually because current Ubuntu runners don't have
         # a clang version that supports newer RISC-V extensions.
-
         curl -O https://apt.llvm.org/llvm.sh
         chmod +x llvm.sh
         CLANG_VERSION=21
