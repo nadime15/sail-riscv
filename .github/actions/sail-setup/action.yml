@@ -19,7 +19,7 @@ runs:
       if: runner.os == 'Linux'
       shell: bash
       run: |
-        sudo apt install -y --no-install-recommends pkg-config libgmp-dev curl ninja-build lsb_release
+        sudo apt install -y --no-install-recommends pkg-config libgmp-dev curl ninja-build lsb-release
 
         # Install newer clang manually because current Ubuntu runners don't have
         # a clang version that supports newer RISC-V extensions.
