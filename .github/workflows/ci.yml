@@ -27,6 +27,15 @@ jobs:
         with:
           cmake-version: "${{ matrix.cmake_version }}"
 
+      - name: Install Clang (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 21
+          sudo ln -sf /usr/bin/clang-21 /usr/bin/clang
+          sudo ln -sf /usr/bin/clang++-21 /usr/bin/clang++
+
       - name: Ensure pre-commit checks pass
         if: ${{ matrix.run_all_steps}}
         run: python3 -m pip install pre-commit && pre-commit run --all-files --show-diff-on-failure --color=always

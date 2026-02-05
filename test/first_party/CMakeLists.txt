@@ -12,10 +12,7 @@
 
 # Search PATH first so that CI can provide a newer clang via PATH,
 # then fall back to system paths for local builds.
-find_program(CLANG_BIN "clang" NO_CMAKE_SYSTEM_PATH)
-if (NOT CLANG_BIN)
-    find_program(CLANG_BIN "clang")
-endif()
+find_program(CLANG_BIN "clang")
 find_program(GCC_BIN_RV32 "riscv32-unknown-elf-gcc")
 find_program(GCC_BIN_RV64 "riscv64-unknown-elf-gcc")
 
