@@ -27,7 +27,7 @@ function canonical_NaN(n) =
     128 => 0b0 @ ones(15) @ 0b1 @ zeros(111),
   }
 
-function canonical_NaN_BF16() -> bits(16) = 0x7fc0
+let canonical_NaN_BF16 : bits(16) = 0x7fc0
 // For backwards compatibility with code that existed before the
 // generic version above.
 function canonical_NaN_H() -> bits(16)  = canonical_NaN(16)
@@ -216,7 +216,7 @@ function rF_BF16(i : fregidx) -> bits(16) = {
   let v = F(i);
   if v[flen - 1 .. 16] == ones()
   then v[15 .. 0]
-  else canonical_NaN_BF16()
+  else canonical_NaN_BF16
 }
 
 function wF_BF16(i : fregidx, data : bits(16)) -> unit = {
