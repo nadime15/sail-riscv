@@ -35,7 +35,7 @@ runs:
           sudo rm -f /usr/bin/$tool
           sudo update-alternatives --install /usr/bin/$tool $tool /usr/bin/${tool}-$CLANG_VERSION 100
         done
-        clang --versio
+        clang --version
 
     - name: Install packages (macOS)
       if: runner.os == 'macOS'
