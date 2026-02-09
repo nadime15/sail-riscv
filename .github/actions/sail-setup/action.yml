@@ -27,16 +27,10 @@ runs:
       if: runner.os == 'Linux' && inputs.install-clang == 'true'
       shell: bash
       run: |
-        set -x
         curl -O https://apt.llvm.org/llvm.sh
         chmod +x llvm.sh
         CLANG_VERSION=21
         sudo ./llvm.sh $CLANG_VERSION
-        for tool in clang clang++ lld; do
-          sudo rm -f /usr/bin/$tool
-          sudo update-alternatives --install /usr/bin/$tool $tool /usr/bin/${tool}-$CLANG_VERSION 100
-        done
-        clang --version
 
     - name: Install packages (macOS)
       if: runner.os == 'macOS'
