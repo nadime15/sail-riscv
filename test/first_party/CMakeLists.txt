@@ -16,6 +16,8 @@ find_program(GCC_BIN_RV64 "riscv64-unknown-elf-gcc")
 
 if (CLANG_BIN)
     message(STATUS "Found clang: ${CLANG_BIN}")
+    execute_process(COMMAND clang --version OUTPUT_VARIABLE V OUTPUT_STRIP_TRAILING_WHITESPACE)
+    message(STATUS "${V}")
 endif()
 if (GCC_BIN_RV32)
     message(STATUS "Found riscv32-unknown-elf-gcc: ${GCC_BIN_RV32}")
