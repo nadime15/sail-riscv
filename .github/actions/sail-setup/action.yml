@@ -27,17 +27,15 @@ runs:
       if: runner.os == 'Linux' && inputs.install-clang == 'true'
       shell: bash
       run: |
-        # Install newer clang manually because current Ubuntu runners don't have
-        # a clang version that supports newer RISC-V extensions.
         curl -O https://apt.llvm.org/llvm.sh
         chmod +x llvm.sh
         CLANG_VERSION=21
         sudo ./llvm.sh $CLANG_VERSION
-        sudo rm -f /usr/bin/clang /usr/bin/clang++ /usr/bin/lld
-        sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-$CLANG_VERSION 100
-        sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-$CLANG_VERSION 100
-        sudo update-alternatives --install /usr/bin/lld lld /usr/bin/lld-$CLANG_VERSION 100
-        clang --version
+        for tool in clang clang++ lld; do
+          sudo rm -f /usr/bin/$tool
+          sudo update-alternatives --install /usr/bin/$tool $tool /usr/bin/${tool}-$CLANG_VERSION 100
+        done
+        clang --versio
 
     - name: Install packages (macOS)
       if: runner.os == 'macOS'
