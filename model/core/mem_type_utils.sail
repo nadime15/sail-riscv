@@ -10,6 +10,7 @@ function accessFaultFromAccessType(access : MemoryAccessType(mem_payload)) -> Ex
   match access {
     InstructionFetch()                  => E_Fetch_Access_Fault(),
     Load(Data)                          => E_Load_Access_Fault(),
+    ExecuteLoad(Data)                   => E_Load_Access_Fault(),
     LoadReserved(Data)                  => E_Load_Access_Fault(),
     Store(Data)                         => E_SAMO_Access_Fault(),
     StoreConditional(Data)              => E_SAMO_Access_Fault(),
@@ -23,6 +24,7 @@ function accessFaultFromAccessType(access : MemoryAccessType(mem_payload)) -> Ex
     Store(ShadowStack)                  => E_SAMO_Access_Fault(),
     Atomic(_, ShadowStack, ShadowStack) => E_SAMO_Access_Fault(),
 
+    ExecuteLoad(ShadowStack)            => internal_error(__FILE__, __LINE__, "Invalid payload (ShadowStack) for ExecuteLoad."),
     LoadReserved(ShadowStack)           => internal_error(__FILE__, __LINE__, "Invalid payload (ShadowStack) for LoadReserved."),
     StoreConditional(ShadowStack)       => internal_error(__FILE__, __LINE__, "Invalid payload (ShadowStack) for StoreConditional."),
     Atomic(_, ShadowStack, Data)        => internal_error(__FILE__, __LINE__, "Invalid payloads (ShadowStack, Data) for Atomic."),
@@ -48,6 +50,7 @@ function alignmentFaultFromAccessType(access : MemoryAccessType(mem_payload)) ->
     InstructionFetch()                  => E_Fetch_Addr_Align(),
     Load(Data)                          => E_Load_Addr_Align(),
     LoadReserved(Data)                  => E_Load_Addr_Align(),
+    ExecuteLoad(Data)                   => E_Load_Addr_Align(),
     Store(Data)                         => E_SAMO_Addr_Align(),
     StoreConditional(Data)              => E_SAMO_Addr_Align(),
     Atomic(_, Data, Data)               => E_SAMO_Addr_Align(),
@@ -60,6 +63,7 @@ function alignmentFaultFromAccessType(access : MemoryAccessType(mem_payload)) ->
     Store(ShadowStack)                  => E_SAMO_Addr_Align(),
     Atomic(_, ShadowStack, ShadowStack) => E_SAMO_Addr_Align(),
 
+    ExecuteLoad(ShadowStack)            => internal_error(__FILE__, __LINE__, "Invalid payload (ShadowStack) for ExecuteLoad."),
     LoadReserved(ShadowStack)           => internal_error(__FILE__, __LINE__, "Invalid payload (ShadowStack) for LoadReserved."),
     StoreConditional(ShadowStack)       => internal_error(__FILE__, __LINE__, "Invalid payload (ShadowStack) for StoreConditional."),
     Atomic(_, ShadowStack, Data)        => internal_error(__FILE__, __LINE__, "Invalid payloads (ShadowStack, Data) for Atomic."),

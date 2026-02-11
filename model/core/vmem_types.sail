@@ -74,6 +74,7 @@ function accessType_to_str(access : MemoryAccessType(mem_payload)) -> string =
     StoreConditional(p) => "W" ^ mem_payload_str(p),
     Atomic(_, lp, sp)   => "R" ^ mem_payload_str(lp) ^ "W" ^ mem_payload_str(sp),
     InstructionFetch()  => "X",
+    ExecuteLoad(p)      => "XR" ^ mem_payload_str(p),
     CacheAccess(_)      => "C",
   }
 
@@ -87,12 +88,15 @@ function is_shadow_stack_access(access : MemoryAccessType(mem_payload)) -> bool 
 
     InstructionFetch()                  => false,
     Load(Data)                          => false,
+    ExecuteLoad(Data)                   => false,
     LoadReserved(Data)                  => false,
     Store(Data)                         => false,
     StoreConditional(Data)              => false,
     Atomic(_, Data, Data)               => false,
     CacheAccess(_)                      => false,
 
+
+    ExecuteLoad(ShadowStack)            => internal_error(__FILE__, __LINE__, "Invalid payload (ShadowStack) for ExecuteLoad."),
     LoadReserved(ShadowStack)           => internal_error(__FILE__, __LINE__, "Invalid payload (ShadowStack) for LoadReserved."),
     StoreConditional(ShadowStack)       => internal_error(__FILE__, __LINE__, "Invalid payload (ShadowStack) for StoreConditional."),
     Atomic(_, ShadowStack, Data)        => internal_error(__FILE__, __LINE__, "Invalid payloads (ShadowStack, Data) for Atomic."),

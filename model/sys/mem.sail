@@ -94,6 +94,7 @@ private function pmaCheck forall 'n, 0 < 'n <= max_mem_access .
           let canAccess : bool = match access {
             InstructionFetch()     => attributes.executable,
             Load(Data)             => {assert(not(res_or_con)); attributes.readable},
+            ExecuteLoad(Data)          => {assert(not(res_or_con)); attributes.executable & attributes.readable},
             Store(Data)            => {assert(not(res_or_con)); attributes.writable},
             // For LR/SC, we currently don't differentiate between the presence (RsrvEventual)
             // or absence (RsrvNonEventual) of an eventual success guarantee.
@@ -142,6 +143,7 @@ private function pmaCheck forall 'n, 0 < 'n <= max_mem_access .
               PREFETCH_I => attributes.executable,
             },
 
+            ExecuteLoad(ShadowStack)       => internal_error(__FILE__, __LINE__, "Invalid payload (ShadowStack) for ExecuteLoad."),
             LoadReserved(ShadowStack)      => internal_error(__FILE__, __LINE__, "Invalid payload (ShadowStack) for LoadReserved."),
             StoreConditional(ShadowStack)  => internal_error(__FILE__, __LINE__, "Invalid payload (ShadowStack) for StoreConditional."),
             Atomic(_, ShadowStack, Data)   => internal_error(__FILE__, __LINE__, "Invalid payloads (ShadowStack, Data) for Atomic."),

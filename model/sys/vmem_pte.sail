@@ -162,6 +162,8 @@ private function check_PTE_permission(
       // memory."
       Load(Data)         => true,
       Load(ShadowStack)  => true,
+      // TODO: Verify what to do in the ExecuteLoad case.
+      ExecuteLoad(Data)  => true,
       LoadReserved(Data) => true,
 
       // "Memory mapped as an SS page cannot be written to by instructions other
@@ -177,6 +179,7 @@ private function check_PTE_permission(
       // exception."
       CacheAccess(_) => false,
 
+      ExecuteLoad(ShadowStack)       => internal_error(__FILE__, __LINE__, "Invalid payload (ShadowStack) for ExecuteLoad."),
       LoadReserved(ShadowStack)      => internal_error(__FILE__, __LINE__, "Invalid payload (ShadowStack) for LoadReserved."),
       StoreConditional(ShadowStack)  => internal_error(__FILE__, __LINE__, "Invalid payload (ShadowStack) for StoreConditional."),
       Atomic(_, ShadowStack, Data)   => internal_error(__FILE__, __LINE__, "Invalid payloads (ShadowStack, Data) for Atomic."),
@@ -205,6 +208,7 @@ private function check_PTE_permission(
     StoreConditional(_)         => pte_W,
     Atomic(_, _, _)             => pte_W & pte_R,
     InstructionFetch(_)         => pte_X,
+    ExecuteLoad(_)              => pte_X & pte_R,
     CacheAccess(CB_zero())      => pte_W,
     CacheAccess(CB_prefetch(p)) => match p {
       PREFETCH_R => pte_R,
@@ -239,6 +243,7 @@ private function update_PTE_Bits forall 'pte_size, 'pte_size in {32, 64} . (
   let update_d : bool = (pte_flags[D] == 0b0)
                         & (match access {
                              InstructionFetch()          => false,
+                             ExecuteLoad(_)               => false,
                              Load(_)                     => false,
                              LoadReserved(_)             => false,
                              Store(_)                    => true,

@@ -74,6 +74,10 @@ function translationException(access : MemoryAccessType(mem_payload),
 
     (Load(Data), PTW_No_Access())                => E_Load_Access_Fault(),
     (Load(Data), _)                              => E_Load_Page_Fault(),
+
+    (ExecuteLoad(Data), PTW_No_Access())             => E_Load_Access_Fault(),
+    (ExecuteLoad(Data), _)                           => E_Load_Page_Fault(),
+
     (LoadReserved(Data), PTW_No_Access())        => E_Load_Access_Fault(),
     (LoadReserved(Data), _)                      => E_Load_Page_Fault(),
 
@@ -117,6 +121,8 @@ function translationException(access : MemoryAccessType(mem_payload),
       PREFETCH_I => E_Fetch_Page_Fault(),
     },
 
+
+    (ExecuteLoad(ShadowStack), _)       => internal_error(__FILE__, __LINE__, "Invalid payload (ShadowStack) for ExecuteLoad."),
     (LoadReserved(ShadowStack), _)      => internal_error(__FILE__, __LINE__, "Invalid payload (ShadowStack) for LoadReserved."),
     (StoreConditional(ShadowStack), _)  => internal_error(__FILE__, __LINE__, "Invalid payload (ShadowStack) for StoreConditional."),
     (Atomic(_, ShadowStack, Data), _)   => internal_error(__FILE__, __LINE__, "Invalid payloads (ShadowStack, Data) for Atomic."),

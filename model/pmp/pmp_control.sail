@@ -16,6 +16,7 @@ private function pmpCheckRWX(ent : Pmpcfg_ent, access : MemoryAccessType(mem_pay
     Store(Data)                   => ent[W] == 0b1,
     StoreConditional(Data)        => ent[W] == 0b1,
     Atomic(_, Data, Data)         => ent[R] == 0b1 & ent[W] == 0b1,
+    ExecuteLoad(Data)             => ent[X] == 0b1 & ent[R] == 0b1,
     InstructionFetch()            => ent[X] == 0b1,
 
     // "The PMP checks are extended to require read-write permission
@@ -27,6 +28,7 @@ private function pmpCheckRWX(ent : Pmpcfg_ent, access : MemoryAccessType(mem_pay
 
     LoadReserved(ShadowStack)     => internal_error(__FILE__, __LINE__, "Invalid payload (ShadowStack) for LoadReserved."),
     StoreConditional(ShadowStack) => internal_error(__FILE__, __LINE__, "Invalid payload (ShadowStack) for StoreConditional."),
+    ExecuteLoad(ShadowStack)      => internal_error(__FILE__, __LINE__, "Invalid payload (ShadowStack) for ExecuteLoad."),
 
     // TODO: "If neither a load instruction nor store instruction is
     // permitted to access the physical addresses, but an instruction
