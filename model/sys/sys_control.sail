@@ -167,8 +167,12 @@ function track_trap(p : Privilege) -> unit = {
       csr_write_callback("sepc", sepc);
     },
     User              => internal_error(__FILE__, __LINE__, "Invalid privilege level"),
-    VirtualUser       => internal_error(__FILE__, __LINE__, "Hypervisor extension not supported"),
-    VirtualSupervisor => internal_error(__FILE__, __LINE__, "Hypervisor extension not supported"),
+    VirtualUser       => internal_error(__FILE__, __LINE__, "Invalid privilege level"),
+    VirtualSupervisor => {
+      csr_write_callback("vscause", vscause.bits);
+      csr_write_callback("vstval", vstval);
+      csr_write_callback("vsepc", vsepc);
+    },
   };
 }
 

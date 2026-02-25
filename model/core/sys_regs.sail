@@ -471,6 +471,54 @@ function clause write_CSR((0x30A, value) if xlen == 64) = { menvcfg = legalize_m
 function clause write_CSR((0x31A, value) if xlen == 32) = { menvcfg = legalize_menvcfg(menvcfg, value @ menvcfg.bits[31 .. 0]); Ok(menvcfg.bits[63 .. 32]) }
 function clause write_CSR(0x10A, value) = { senvcfg = legalize_senvcfg(senvcfg, zero_extend(value)); Ok(senvcfg.bits[xlen - 1 .. 0]) }
 
+// Hypervisor Environment Configuration
+
+bitfield HEnvcfg : bits(64) = {
+  STCE  : 63,
+  PBMTE : 62,
+  ADUE  : 61,
+  DTE   : 59,
+  PMM   : 33 .. 32,
+  CBZE  : 7,
+  CBCFE : 6,
+  CBIE  : 5 .. 4,
+  SSE   : 3,
+  LPE   : 2,
+  FIOM  : 0,
+}
+
+register henvcfg : HEnvcfg
+
+function legalize_henvcfg(h : HEnvcfg, v : bits(64)) -> HEnvcfg = {
+  let v = Mk_HEnvcfg(v);
+  [h with
+    STCE  = if currentlyEnabled(Ext_Sstc) & menvcfg[STCE] == 0b1 then v[STCE]  else 0b0,
+    PBMTE = if currentlyEnabled(Ext_Svpbmt) then v[PBMTE] else 0b0,
+    // ADUE = if currentlyEnabled(Ext_Svadu) then v[ADUE] else 0b0,
+    // DTE  = if currentlyEnabled(Ext_Ssdbltrp) then v[DTE] else 0b0,
+    // PMM  = if currentlyEnabled(Ext_Ssnpm) then v[PMM] else 0b0,
+    CBZE  = if currentlyEnabled(Ext_Zicboz) then v[CBZE]  else 0b0,
+    CBCFE = if currentlyEnabled(Ext_Zicbom) then v[CBCFE] else 0b0,
+    CBIE  = if currentlyEnabled(Ext_Zicbom) then v[CBIE]  else 0b00,
+    // SSE  = if currentlyEnabled(Ext_Zicfiss) then v[SSE] else 0b0,
+    LPE   = if hartSupports(Ext_Zicfilp) then v[LPE]  else 0b0,
+    FIOM  = if sys_enable_writable_fiom  then v[FIOM] else 0b0,
+  ]
+}
+
+mapping clause csr_name_map = 0x60A <-> "henvcfg"
+mapping clause csr_name_map = 0x61A <-> "henvcfgh"
+
+function clause is_CSR_accessible(0x60A, _, _) = currentlyEnabled(Ext_H) // henvcfg
+function clause is_CSR_accessible(0x61A, _, _) = currentlyEnabled(Ext_H) & xlen == 32 // henvcfgh
+
+function clause read_CSR(0x60A) = henvcfg.bits[xlen - 1 .. 0]
+function clause read_CSR(0x61A if xlen == 32) = henvcfg.bits[63 .. 32]
+
+function clause write_CSR((0x60A, value) if xlen == 32) = { henvcfg = legalize_henvcfg(henvcfg, henvcfg.bits[63 .. 32] @ value); Ok(henvcfg.bits[xlen - 1 .. 0]) }
+function clause write_CSR((0x60A, value) if xlen == 64) = { henvcfg = legalize_henvcfg(henvcfg, value); Ok(henvcfg.bits[xlen - 1 .. 0]) }
+function clause write_CSR((0x61A, value) if xlen == 32) = { henvcfg = legalize_henvcfg(henvcfg, value @ henvcfg.bits[31 .. 0]); Ok(henvcfg.bits[63 .. 32]) }
+
 // Return whether or not FIOM is currently active, based on the current
 // privilege and the menvcfg/senvcfg settings. This means that I/O fences
 // imply memory fence.
@@ -786,6 +834,18 @@ bitfield Counteren : bits(32) = {
   CY   : 0
 }
 
+// hcounteren
+private function legalize_hcounteren(_c : Counteren, v : xlenbits) -> Counteren = {
+  let supported_counters = sys_writable_hpm_counters[31 .. 3] @ 0b111;
+  Mk_Counteren(v[31 .. 0] & supported_counters)
+}
+
+register hcounteren : Counteren
+mapping clause csr_name_map = 0x606 <-> "hcounteren"
+function clause is_CSR_accessible(0x606, _, _) = currentlyEnabled(Ext_H)
+function clause read_CSR(0x606) = zero_extend(hcounteren.bits)
+function clause write_CSR(0x606, value) = { hcounteren = legalize_hcounteren(hcounteren, value); Ok(zero_extend(hcounteren.bits)) }
+
 // scounteren
 private function legalize_scounteren(_c : Counteren, v : xlenbits) -> Counteren = {
   let supported_counters = sys_writable_hpm_counters[31 .. 3] @ 0b111;
@@ -809,7 +869,6 @@ mapping clause csr_name_map = 0x306  <-> "mcounteren"
 function clause is_CSR_accessible(0x306, _, _) = currentlyEnabled(Ext_U) // mcounteren
 function clause read_CSR(0x306) = zero_extend(mcounteren.bits)
 function clause write_CSR(0x306, value) = { mcounteren = legalize_mcounteren(mcounteren, value); Ok(zero_extend(mcounteren.bits)) }
-
 
 // mcountinhibit
 bitfield Counterin : bits(32) = {
@@ -1254,17 +1313,17 @@ val get_16_random_bits = impure {
 
 // There are several features that are controlled by machine/supervisor enable
 // bits (m/senvcfg, m/scounteren, etc.). This abstracts that logic.
-function feature_enabled_for_priv(p : Privilege, machine_enable_bit : bits(1), supervisor_enable_bit : bits(1)) -> bool = match p {
+function feature_enabled_for_priv(p : Privilege, machine_enable_bit : bits(1), supervisor_enable_bit : bits(1), hypervisor_enable_bit : bits(1)) -> bool = match p {
   Machine => true,
   Supervisor => machine_enable_bit == 0b1,
   User => machine_enable_bit == 0b1 & (not(currentlyEnabled(Ext_S)) | supervisor_enable_bit == 0b1),
-  VirtualSupervisor => internal_error(__FILE__, __LINE__, "Hypervisor extension not supported"),
-  VirtualUser => internal_error(__FILE__, __LINE__, "Hypervisor extension not supported"),
+  VirtualSupervisor => machine_enable_bit == 0b1 & hypervisor_enable_bit == 0b1,
+  VirtualUser => machine_enable_bit == 0b1 & hypervisor_enable_bit == 0b1 & supervisor_enable_bit == 0b1,
 }
 
 // Return true if the counter is enabled.
 function counter_enabled(index: range(0, 31), priv : Privilege) -> bool =
-  feature_enabled_for_priv(priv, mcounteren.bits[index], scounteren.bits[index])
+  feature_enabled_for_priv(priv, mcounteren.bits[index], scounteren.bits[index], hcounteren.bits[index])
 
 // Return the effective architecture for the given privilege mode
 function architecture(priv : Privilege) -> Architecture = {
