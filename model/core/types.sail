@@ -379,7 +379,6 @@ function hgatpMode_of_bits(a : Architecture, m : hgatp_mode) -> option(HGATPMode
   }
 
 // supervisor-level address translation modes
-
 type satp_mode = bits(4)
 enum SATPMode = {Bare, Sv32, Sv39, Sv48, Sv57}
 
