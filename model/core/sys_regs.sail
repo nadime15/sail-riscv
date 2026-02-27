@@ -461,7 +461,7 @@ private function legalize_senvcfg(o : SEnvcfg, v : xlenbits) -> SEnvcfg = {
 register menvcfg : MEnvcfg = legalize_menvcfg(Mk_MEnvcfg(zeros()), zeros())
 
 // This register is private to ensure that it is read using `read_senvcfg()`.
-private register senvcfg : SEnvcfg = legalize_senvcfg(Mk_SEnvcfg(zeros()), zeros())
+register senvcfg : SEnvcfg = legalize_senvcfg(Mk_SEnvcfg(zeros()), zeros())
 
 // "When menvcfg.SSE is 0, the henvcfg.SSE and senvcfg.SSE fields are read-only zero."
 // This function should be used for any read of the `senvcfg` CSR that includes the SSE bit.
