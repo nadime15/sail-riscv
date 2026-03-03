@@ -542,12 +542,20 @@ function clause execute ECALL() = {
     VirtualUser       => internal_error(__FILE__, __LINE__, "Hypervisor extension not supported"),
     VirtualSupervisor => internal_error(__FILE__, __LINE__, "Hypervisor extension not supported"),
   };
-  let t : sync_exception = struct {
-    trap    = trap,
-    excinfo = None(),
-    ext     = None(),
+  let c : Exception_Context = struct {
+    trap           = trap,
+    excinfo_is_gva = false,
+    excinfo        = zeros(), // TODO should be option...
+    excinfo2       = None(),
+    excinst        = None(),
+    ext            = None(),
   };
-  Trap(cur_privilege, CTL_TRAP(t), PC)
+  //let t : sync_exception = struct {
+    //trap    = trap,
+    //excinfo = (None() : option(xlenbits)),
+    //ext     = None(),
+  //};
+  Trap(cur_privilege, CTL_TRAP(c), PC)
 }
 
 mapping clause assembly = ECALL() <-> "ecall"

@@ -40,7 +40,7 @@ private function rvfi_fetch() -> FetchResult = {
   };
 
   match translateAddr(Virtaddr(PC_hi), InstructionFetch()) {
-    Err(e, _) => F_Error({ e with tval = PC }),
+    Err(e, _) => F_Error({ e with excinfo = PC }),
     Ok(_, _)  => F_Base(i)
   }
 }
