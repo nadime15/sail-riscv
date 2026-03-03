@@ -7,7 +7,7 @@
 // =======================================================================================
 
 // TODO: HLV(X)/HSV do not properly forward traps using the additional state
-// defined in the Execution_Context struct. A follow-up PR will implement proper
+// defined in the Exception_Context struct. A follow-up PR will implement proper
 // trap handling.
 
 mapping maybe_hlvx : hlvop <-> string = {
@@ -50,17 +50,18 @@ function clause execute HLVTYPE(width, op, is_unsigned, rs1, rd) = {
       Ext_DataAddr_Error(e)  => { Ext_DataAddr_Check_Failure(e) },
       Ext_DataAddr_OK(vaddr) => {
         if check_misaligned(vaddr, width)
-        then { return Memory_Exception(vaddr, E_Load_Addr_Align()) }
+        then { return Memory_Exception(exception_context(E_Load_Addr_Align(), bits_of(vaddr))) }
         else match translateAddr_eff_priv(vaddr, access, privLevel_bits(zero_extend(hstatus[SPVP]), 0b1)) {
           // TODO/NOTE: The original code returned RETIRE_SUCCESS even when address translation failed.
           // https://github.com/trdthg/sail-riscv/blob/91189354d003966b876d6842b4354ed51daa349e/model/extensions/H/hext_insts.sail#L35
-          Err(e_cont, _) => Memory_Exception(vaddr, match op {
-              HLV  => e_cont.trap,
-              HLVX => translationExceptionFetch(e_cont.trap),
+          Err(e, _) => Memory_Exception({ e with trap = match op {
+              HLV => e.trap,
+              HLVX => translationExceptionFetch(e.trap),
+            }
           }),
           Ok(paddr, _) => match mem_read(physical_access, paddr, width, false, false, false) {
             Ok(result) => { X(rd) = extend_value(is_unsigned, result); RETIRE_SUCCESS },
-            Err(e) => Memory_Exception(vaddr, e),
+            Err(e) => Memory_Exception(exception_context(e, bits_of(vaddr))),
           },
         };
       }
@@ -89,19 +90,19 @@ function clause execute(HSV(width, rs1, rs2)) = {
       Ext_DataAddr_Error(e)  => Ext_DataAddr_Check_Failure(e),
       Ext_DataAddr_OK(vaddr) =>
         if check_misaligned(vaddr, width)
-        then Memory_Exception(vaddr, E_SAMO_Addr_Align())
+        then  Memory_Exception(exception_context(E_SAMO_Addr_Align(), bits_of(vaddr)))
         else match translateAddr_eff_priv(vaddr, Store(Data), privLevel_bits(zero_extend(hstatus[SPVP]), 0b1)) {
           // TODO/NOTE: The original code returned RETIRE_SUCCESS even when address translation failed.
           // https://github.com/trdthg/sail-riscv/blob/91189354d003966b876d6842b4354ed51daa349e/model/extensions/H/hext_insts.sail#L35
-          Err(e_cont, _) => Memory_Exception(vaddr, e_cont.trap),
+          Err(e, _) => Memory_Exception(e),
           Ok(paddr, _) => {
             match mem_write_ea(paddr, width, false, false, false) {
-              Err(e) => Memory_Exception(vaddr, e),
+              Err(e) => Memory_Exception(exception_context(e, bits_of(vaddr))),
               Ok(_) => {
                 match mem_write_value(paddr, width, X(rs2)[8 * width - 1 .. 0], false, false, false) {
                   Ok(true)  => RETIRE_SUCCESS,
                   Ok(false) => internal_error(__FILE__, __LINE__, "HSV got false from mem_write_value"),
-                  Err(e) => { Memory_Exception(vaddr, e) }
+                  Err(e) => { Memory_Exception(exception_context(e, bits_of(vaddr))) }
                 }
               }
             }

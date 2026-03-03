@@ -13,7 +13,9 @@ register hart_state : HartState = HART_ACTIVE()
 private union Step = {
   Step_Pending_Interrupt  : (InterruptType, Privilege),
   Step_Ext_Fetch_Failure  : ext_fetch_addr_error,
-  Step_Fetch_Failure      : (virtaddr, ExceptionType),
+  //Step_Fetch_Failure      : (virtaddr, ExceptionType),
+  Step_Fetch_Failure      : Exception_Context,
+  //Step_Execute            : (ExceptionType, instbits),
   Step_Execute            : (ExecutionResult, instbits),
   Step_Waiting            : WaitReason,
 }
@@ -95,7 +97,7 @@ private function run_hart_active(step_no: nat) -> Step = {
     // extension error
     F_Ext_Error(e)   => Step_Ext_Fetch_Failure(e),
     // standard error
-    F_Error(e, addr) => Step_Fetch_Failure(Virtaddr(addr), e),
+    F_Error(e) => Step_Fetch_Failure(e),
     // non-error cases:
     F_RVC(h) => {
       sail_instr_announce(h);
@@ -206,14 +208,16 @@ function try_step(step_no : nat, exit_wait : bool) -> bool = {
       handle_interrupt(intr, priv)
     },
     Step_Ext_Fetch_Failure(e) => ext_handle_fetch_check_error(e),
-    Step_Fetch_Failure(vaddr, e) => handle_exception(bits_of(vaddr), e),
+    // TODO
+    Step_Fetch_Failure(e) => handle_exception(e.tval, e.trap),
     Step_Waiting(_) => assert(hart_is_waiting(hart_state), "cannot be Waiting in a non-Wait state"),
     Step_Execute(Retire_Success(), _) => assert(hart_is_active(hart_state)),
     // This case was handled above when processing the fetch result.
     Step_Execute(ExecuteAs(_), _) => assert(false),
     // standard errors
     Step_Execute(Trap(priv, ctl, pc), _) => set_next_pc(exception_handler(priv, ctl, pc)),
-    Step_Execute(Memory_Exception(vaddr, e), _) => handle_exception(bits_of(vaddr), e),
+    // TODO: We probably dont need vaddr anymore...
+    Step_Execute(Memory_Exception(e), _) => handle_exception(e.tval, e.trap),
     Step_Execute(Illegal_Instruction(), instbits) => handle_exception(zero_extend(instbits), E_Illegal_Instr()),
     // NOTE: Virtual instructions exception cannot be triggered until Hypervisor integration is complete.
     Step_Execute(Virtual_Instruction(), instbits) => handle_exception(zero_extend(instbits), E_Virtual_Instr()),

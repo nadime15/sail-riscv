@@ -34,3 +34,13 @@ function exception_context(e : ExceptionType, gva : xlenbits) -> Exception_Conte
     ext            = None()
   }
 }
+
+// TODO: Build another wrapper without tval2, is_gstage, most of the exceptions dont use tval2, only the one issues by the hypervisor actually, which can be quite rare...
+function exception_context(e : ExceptionType, gva : xlenbits) -> Exception_Context = {
+  struct {
+    trap = e,
+    tval = gva,
+    tval2 = zeros(),
+    is_gstage_fault = false,
+  }
+}

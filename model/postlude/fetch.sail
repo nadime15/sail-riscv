@@ -25,16 +25,17 @@ private function fetch() -> FetchResult = {
   };
 
   if   (PC[0] != 0b0 | (PC[1] != 0b0 & not(currentlyEnabled(Ext_Zca))))
-  then return F_Error(E_Fetch_Addr_Align(), PC);
+  // TODO/NOTE: Sure that is_gstage_fault should be false?
+  then return F_Error(exception_context(E_Fetch_Addr_Align(), PC));
 
   match translateAddr(Virtaddr(PC), InstructionFetch()) {
-    Err(e, _)    => F_Error(e, PC),
+    Err(e, _)    => F_Error(e),
     Ok(ppclo, _) => {
       // split instruction fetch into 16-bit granules to handle RVC, as
       // well as to generate precise fault addresses in any fetch
       // exceptions.
       match mem_read(InstructionFetch(), ppclo, 2, false, false, false) {
-        Err(e)  => F_Error(e, PC),
+        Err(e)  => F_Error(exception_context(e, PC)),
         Ok(ilo) =>
           if   isRVC(ilo)
           then F_RVC(ilo)
@@ -47,10 +48,10 @@ private function fetch() -> FetchResult = {
             };
 
             match translateAddr(Virtaddr(PC_hi), InstructionFetch()) {
-              Err(e, _)    => F_Error(e, PC_hi),
+              Err(e, _)    => F_Error(e),
               Ok(ppchi, _) =>
                 match mem_read(InstructionFetch(), ppchi, 2, false, false, false) {
-                  Err(e)  => F_Error(e, PC_hi),
+                  Err(e)  => F_Error(exception_context(e, PC_hi)),
                   Ok(ihi) => F_Base(append(ihi, ilo))
                 }
             }
