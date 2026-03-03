@@ -218,8 +218,10 @@ function try_step(step_no : nat, exit_wait : bool) -> bool = {
     Step_Execute(Trap(priv, ctl, pc), _) => set_next_pc(exception_handler(priv, ctl, pc)),
     // TODO: We probably dont need vaddr anymore...
     Step_Execute(Memory_Exception(e), _) => handle_exception(e.tval, e.trap),
+    // TODO:
     Step_Execute(Illegal_Instruction(), instbits) => handle_exception(zero_extend(instbits), E_Illegal_Instr()),
     // NOTE: Virtual instructions exception cannot be triggered until Hypervisor integration is complete.
+    // TODO:
     Step_Execute(Virtual_Instruction(), instbits) => handle_exception(zero_extend(instbits), E_Virtual_Instr()),
     Step_Execute(Enter_Wait(wr), instbits) => {
       if wait_is_nop(wr) then {
