@@ -60,7 +60,7 @@ function jump_to(target : xlenbits) -> ExecutionResult = {
   // If it is not 4-byte aligned and compressed instructions are
   // not enabled then raise an alignment exception.
   if bit_to_bool(target[1]) & not(currentlyEnabled(Ext_Zca))
-  then return Memory_Exception(Virtaddr(target), E_Fetch_Addr_Align());
+  then return Memory_Exception(exception_context(E_Fetch_Addr_Align(), target));
 
   set_next_pc(target);
   RETIRE_SUCCESS
@@ -605,10 +605,11 @@ mapping clause encdec = EBREAK()
 
 function clause execute EBREAK() = {
   let trap = E_Breakpoint(Brk_Software);
-  let t : sync_exception = struct { trap    = trap,
-                                    excinfo = xtval_exception_value(trap, PC),
-                                    ext     = None() };
-  Trap(cur_privilege, CTL_TRAP(t), PC)
+  let excinfo : xlenbits = match xtval_exception_value(trap, PC) {
+    Some(excinfo) => excinfo,
+    None()        => zeros(),
+  };
+  Trap(cur_privilege, CTL_TRAP(exception_context(trap, excinfo), PC))
 }
 
 mapping clause assembly = EBREAK() <-> "ebreak"

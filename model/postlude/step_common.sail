@@ -48,5 +48,5 @@ union FetchResult = {
   F_Ext_Error : ext_fetch_addr_error,      // For extensions
   F_Base      : word,                      // Base ISA
   F_RVC       : half,                      // Compressed ISA
-  F_Error     : (ExceptionType, xlenbits)  // standard exception and PC
+  F_Error     : Exception_Context  // TODO: standard exception and PC, we probably can remove xlenbits because we parc the addr in Exception_Context
 }

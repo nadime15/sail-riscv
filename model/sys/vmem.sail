@@ -678,16 +678,11 @@ function translateAddr_eff_priv(
 function translateAddr(
   vAddr : virtaddr,
   access : MemoryAccessType(mem_payload),
-) -> TR_Result(physaddr, ExceptionType) = {
+) -> TR_Result(physaddr, Exception_Context) = {
   // Effective privilege takes into account mstatus.PRV, mstatus.MPP
   // See sys_control.sail for effectivePrivilege() and sys_regs.sail for cur_privilege.
   let effPriv = effectivePrivilege(access, mstatus, cur_privilege);
-  // NOTE/TODO: translateAddr must return Exception_Context to properly handle traps.
-  // To keep this PR size manageable, we stop here.
-  match translateAddr_eff_priv(vAddr, access, effPriv) {
-    Ok(pa, ext_ptw)      => Ok(pa, ext_ptw),
-    Err(e_cont, ext_ptw) => Err(e_cont.trap, ext_ptw),
-  }
+  translateAddr_eff_priv(vAddr, access, effPriv)
 }
 
 // ****************************************************************
