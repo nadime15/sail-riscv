@@ -164,13 +164,13 @@ function dispatchInterrupt(priv : Privilege) -> option((InterruptType, Privilege
 // types of privilege transitions
 
 union ctl_result = {
-  CTL_TRAP : sync_exception,
+  CTL_TRAP : Exception_Context,
   CTL_SRET : unit,
   CTL_MRET : unit,
 }
 
 // trap value
-
+// TODO: Remove this, we can just pass zero... see Exception_Context
 function tval(excinfo : option(xlenbits)) -> xlenbits = {
   match (excinfo) {
     Some(e) => e,
@@ -202,8 +202,17 @@ function track_trap(p : Privilege) -> unit = {
 }
 
 // handle exceptional ctl flow by updating nextPC and operating privilege
-function trap_handler(del_priv : Privilege, c : TrapCause, pc : xlenbits, info : option(xlenbits), ext : option(ext_exception))
-                     -> xlenbits = {
+function trap_handler(
+  del_priv       : Privilege,
+  c              : TrapCause,
+  pc             : xlenbits,
+  excinfo_is_gva : option(bool),
+  excinfo        : option(xlenbits),
+  excinfo2       : option(xlenbits),
+  excinst        : option(xlenbits),
+  ext            : option(ext_exception)
+) -> xlenbits = {
+//function trap_handler(del_priv : Privilege, c : TrapCause, pc : xlenbits, info : option(xlenbits), ext : option(ext_exception)) -> xlenbits = {
   let is_interrupt = trapCause_is_interrupt(c);
   let cause        = trapCause_bits(c);
 
@@ -213,7 +222,7 @@ function trap_handler(del_priv : Privilege, c : TrapCause, pc : xlenbits, info :
   // TODO
   then print_log("handling " ^ to_str(c)
                       ^ " at priv " ^ to_str(del_priv)
-                      ^ " with tval " ^ bits_str(tval(info)));
+                      ^ " with tval " ^ bits_str(tval(excinfo)));
 
   if hartSupports(Ext_Zicfilp) then zicfilp_preserve_elp_on_trap(del_priv);
 
@@ -229,7 +238,7 @@ function trap_handler(del_priv : Privilege, c : TrapCause, pc : xlenbits, info :
       mstatus[MPV] = bool_to_bit(inVirtualPrivilege());
       // mstatus[GVA]
 
-      mtval         = tval(info);
+      mtval         = tval(excinfo);
       mepc          = pc;
 
       cur_privilege = del_priv;
@@ -255,7 +264,7 @@ function trap_handler(del_priv : Privilege, c : TrapCause, pc : xlenbits, info :
         VirtualUser       => internal_error(__FILE__, __LINE__, "Hypervisor extension not supported"),
         VirtualSupervisor => internal_error(__FILE__, __LINE__, "Hypervisor extension not supported"),
       };
-      stval           = tval(info);
+      stval           = tval(excinfo);
       sepc            = pc;
 
       cur_privilege   = del_priv;
@@ -306,7 +315,9 @@ function exception_handler(cur_priv : Privilege, ctl : ctl_result, pc: xlenbits)
       if   get_config_print_exception()
       then print_log("trapping from " ^ to_str(cur_priv) ^ " to " ^ to_str(del_priv)
                           ^ " to handle " ^ to_str(e.trap));
-      trap_handler(del_priv, Exception(e.trap), pc, e.excinfo, e.ext)
+    trap_handler(del_priv, Exception(e.trap), pc, Some(e.excinfo_is_gva), Some(e.excinfo), e.excinfo2, e.excinst, e.ext);
+
+    // trap_handler(del_priv, Exception(e.trap), pc, Some(e.excinfo), e.ext)
     },
     CTL_MRET()  => {
       let prev_priv = cur_privilege;
@@ -383,20 +394,12 @@ function xtval_exception_value(e : ExceptionType, excinfo : xlenbits) -> option(
   } then Some(excinfo) else None()
 }
 
-//function handle_exception(e_context : Exception_Context) -> unit = {
-//
-//
-//}
-function handle_exception(xtval : xlenbits, e : ExceptionType) -> unit = {
-  let t : sync_exception = struct { trap    = e,
-                                    excinfo = xtval_exception_value(e, xtval),
-                                    ext     = None() };
-  set_next_pc(exception_handler(cur_privilege, CTL_TRAP(t), PC))
+function handle_exception(c : Exception_Context) -> unit = {
+  set_next_pc(exception_handler(cur_privilege, CTL_TRAP(c), PC))
 }
 
 function handle_interrupt(i : InterruptType, del_priv : Privilege) -> unit =
-// TODO
-  set_next_pc(trap_handler(del_priv, Interrupt(i), PC, None(), None()))
+  set_next_pc(trap_handler(del_priv, Interrupt(i), PC, None(), None(), None(), None(), None()))
 
 // Reset misa to enable the maximal set of supported extensions.
 function reset_misa() -> unit = {

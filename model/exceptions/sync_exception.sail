@@ -34,13 +34,33 @@ function exception_context(e : ExceptionType, gva : xlenbits) -> Exception_Conte
     ext            = None()
   }
 }
-
-// TODO: Build another wrapper without tval2, is_gstage, most of the exceptions dont use tval2, only the one issues by the hypervisor actually, which can be quite rare...
-function exception_context(e : ExceptionType, gva : xlenbits) -> Exception_Context = {
+function make_exception_context(
+  trap           : ExceptionType,
+  excinfo        : xlenbits,
+  excinfo_is_gva : bool,
+  excinfo2       : option(xlenbits),
+) -> Exception_Context = {
   struct {
-    trap = e,
-    tval = gva,
-    tval2 = zeros(),
-    is_gstage_fault = false,
+    trap           = trap,
+    excinfo_is_gva = excinfo_is_gva,
+    excinfo        = excinfo,
+    excinfo2       = excinfo2,
+    excinst        = None(),
+    ext            = None(),
+  }
+}
+
+// For instruction exceptions (illegal, virtual, ecall, ebreak) - tval is instruction bits or zero
+function make_instr_exception_context(
+  trap    : ExceptionType,
+  excinfo : xlenbits,  // instruction bits or zeros
+) -> Exception_Context = {
+  struct {
+    trap           = trap,
+    excinfo_is_gva = false,
+    excinfo        = excinfo,
+    excinfo2       = Some(zeros()),
+    excinst        = None(),
+    ext            = None(),
   }
 }

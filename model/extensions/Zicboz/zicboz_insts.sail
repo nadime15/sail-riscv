@@ -46,7 +46,7 @@ function clause execute ZICBOZ(rs1) = {
           // (add the positive offset) to get it. Normally this will be
           // equal to rs1, but pointer masking can change that.
           // TODO
-          Err(e, _) => Memory_Exception({ e with tval = bits_of(vaddr - negative_offset) }),
+          Err(e, _) => Memory_Exception({ e with excinfo = bits_of(vaddr - negative_offset) }),
           Ok(paddr, _) => {
             match mem_write_ea(paddr, cache_block_size, false, false, false) {
               Err(e) => Memory_Exception(exception_context(e, bits_of(vaddr - negative_offset))),

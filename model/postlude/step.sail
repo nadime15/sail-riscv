@@ -209,7 +209,7 @@ function try_step(step_no : nat, exit_wait : bool) -> bool = {
     },
     Step_Ext_Fetch_Failure(e) => ext_handle_fetch_check_error(e),
     // TODO
-    Step_Fetch_Failure(e) => handle_exception(e.tval, e.trap),
+    Step_Fetch_Failure(e) => handle_exception(e),
     Step_Waiting(_) => assert(hart_is_waiting(hart_state), "cannot be Waiting in a non-Wait state"),
     Step_Execute(Retire_Success(), _) => assert(hart_is_active(hart_state)),
     // This case was handled above when processing the fetch result.
@@ -217,12 +217,28 @@ function try_step(step_no : nat, exit_wait : bool) -> bool = {
     // standard errors
     Step_Execute(Trap(priv, ctl, pc), _) => set_next_pc(exception_handler(priv, ctl, pc)),
     // TODO: We probably dont need vaddr anymore...
-    Step_Execute(Memory_Exception(e), _) => handle_exception(e.tval, e.trap),
+    Step_Execute(Memory_Exception(e), _) => handle_exception(e),
     // TODO:
-    Step_Execute(Illegal_Instruction(), instbits) => handle_exception(zero_extend(instbits), E_Illegal_Instr()),
-    // NOTE: Virtual instructions exception cannot be triggered until Hypervisor integration is complete.
-    // TODO:
-    Step_Execute(Virtual_Instruction(), instbits) => handle_exception(zero_extend(instbits), E_Virtual_Instr()),
+    Step_Execute(Illegal_Instruction(), instbits) =>
+      // TODO/NOTE: Define a new constructor?
+      handle_exception(struct {
+        trap           = E_Illegal_Instr(),
+        excinfo_is_gva = false,
+        excinfo        = zero_extend(instbits),
+        excinfo2       = None(),
+        excinst        = None(),
+        ext            = None(),
+      }),
+    // TODO/NOTE: Define a new constructor
+    Step_Execute(Virtual_Instruction(), instbits) =>
+      handle_exception(struct {
+        trap           = E_Virtual_Instr(),
+        excinfo_is_gva = false,
+        excinfo        = zero_extend(instbits),
+        excinfo2       = None(),
+        excinst        = None(),
+        ext            = None(),
+      }),
     Step_Execute(Enter_Wait(wr), instbits) => {
       if wait_is_nop(wr) then {
         // This is the same as the RETIRE_OK case.

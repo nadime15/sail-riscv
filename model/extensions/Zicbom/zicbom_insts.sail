@@ -99,7 +99,7 @@ private function process_clean_inval(rs1 : regidx, cbop : cbop_zicbom) -> Execut
             None()  => RETIRE_SUCCESS
           }
         },
-        Err(e, _) =>  Memory_Exception({ e with tval = bits_of(vaddr_for_error) }),
+        Err(e, _) =>  Memory_Exception({ e with excinfo = bits_of(vaddr_for_error) }),
       }
     }
   }
