@@ -70,12 +70,13 @@ private function read_pte forall 'n, 'n in {4, 8} . (
 // Perform PTE address translation as part of VS-stage translation for implicit PTE accesses
 private function translate_PTE_addr(
   pte_addr : gpabits,
+  access   : MemoryAccessType(mem_payload),
   stage    : TranslationStage,
   ext_ptw  : ext_ptw
 ) -> TR_Result(physaddr, PTW_Error) = {
   if stage == VS_Stage then {
     // Supervisor ensures G-stage is enabled; permission checking always uses User.
-    match translate_g_stage(pte_addr, Load(Data), Supervisor) {
+    match translate_g_stage(pte_addr, access, Supervisor) {
       Ok(pa, ext_ptw) => Ok(Physaddr(pa), ext_ptw),
       Err(f, ext_ptw) => Err(f, ext_ptw),
     }
@@ -135,10 +136,13 @@ function pt_walk(
   // use Sv39+ on RV32).
   assert('v == 32 | 'v == 34 | xlen == 64);
 
+  // Save before G-stage translation
+  let pte_addr_original = Physaddr(zero_extend(pte_addr));
+
   // Translate PTE address if performing a VS-stage access
-  let pte_addr : physaddr = match translate_PTE_addr(zero_extend(pte_addr), stage, ext_ptw) {
+  let pte_addr : physaddr = match translate_PTE_addr(zero_extend(pte_addr), Load(Data), stage, ext_ptw) {
     Ok(pa, _)   => pa,
-    Err((e, _)) => return Err(PTW_Implicit_Error(translationException(access, e), zero_extend(pte_addr)), ext_ptw),
+    Err((e, _)) => return Err(PTW_Implicit_Error(translationException(Load(Data), e), zero_extend(pte_addr), Load(Data)), ext_ptw),
   };
 
   // Read this-level PTE from mem (Step 2 of VATP)
@@ -198,8 +202,9 @@ function pt_walk(
                 ppn
               };
               ptw_success_callback(zero_extend(ppn), level);
-
-              Ok(struct {ppn=ppn, pte=pte, pteAddr=pte_addr, level=level, global=global}, ext_ptw)
+              // Store the original (pre-translation) PTE address for 2-stage translation in VS-Stage.
+              // For G-Stage or S-Stage, pte_addr == pte_address_original.
+              Ok(struct {ppn=ppn, pte=pte, pteAddr = pte_addr_original, level=level, global=global}, ext_ptw)
             }
           }
         }
@@ -351,17 +356,15 @@ private function translate_TLB_hit forall 'v, is_sv_or_svx4_mode('v) . (
   do_sum    : bool,
   tlb_index : tlb_index_range,
   ent       : TLB_Entry,
-  _stage    : TranslationStage,
+  stage     : TranslationStage,
   ext_ptw   : ext_ptw,
 ) -> TR_Result(ppn_bits('v), PTW_Error) = {
-
   let pte_size  = if ('v == 32 | 'v == 34) then 4 else 8;
   let pte       = tlb_get_pte(pte_size, ent);  // Step 2 of VATP.
   let ext_pte   = ext_bits_of_PTE(pte);
   let pte_flags = Mk_PTE_Flags(pte[7 .. 0]);
   let pte_check = check_PTE_permission(access, priv, mxr, do_sum, pte_flags,
                                        ext_pte, ext_ptw);
-
   match pte_check {
     PTE_Check_Failure(ext_ptw, pte_failure) =>
       Err(ext_get_ptw_error(pte_failure), ext_ptw),
@@ -375,13 +378,18 @@ private function translate_TLB_hit forall 'v, is_sv_or_svx4_mode('v) . (
             Err(PTW_PTE_Needs_Update(), ext_ptw)
           else {
             // Writeback the PTE (which has new A/D bits)
+            // For VS-stage, pteAddr is the original GPA and needs re-translation
+            let write_paddr : physaddr = match translate_PTE_addr(bits_of(ent.pteAddr), Store(Data), stage, ext_ptw) {
+              Ok(pa, _)  => pa,
+              Err(e, _)  => return Err(PTW_Implicit_Error(translationException(Store(Data), e), bits_of(ent.pteAddr), Store(Data)), ext_ptw),
+            };
+            // Writeback the PTE (which has new A/D bits)
             write_TLB(tlb_index, tlb_set_pte(ent, pte'));
-            match write_pte(ent.pteAddr, pte_size, pte') {
-              Ok(_)  => (),
+            match write_pte(write_paddr, pte_size, pte') {
+              Ok(_)  => Ok(tlb_get_ppn(sv_width, ent, vpn), ext_ptw),
               Err(_) => internal_error(__FILE__, __LINE__,
                                        "invalid physical address in TLB")
-            };
-            Ok(tlb_get_ppn(sv_width, ent, vpn), ext_ptw)
+            }
           }
       }
   }
@@ -425,7 +433,13 @@ private function translate_TLB_miss forall 'v, is_sv_or_svx4_mode('v) . (
             Err(PTW_PTE_Needs_Update(), ext_ptw)
           else {
             // Writeback the PTE (which has new A/D bits)
-            match write_pte(pteAddr, pte_size, pte) {
+            // For VS-stage, pteAddr is the original GPA and needs re-translation
+            let write_paddr : physaddr = match translate_PTE_addr(bits_of(pteAddr), Store(Data), stage, ext_ptw) {
+              Ok(pa, _)  => pa,
+              Err(e, _)  => return Err(PTW_Implicit_Error(translationException(Store(Data), e), bits_of(pteAddr), Store(Data)), ext_ptw),
+            };
+            // We access the PTE via write_paddr, but store the original (pteAddr) PTE address in the TLB.
+            match write_pte(write_paddr, pte_size, pte) {
               Ok(_) => {
                 add_to_TLB(sv_width, asid, vmid, vpn, ppn, pte, pteAddr, level, global, stage);
                 Ok(ppn, ext_ptw)
@@ -582,14 +596,31 @@ function build_exception_context(
     },
     VS_Stage => {
       match ptw_error {
-        PTW_Implicit_Error(e, pte_addr) => {
+        PTW_Implicit_Error(e, pte_addr, access) => {
           // Implicit VS-Stage failure
+          let is_write : bool = match access {
+            Store(_) => true,
+            Load(_)  => false,
+            _        => internal_error(__FILE__, __LINE__, "invalid memory access type"),
+          };
           struct {
             trap  = convertToGuestException(e),
             excinfo_is_gva = true,
             excinfo  = zero_extend(bits_of(gva)),
             excinfo2 = Some(truncate(pte_addr >> 2, xlen)),
-            excinst = None(),
+            // NOTE: "when a guest-page fault is caused by an implicit
+            // memory access during VS-stage address translation and htval/mtval2 is nonzero,
+            // a pseudoinstruction MUST be written to htinst/mtinst (zero is not allowed).
+            // The pseudoinstruction encodes whether the implicit access was a read (PTE fetch)
+            // or a write (hardware A/D bit update in VS-level page tables)."
+            //
+            // 0x00002000 = 32-bit read  (hardware was reading a PTE)
+            // 0x00002020 = 32-bit write (hardware was updating A/D bits)
+            // 0x00003000 = 64-bit read
+            // 0x00003020 = 64-bit write
+            excinst = Some(if xlen == 32
+                           then if is_write then zero_extend(0x00002020) else zero_extend(0x00002000)
+                           else if is_write then zero_extend(0x00003020) else zero_extend(0x00003000)),
             ext = None(),
           }
         },
@@ -601,7 +632,7 @@ function build_exception_context(
             excinfo  = zero_extend(bits_of(gva)),
             excinfo2 = Some(zeros()),
             excinst  = None(),
-            ext     = None(),
+            ext      = None(),
           }
         }
       }
