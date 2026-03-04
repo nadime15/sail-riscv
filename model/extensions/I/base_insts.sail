@@ -550,11 +550,6 @@ function clause execute ECALL() = {
     excinst        = None(),
     ext            = None(),
   };
-  //let t : sync_exception = struct {
-    //trap    = trap,
-    //excinfo = (None() : option(xlenbits)),
-    //ext     = None(),
-  //};
   Trap(cur_privilege, CTL_TRAP(c), PC)
 }
 

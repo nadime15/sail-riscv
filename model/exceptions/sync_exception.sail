@@ -8,34 +8,28 @@
 
 // model context for synchronous exceptions, parameterized for extensions
 
-struct sync_exception = {
-  trap    : ExceptionType,
-  excinfo : option(xlenbits),
-  ext     : option(ext_exception)   // for extensions
-}
-
-struct Exception_Context = {
-  trap           : ExceptionType,
-  excinfo_is_gva : bool,
-  excinfo        : xlenbits,
-  excinfo2       : option(xlenbits),
-  excinst        : option(xlenbits),
-  ext            : option(ext_exception)
-}
-
-// TODO: Build another wrapper without tval2, is_gstage, most of the exceptions dont use tval2, only the one issues by the hypervisor actually, which can be quite rare...
-function exception_context(e : ExceptionType, gva : xlenbits) -> Exception_Context = {
+function exception_context(e : ExceptionType, excinfo : xlenbits) -> Exception_Context = {
   struct {
     trap           = e,
-    excinfo_is_gva = false,
-    excinfo        = gva,
+    // NOTE/TODO: "Field GVA (Guest Virtual Address) is written by the implementation
+    // whenever a trap is taken into HS-mode. For any trap (breakpoint, address misaligned,
+    // access fault, page fault, or guest-page fault) that writes a guest virtual address
+    // to stval, GVA is set to 1. For any other trap into HS-mode, GVA is set to 0."
+    // TODO/NOTE: Check whether all cases are covered
+    excinfo_is_gva = inVirtualPrivilege(),
+    excinfo        = excinfo,
     excinfo2       = None(),
     excinst        = None(),
     ext            = None()
   }
 }
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
+=======
+
+// Wrapper
+>>>>>>> ae9d1f0a (Add Trap Handliing - Part 4)
 function make_exception_context(
   trap           : ExceptionType,
   excinfo        : xlenbits,
@@ -52,7 +46,7 @@ function make_exception_context(
   }
 }
 
-// For instruction exceptions (illegal, virtual, ecall, ebreak) - tval is instruction bits or zero
+// Wrapper, for instruction exceptions (illegal, virtual, ecall, ebreak) - excinfo is instruction bits or zero
 function make_instr_exception_context(
   trap    : ExceptionType,
   excinfo : xlenbits,  // instruction bits or zeros
