@@ -93,7 +93,7 @@ function clause hartSupports(Ext_Zicboz) = config extensions.Zicboz.supported
 // Control-flow Integrity: Landing Pad
 enum clause extension = Ext_Zicfilp
 mapping clause extensionName = Ext_Zicfilp <-> "zicfilp"
-function clause hartSupports(Ext_Zicfilp) = config extensions.Zicfilp.supported
+function clause hartSupports(Ext_Zicfilp) = false //config extensions.Zicfilp.supported
 // Base Counters and Timers
 enum clause extension = Ext_Zicntr
 mapping clause extensionName = Ext_Zicntr <-> "zicntr"

@@ -266,10 +266,18 @@ function trap_handler(
         VirtualUser       => 0b0,
         VirtualSupervisor => 0b1,
       };
+      print_log("inVirtualPrivilege = " ^ ( if inVirtualPrivilege() then "true" else "false" ));
+      print_log("cur_privilege = " ^ to_str(cur_privilege));
+      print_log("SRET: hstatus before = " ^ bits_str(hstatus.bits));
+      print_log("cur_privilege bits = " ^ bits_str(privLevel_to_bits(cur_privilege)));
+      print_log("privLevel_is_virtual = " ^ (if privLevel_is_virtual(cur_privilege) then "true" else "false" ));
+      print_log("cur_privilege == VirtualSupervisor: " ^ ( if cur_privilege == VirtualSupervisor then "true" else "false"));
+      print_log("cur_privilege == VirtualUser: " ^ ( if cur_privilege == VirtualUser then "true" else "false"));
       hstatus[SPV]  = bool_to_bit(inVirtualPrivilege());
+      print_log("SRET: hstatus after = " ^ bits_str(hstatus.bits));
       hstatus[SPVP] = if inVirtualPrivilege() then mstatus[SPP] else hstatus[SPVP];
       hstatus[GVA]  = bool_to_bit(excinfo_is_gva);
-
+      print_log("SRET: hstatus after setting SPVP and GVA = " ^ bits_str(hstatus.bits));
       stval           = tval(excinfo);
       htval           = tval(excinfo2);
       htinst          = tval(excinst);
