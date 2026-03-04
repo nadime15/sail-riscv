@@ -207,10 +207,10 @@ function trap_handler(
   c              : TrapCause,
   pc             : xlenbits,
 ) -> xlenbits = {
-//function trap_handler(del_priv : Privilege, c : TrapCause, pc : xlenbits, info : option(xlenbits), ext : option(ext_exception)) -> xlenbits = {
   let is_interrupt = trapCause_is_interrupt(c);
   let cause        = trapCause_bits(c);
 
+  // TODO: Improve this
   let (excinfo_is_gva, excinfo, excinfo2, excinst, ext) : (bool, option(xlenbits), option(xlenbits), option(xlenbits), option(  ext_exception)) = match c {
     Interrupt(_) => (false, Some(zeros()), None(), None(), None()),
     Exception(ctx) => (ctx.excinfo_is_gva, Some(ctx.excinfo), ctx.excinfo2, ctx.excinst, ctx.ext),
@@ -284,9 +284,10 @@ function trap_handler(
       prepare_trap_vector(del_priv, scause)
     },
     User              => internal_error(__FILE__, __LINE__, "Invalid privilege level"),
-    VirtualUser       => internal_error(__FILE__, __LINE__, "Hypervisor extension not supported"),
+    VirtualUser       => internal_error(__FILE__, __LINE__, "Invalid privilege level"),
     VirtualSupervisor => {
       assert (currentlyEnabled(Ext_H), "no hypervisor-extended supervisor mode present for delegation");
+      assert (inVirtualPrivilege(), "trap to VS-mode but not in virtual privilege");
 
       vscause[IsInterrupt] = bool_to_bit(is_interrupt);
       vscause[Cause]       = zero_extend(cause);
@@ -294,11 +295,9 @@ function trap_handler(
       vsstatus[SPIE] = vsstatus[SIE];
       vsstatus[SIE]  = 0b0;
       vsstatus[SPP]  = match cur_privilege {
-        User              => 0b0,
-        Supervisor        => 0b1,
-        Machine           => internal_error(__FILE__, __LINE__, "invalid privilege for vs-mode trap"),
         VirtualUser       => 0b0,
         VirtualSupervisor => 0b1,
+        _                 => internal_error(__FILE__, __LINE__, "invalid privilege for vs-mode trap"),
       };
 
       vsepc          = pc;
@@ -328,10 +327,15 @@ function exception_handler(cur_priv : Privilege, ctl : ctl_result, pc: xlenbits)
     },
     CTL_MRET()  => {
       let prev_priv = cur_privilege;
+
       mstatus[MIE]  = mstatus[MPIE];
       mstatus[MPIE] = 0b1;
-      cur_privilege = privLevel_bits(mstatus[MPP], 0b0); // TODO: use mstatus[MPV] if hypervisor enabled
+      // MPV is ignored when MPP=3, as there is no virtual machine mode
+      cur_privilege = privLevel_bits((mstatus[MPP], if mstatus[MPP] == 0b11 then 0b0 else mstatus[MPV]));
+
       mstatus[MPP]  = privLevel_to_bits(if currentlyEnabled(Ext_U) then User else Machine);
+      mstatus[MPV]  = 0b0;
+
       if   cur_privilege != Machine
       then mstatus[MPRV] = 0b0;
 
@@ -347,13 +351,31 @@ function exception_handler(cur_priv : Privilege, ctl : ctl_result, pc: xlenbits)
     },
     CTL_SRET()  => {
       let prev_priv = cur_privilege;
-      mstatus[SIE]  = mstatus[SPIE];
-      mstatus[SPIE] = 0b1;
-      cur_privilege = if mstatus[SPP] == 0b1 then Supervisor else User;
-      mstatus[SPP]  = 0b0;
-      if   cur_privilege != Machine
-      then mstatus[MPRV] = 0b0;
+      let ret =
+        // SRET in VS-Mode
+        if inVirtualPrivilege() then {
+          let new_priv = if vsstatus[SPP] == 0b1 then VirtualSupervisor else VirtualUser;
+          vsstatus[SPP]  = 0b0;
+          vsstatus[SIE]  = vsstatus[SPIE];
+          vsstatus[SPIE] = 0b1;
+          cur_privilege  = new_priv;
+          new_priv
+        } else {
+          // SRET in HS-mode or M-mode
+          // SPV is only meaningful when H is enabled, otherwise treat as 0
+          let new_priv = privLevel_bits((0b0 @ mstatus[SPP], hstatus[SPV] & bool_to_bit(currentlyEnabled(Ext_H))));
+          hstatus[SPV]  = 0b0;
+          mstatus[SPP]  = 0b0;
+          mstatus[SIE]  = mstatus[SPIE];
+          mstatus[SPIE] = 0b1;
+          // TODO: Add Ssdbltrp part once supported
+          if new_priv != Machine
+          then mstatus[MPRV] = 0b0;
+          cur_privilege = new_priv;
+          Supervisor
+        };
 
+      // TODO/NOTE: This will probably fail without adding VS/VU case support. Potentially turn off this extension
       if   hartSupports(Ext_Zicfilp)
       then zicfilp_restore_elp_on_xret(sRET, cur_privilege);
 
@@ -363,7 +385,7 @@ function exception_handler(cur_priv : Privilege, ctl : ctl_result, pc: xlenbits)
       then print_log("ret-ing from " ^ to_str(prev_priv)
                           ^ " to " ^ to_str(cur_privilege));
 
-      prepare_xret_target(Supervisor)
+      prepare_xret_target(ret)
     },
   }
 }
