@@ -6,10 +6,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 // =======================================================================================
 
-// default exception model
-
-type ext_exception = unit
-
 // Is XRET from given mode permitted by extension?
 function ext_check_xret_priv (_p : Privilege) : Privilege -> bool = true
 // Called if above check fails

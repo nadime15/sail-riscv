@@ -206,15 +206,15 @@ function trap_handler(
   del_priv       : Privilege,
   c              : TrapCause,
   pc             : xlenbits,
-  excinfo_is_gva : option(bool),
-  excinfo        : option(xlenbits),
-  excinfo2       : option(xlenbits),
-  excinst        : option(xlenbits),
-  ext            : option(ext_exception)
 ) -> xlenbits = {
 //function trap_handler(del_priv : Privilege, c : TrapCause, pc : xlenbits, info : option(xlenbits), ext : option(ext_exception)) -> xlenbits = {
   let is_interrupt = trapCause_is_interrupt(c);
   let cause        = trapCause_bits(c);
+
+  let (excinfo_is_gva, excinfo, excinfo2, excinst, ext) : (bool, option(xlenbits), option(xlenbits), option(xlenbits), option(  ext_exception)) = match c {
+    Interrupt(_) => (false, Some(zeros()), None(), None(), None()),
+    Exception(ctx) => (ctx.excinfo_is_gva, Some(ctx.excinfo), ctx.excinfo2, ctx.excinst, ctx.ext),
+  };
 
   trap_callback(is_interrupt, cause);
 
@@ -236,9 +236,11 @@ function trap_handler(
       mstatus[MPP]  = privLevel_to_bits(cur_privilege);
 
       mstatus[MPV] = bool_to_bit(inVirtualPrivilege());
-      // mstatus[GVA]
+      mstatus[GVA] = bool_to_bit(excinfo_is_gva);
 
       mtval         = tval(excinfo);
+      mtval2        = tval(excinfo2);
+      mtinst        = tval(excinst);
       mepc          = pc;
 
       cur_privilege = del_priv;
@@ -261,10 +263,16 @@ function trap_handler(
         User              => 0b0,
         Supervisor        => 0b1,
         Machine           => internal_error(__FILE__, __LINE__, "invalid privilege for s-mode trap"),
-        VirtualUser       => internal_error(__FILE__, __LINE__, "Hypervisor extension not supported"),
-        VirtualSupervisor => internal_error(__FILE__, __LINE__, "Hypervisor extension not supported"),
+        VirtualUser       => 0b0,
+        VirtualSupervisor => 0b1,
       };
+      hstatus[SPV]  = bool_to_bit(inVirtualPrivilege());
+      hstatus[SPVP] = if inVirtualPrivilege() then mstatus[SPP] else hstatus[SPVP];
+      hstatus[GVA]  = bool_to_bit(excinfo_is_gva);
+
       stval           = tval(excinfo);
+      htval           = tval(excinfo2);
+      htinst          = tval(excinst);
       sepc            = pc;
 
       cur_privilege   = del_priv;
@@ -278,11 +286,8 @@ function trap_handler(
     User              => internal_error(__FILE__, __LINE__, "Invalid privilege level"),
     VirtualUser       => internal_error(__FILE__, __LINE__, "Hypervisor extension not supported"),
     VirtualSupervisor => {
-      print_endline("TODO");
-      internal_error(__FILE__, __LINE__, "Hypervisor extension not supported");
+      assert (currentlyEnabled(Ext_H), "no hypervisor-extended supervisor mode present for delegation");
 
-      /*
-      assert (currentlyEnabled(Ext_H), "Hypervisor extension not supported");
       vscause[IsInterrupt] = bool_to_bit(is_interrupt);
       vscause[Cause]       = zero_extend(cause);
 
@@ -295,15 +300,17 @@ function trap_handler(
         VirtualUser       => 0b0,
         VirtualSupervisor => 0b1,
       };
+
       vsepc          = pc;
-      vstval         = some_or_zero(context.excinfo);
+      vstval         = tval(excinfo);
 
       cur_privilege  = del_priv;
 
-      handle_trap_extension(del_priv, pc, context.ext);
+      handle_trap_extension(del_priv, pc, ext);
+
       track_trap(del_priv);
+
       prepare_trap_vector(del_priv, vscause)
-      */
     },
   };
 }
@@ -315,7 +322,7 @@ function exception_handler(cur_priv : Privilege, ctl : ctl_result, pc: xlenbits)
       if   get_config_print_exception()
       then print_log("trapping from " ^ to_str(cur_priv) ^ " to " ^ to_str(del_priv)
                           ^ " to handle " ^ to_str(e.trap));
-    trap_handler(del_priv, Exception(e.trap), pc, Some(e.excinfo_is_gva), Some(e.excinfo), e.excinfo2, e.excinst, e.ext);
+    trap_handler(del_priv, Exception(e), pc);
 
     // trap_handler(del_priv, Exception(e.trap), pc, Some(e.excinfo), e.ext)
     },
@@ -399,7 +406,7 @@ function handle_exception(c : Exception_Context) -> unit = {
 }
 
 function handle_interrupt(i : InterruptType, del_priv : Privilege) -> unit =
-  set_next_pc(trap_handler(del_priv, Interrupt(i), PC, None(), None(), None(), None(), None()))
+  set_next_pc(trap_handler(del_priv, Interrupt(i), PC))
 
 // Reset misa to enable the maximal set of supported extensions.
 function reset_misa() -> unit = {
