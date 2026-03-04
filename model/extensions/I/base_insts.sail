@@ -539,8 +539,8 @@ function clause execute ECALL() = {
     User              => E_U_EnvCall(),
     Supervisor        => E_S_EnvCall(),
     Machine           => E_M_EnvCall(),
-    VirtualUser       => internal_error(__FILE__, __LINE__, "Hypervisor extension not supported"),
-    VirtualSupervisor => internal_error(__FILE__, __LINE__, "Hypervisor extension not supported"),
+    VirtualUser       => E_U_EnvCall(),
+    VirtualSupervisor => E_VS_EnvCall(),
   };
   let c : Exception_Context = struct {
     trap           = trap,
@@ -585,13 +585,20 @@ function clause execute SRET() = {
     User              => true,
     Supervisor        => not(currentlyEnabled(Ext_S)) | mstatus[TSR] == 0b1,
     Machine           => not(currentlyEnabled(Ext_S)),
-    VirtualUser       => internal_error(__FILE__, __LINE__, "Hypervisor extension not supported"),
-    VirtualSupervisor => internal_error(__FILE__, __LINE__, "Hypervisor extension not supported"),
+    VirtualUser       => false,
+    VirtualSupervisor => false,
   };
-  if   sret_illegal
-  then Illegal_Instruction()
-  else if not(ext_check_xret_priv (Supervisor))
-  then Ext_XRET_Priv_Failure()
+  let sret_virtual : bool = match cur_privilege {
+    VirtualUser       => true,
+    VirtualSupervisor => hstatus[VTSR] == 0b1,
+    _                 => false,
+  };
+  if        sret_illegal
+  then      Illegal_Instruction()
+  else if   sret_virtual
+  then      Virtual_Instruction()
+  else if   not(ext_check_xret_priv(Supervisor))
+  then      Ext_XRET_Priv_Failure()
   else {
     set_next_pc(exception_handler(cur_privilege, CTL_SRET(), PC));
     RETIRE_SUCCESS
@@ -623,9 +630,19 @@ function clause execute WFI() =
     Supervisor        => if   mstatus[TW] == 0b1
                          then Illegal_Instruction()
                          else Enter_Wait(WAIT_WFI),
-    User              => Illegal_Instruction(),
-    VirtualUser       => internal_error(__FILE__, __LINE__, "Hypervisor extension not supported"),
-    VirtualSupervisor => internal_error(__FILE__, __LINE__, "Hypervisor extension not supported"),
+    User              => if   mstatus[TW] == 0b1 | currentlyEnabled(Ext_S)
+                         then Illegal_Instruction()
+                         else Enter_Wait(WAIT_WFI),
+    // VU raises illegal when TW=1, else virtual
+    VirtualUser       => if   mstatus[TW] == 0b1
+                         then Illegal_Instruction()
+                         else Virtual_Instruction(),
+    // VS raises illegal when TW=1, virtual when TW=0 and VTW=1
+    VirtualSupervisor => if   mstatus[TW] == 0b1
+                         then Illegal_Instruction()
+                         else if hstatus[VTW] == 0b1
+                         then Virtual_Instruction()
+                         else Enter_Wait(WAIT_WFI),
   }
 
 mapping clause assembly = WFI() <-> "wfi"
