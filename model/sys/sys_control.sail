@@ -357,7 +357,7 @@ function exception_handler(cur_priv : Privilege, ctl : ctl_result, pc: xlenbits)
           vsstatus[SIE]  = vsstatus[SPIE];
           vsstatus[SPIE] = 0b1;
           cur_privilege  = new_priv;
-          new_priv
+          VirtualSupervisor
         } else {
           // SRET in HS-mode or M-mode
           // SPV is only meaningful when H is enabled, otherwise treat as 0
@@ -370,7 +370,6 @@ function exception_handler(cur_priv : Privilege, ctl : ctl_result, pc: xlenbits)
           if new_priv != Machine
           then mstatus[MPRV] = 0b0;
           cur_privilege = new_priv;
-          // TODO/NOTE: Setting cur_privilege but return Supervisor?
           Supervisor
         };
 
