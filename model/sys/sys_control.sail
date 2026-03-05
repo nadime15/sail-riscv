@@ -55,18 +55,16 @@ function check_CSR(csr : csreg, p : Privilege, access_type : CSRAccessType) -> b
 function exception_delegatee(e : ExceptionType, p : Privilege) -> Privilege = {
   let idx = unsigned(exceptionType_bits(e));
   let super = bit_to_bool(medeleg.bits[idx]);
-  let virtual = bit_to_bool(hedeleg.bits[idx]);
+  let virtual = bit_to_bool(hedeleg.bits[idx]) & inVirtualPrivilege();
 
-  // TODO: check VS/VU-mode if hypervisor extension enabled
-  //let deleg = if currentlyEnabled(Ext_S) & super then Supervisor else Machine;
   let deleg = if currentlyEnabled(Ext_S) & super
               then if currentlyEnabled(Ext_H) & virtual
                    then VirtualSupervisor
                    else Supervisor
               else Machine;
-  // Cannot delegate to a less privileged mode. Supervisor and VirtualSupervisor
-  // have the same privilege bits so must be handled explicitly.
-  if privLevel_to_bits(deleg) >=_u privLevel_to_bits(p) & not(deleg == VirtualSupervisor & p == Supervisor)
+
+  // Cannot delegate to a less privileged mode.
+  if privLevel_to_bits(deleg) >=_u privLevel_to_bits(p)
   then deleg else p
 }
 
@@ -372,6 +370,7 @@ function exception_handler(cur_priv : Privilege, ctl : ctl_result, pc: xlenbits)
           if new_priv != Machine
           then mstatus[MPRV] = 0b0;
           cur_privilege = new_priv;
+          // TODO/NOTE: Setting cur_privilege but return Supervisor?
           Supervisor
         };
 
