@@ -674,7 +674,7 @@ function clause execute SFENCE_VMA(rs1, rs2) = {
                            0b0 => { flush_TLB(asid, vmid, addr, S_Stage); RETIRE_SUCCESS },
                          },
     Machine           => { flush_TLB(asid, vmid, addr, S_Stage); RETIRE_SUCCESS },
-    VirtualUser       => internal_error(__FILE__, __LINE__, "Hypervisor extension not supported"),
+    VirtualUser       => Virtual_Instruction(),
     VirtualSupervisor => match hstatus[VTVM] {
                             0b1 => Virtual_Instruction(),
                             0b0 => { flush_TLB(asid, vmid, addr, VS_Stage); RETIRE_SUCCESS },

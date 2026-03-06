@@ -44,18 +44,37 @@ function check_CSR_priv(csr : csreg, p : Privilege) -> bool =
 function check_CSR_access(csr : csreg, access_type : CSRAccessType) -> bool =
   not((access_type == CSRWrite | access_type == CSRReadWrite) & (csrAccess(csr) == 0b11))
 
+function counter_csr_check(index : range(0, 31), p : Privilege) -> CSRCheckResult =
+  if feature_enabled_for_priv(p, mcounteren.bits[index], scounteren.bits[index], hcounteren.bits[index]) == FEATURE_VIRTUAL
+  then CSR_Virtual()
+  else CSR_Illegal()
+
 function check_CSR(csr : csreg, p : Privilege, access_type : CSRAccessType) -> CSRCheckResult =
   if check_CSR_priv(csr, p)
-    & check_CSR_access(csr, access_type)
-    & is_CSR_accessible(csr, p, access_type)
-    & stateen_allows_CSR_access(csr, p, access_type) then {
-      CSR_Check_OK()
-  // TODO: Improve this
-  } else if (p == VirtualSupervisor | p == VirtualUser)
-    & check_CSR_access(csr, access_type)
-    & not(check_CSR_priv(csr, p))
-    & is_CSR_accessible(csr, p, access_type) then {
-    CSR_Virtual()
+     & check_CSR_access(csr, access_type)
+     & is_CSR_accessible(csr, p, access_type)
+     & stateen_allows_CSR_access(csr, p, access_type) then {
+    CSR_Check_OK()
+  } else if (p == VirtualSupervisor | p == VirtualUser) then {
+    // TODO/NOTE: I don't want to modify is_CSR_accessible(), this is a temp. work around.
+    match csr {
+      // satp: virtual-instruction when VTVM=1 in VS mode
+      0x180 => if p == VirtualSupervisor & hstatus[VTVM] == 0b1 then CSR_Virtual() else CSR_Illegal(),
+      // Counter CSRs: use feature_enabled_for_priv to distinguish virtual vs illegal
+      0xC00 => counter_csr_check(0, p),
+      0xC01 => counter_csr_check(1, p),
+      0xC02 => counter_csr_check(2, p),
+      0xC80 => counter_csr_check(0, p),
+      0xC81 => counter_csr_check(1, p),
+      0xC82 => counter_csr_check(2, p),
+      // hpmcounters 3-31
+      _ if csr[11..5] == 0b1100000 & unsigned(csr[4..0]) >= 3 => counter_csr_check(unsigned(csr[4..0]), p),
+      // hpmcounters high-half 3-31
+      _ if csr[11..5] == 0b1100100 & unsigned(csr[4..0]) >= 3 => counter_csr_check(unsigned(csr[4..0]), p),
+      // H-extension CSRs and VS CSRs: virtual-instruction if priv check fails but CSR is accessible from HS
+      _ if check_CSR_access(csr, access_type) & not(check_CSR_priv(csr, p)) & is_CSR_accessible(csr, p, access_type) => CSR_Virtual(),
+      _ => CSR_Illegal(),
+    }
   } else {
     CSR_Illegal()
   }

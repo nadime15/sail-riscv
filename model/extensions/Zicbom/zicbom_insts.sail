@@ -10,7 +10,7 @@
 
 function clause currentlyEnabled(Ext_Zicbom) = hartSupports(Ext_Zicbom)
 
-private function cbo_clean_flush_enabled(p : Privilege) -> bool = feature_enabled_for_priv(p, menvcfg[CBCFE][0], senvcfg[CBCFE][0], henvcfg[CBCFE][0])
+private function cbo_clean_flush_enabled(p : Privilege) -> FeatureEnabledResult = feature_enabled_for_priv(p, menvcfg[CBCFE][0], senvcfg[CBCFE][0], henvcfg[CBCFE][0])
 
 // *****************************************************************
 union clause instruction = ZICBOM : (cbop_zicbom, regidx)
@@ -106,14 +106,18 @@ private function process_clean_inval(rs1 : regidx, cbop : cbop_zicbom) -> Execut
 }
 
 function clause execute ZICBOM(CBO_CLEAN, rs1) =
-  if   cbo_clean_flush_enabled(cur_privilege)
-  then process_clean_inval(rs1, CBO_CLEAN)
-  else Illegal_Instruction()
+  match cbo_clean_flush_enabled(cur_privilege) {
+    FEATURE_ILLEGAL => Illegal_Instruction(),
+    FEATURE_VIRTUAL => Virtual_Instruction(),
+    FEATURE_ENABLED => process_clean_inval(rs1, CBO_CLEAN),
+  }
 
 function clause execute ZICBOM(CBO_FLUSH, rs1) =
-  if   cbo_clean_flush_enabled(cur_privilege)
-  then process_clean_inval(rs1, CBO_FLUSH)
-  else Illegal_Instruction()
+  match cbo_clean_flush_enabled(cur_privilege) {
+    FEATURE_ILLEGAL => Illegal_Instruction(),
+    FEATURE_VIRTUAL => Virtual_Instruction(),
+    FEATURE_ENABLED => process_clean_inval(rs1, CBO_FLUSH),
+  }
 
 function clause execute ZICBOM(CBO_INVAL, rs1) =
   match cbop_priv_check(cur_privilege) {
