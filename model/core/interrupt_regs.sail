@@ -238,7 +238,21 @@ function clause read_CSR(0x645) = lower_mip_to_hvip(mip, hvip).bits
 function clause read_CSR(0x604) = lower_mie_to_hie(mie).bits
 function clause read_CSR(0x644) = lower_mip_to_hip(mip).bits
 
-function clause write_CSR(0x645, value) = { hvip = legalize_hvip(hvip, value); mip[VSSI] = hvip[VSSI]; Ok(hvip.bits) }
+function clause write_CSR(0x645, value) = {
+hvip = legalize_hvip(hvip, value);
+mip[VSSI] = hvip[VSSI];
+// mip.VSTI and mip.VSEI have a more complex mechanism and depend on hvip.
+// Ideally, they should be handled in legalizer_mip and updated whenever
+// hvip.VSTI/VSEI changes. However, because mip is read directly internally
+// and changes to hvip dont propate through the system we do it manually,
+//
+// As a workaround, mip.VSTI and mip.VSEI are updated explicitly whenever
+// their corresponding hvip bits change. We need to change this and remove
+// the following two lines at some point.
+mip[VSTI] = hvip[VSTI];
+mip[VSEI] = hvip[VSEI];
+Ok(hvip.bits)
+}
 function clause write_CSR(0x604, value) = { mie = legalize_hie(mie, value); Ok(lower_mie_to_hie(mie).bits) }
 function clause write_CSR(0x644, value) = { mip = legalize_hip(mip, value); Ok(lower_mip_to_hip(mip).bits) }
 
