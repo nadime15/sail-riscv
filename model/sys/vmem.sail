@@ -142,7 +142,7 @@ function pt_walk(
   // Translate PTE address if performing a VS-stage access
   let pte_addr : physaddr = match translate_PTE_addr(zero_extend(pte_addr), Load(Data), stage, ext_ptw) {
     Ok(pa, _)   => pa,
-    Err((e, _)) => return Err(PTW_Implicit_Error(translationException(Load(Data), e), zero_extend(pte_addr), Load(Data)), ext_ptw),
+    Err((e, _)) => return Err(PTW_Implicit_Error(translationException(access, e), zero_extend(pte_addr), Load(Data)), ext_ptw),
   };
 
   // Read this-level PTE from mem (Step 2 of VATP)
@@ -381,7 +381,7 @@ private function translate_TLB_hit forall 'v, is_sv_or_svx4_mode('v) . (
             // For VS-stage, pteAddr is the original GPA and needs re-translation
             let write_paddr : physaddr = match translate_PTE_addr(bits_of(ent.pteAddr), Store(Data), stage, ext_ptw) {
               Ok(pa, _)  => pa,
-              Err(e, _)  => return Err(PTW_Implicit_Error(translationException(Store(Data), e), bits_of(ent.pteAddr), Store(Data)), ext_ptw),
+              Err(e, _)  => return Err(PTW_Implicit_Error(translationException(access, e), bits_of(ent.pteAddr), Store(Data)), ext_ptw),
             };
             // Writeback the PTE (which has new A/D bits)
             write_TLB(tlb_index, tlb_set_pte(ent, pte'));
