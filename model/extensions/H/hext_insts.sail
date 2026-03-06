@@ -32,7 +32,7 @@ mapping clause encdec = HLVTYPE(width, HLV, is_unsigned, rs1, rd)
 
 mapping clause encdec = HLVTYPE(width, HLVX, true, rs1, rd)
   <-> 0b0110 @ width_enc(width) @ 0b000011 @ encdec_reg(rs1) @ 0b100 @ encdec_reg(rd) @ 0b1110011
-  when currentlyEnabled(Ext_H) & (width == 1 | width == 2)
+  when currentlyEnabled(Ext_H) & (width == 2 | width == 4)
 
 // TODO/NOTE: We should likely perform fine-grained, byte-wise memory accesses.
 function clause execute HLVTYPE(width, op, is_unsigned, rs1, rd) = {
