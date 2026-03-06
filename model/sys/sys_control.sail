@@ -44,11 +44,21 @@ function check_CSR_priv(csr : csreg, p : Privilege) -> bool =
 function check_CSR_access(csr : csreg, access_type : CSRAccessType) -> bool =
   not((access_type == CSRWrite | access_type == CSRReadWrite) & (csrAccess(csr) == 0b11))
 
-function check_CSR(csr : csreg, p : Privilege, access_type : CSRAccessType) -> bool =
-    check_CSR_priv(csr, p)
-  & check_CSR_access(csr, access_type)
-  & is_CSR_accessible(csr, p, access_type)
-  & stateen_allows_CSR_access(csr, p, access_type)
+function check_CSR(csr : csreg, p : Privilege, access_type : CSRAccessType) -> CSRCheckResult =
+  if check_CSR_priv(csr, p)
+    & check_CSR_access(csr, access_type)
+    & is_CSR_accessible(csr, p, access_type)
+    & stateen_allows_CSR_access(csr, p, access_type) then {
+      CSR_Check_OK()
+  // TODO: Improve this
+  } else if (p == VirtualSupervisor | p == VirtualUser)
+    & check_CSR_access(csr, access_type)
+    & not(check_CSR_priv(csr, p))
+    & is_CSR_accessible(csr, p, access_type) then {
+    CSR_Virtual()
+  } else {
+    CSR_Illegal()
+  }
 
 // Exception delegation: given an exception and the privilege at which
 // it occurred, returns the privilege at which it should be handled.

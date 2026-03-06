@@ -143,6 +143,13 @@ function is_store_conditional forall ('a : Type) . (access : MemoryAccessType('a
 // CSR access types
 enum CSRAccessType = { CSRRead, CSRWrite, CSRReadWrite }
 
+// CSR check results
+union CSRCheckResult = {
+  CSR_Check_OK : unit,
+  CSR_Illegal  : unit,
+  CSR_Virtual  : unit,
+}
+
 type is_mem_width('w) = 'w in {1, 2, 4, 8}
 
 // architectural interrupt definitions
