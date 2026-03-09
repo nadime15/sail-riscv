@@ -6,10 +6,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 // =======================================================================================
 
-function make_shadow_stack_exception() -> sync_exception =
-  struct { trap    = E_Software_Check(),
-           excinfo = Some(zero_extend(software_check_cause(SWC_SHADOW_STACK_FAULT))),
-           ext     = None() }
+function make_shadow_stack_exception() -> Exception_Context = exception_context(E_Software_Check(), zero_extend(software_check_cause(SWC_SHADOW_STACK_FAULT)))
 
 // *****************************************************************
 
@@ -38,7 +35,7 @@ function clause execute SSPUSH(rs2) = {
   // TODO: get the dynamic xlen here.
   let width = xlen_bytes;
   if not(is_aligned_addr(vaddr, width))
-  then return Memory_Exception(vaddr, E_SAMO_Access_Fault());
+  then return Memory_Exception(exception_context(E_SAMO_Access_Fault(), bits_of(vaddr)));
 
   match vmem_write_addr(vaddr, width, X(rs2), Store(ShadowStack), false, false, false) {
     Ok(_)  => { ssp = vaddr_bits;
@@ -85,7 +82,7 @@ function clause execute SSPOPCHK(rs1) = {
   // TODO: get the dynamic xlen here.
   let width = xlen_bytes;
   if not(is_aligned_addr(ssp_addr, width))
-  then return Memory_Exception(ssp_addr, E_SAMO_Access_Fault());
+  then return Memory_Exception(exception_context(E_SAMO_Access_Fault(), bits_of(ssp_addr)));
 
   match vmem_read_addr(ssp_addr, zeros(), width, Load(ShadowStack), false, false, false) {
     Ok(data) => {
@@ -178,11 +175,11 @@ function clause execute SSAMOSWAP(aq, rl, rs2, rs1, width, rd) = {
   // "The same exception options [as AMOs in the A extension] apply if
   // the address is not naturally aligned."
   if not(is_aligned_addr(vaddr, width))
-  then return Memory_Exception(vaddr, E_SAMO_Addr_Align());
+  then return Memory_Exception(exception_context(E_SAMO_Addr_Align(), bits_of(vaddr)));
 
   let paddr : physaddr = match translateAddr(vaddr, access) {
     Ok(addr, _) => addr,
-    Err(e, _)   => return Memory_Exception(vaddr, e),
+    Err(e, _)   => return Memory_Exception(e),
   };
 
   // The `aq` and `rl` flags follow the AMO model in Zaamo: "Just as
@@ -192,9 +189,9 @@ function clause execute SSAMOSWAP(aq, rl, rs2, rs1, width, rd) = {
 
   let 'width = width;
   let mem_val : bits('width * 8) = match mem_write_ea(paddr, width, aq & rl, rl, true) {
-    Err(e) => return Memory_Exception(vaddr, e),
+    Err(e) => return Memory_Exception(exception_context(e, bits_of(vaddr))),
     Ok(_)  => match mem_read(access, paddr, width, aq, aq & rl, true) {
-      Err(e) => return Memory_Exception(vaddr, e),
+      Err(e) => return Memory_Exception(exception_context(e, bits_of(vaddr))),
       Ok(v)  => v,
     },
   };
@@ -205,7 +202,7 @@ function clause execute SSAMOSWAP(aq, rl, rs2, rs1, width, rd) = {
   match mem_write_value(paddr, width, write_val, access, aq & rl, rl, true) {
     Ok(true)  => X(rd) = sign_extend(mem_val),
     Ok(false) => internal_error(__FILE__, __LINE__, "AMOSWAP_SS got false from mem_write_value"),
-    Err(e)    => return Memory_Exception(vaddr, e),
+    Err(e)    => return Memory_Exception(exception_context(e, bits_of(vaddr))),
   };
 
   RETIRE_SUCCESS

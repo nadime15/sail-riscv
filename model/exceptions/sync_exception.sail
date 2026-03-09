@@ -23,13 +23,8 @@ function exception_context(e : ExceptionType, excinfo : xlenbits) -> Exception_C
     ext            = None()
   }
 }
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-=======
 
 // Wrapper
->>>>>>> ae9d1f0a (Add Trap Handliing - Part 4)
 function make_exception_context(
   trap           : ExceptionType,
   excinfo        : xlenbits,
@@ -60,4 +55,3 @@ function make_instr_exception_context(
     ext            = None(),
   }
 }
->>>>>>> 323f683b (Add Trap Handling - Part 3)

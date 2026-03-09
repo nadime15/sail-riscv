@@ -619,7 +619,7 @@ function clause execute EBREAK() = {
     Some(excinfo) => excinfo,
     None()        => zeros(),
   };
-  Trap(cur_privilege, CTL_TRAP(exception_context(trap, excinfo), PC))
+  Trap(cur_privilege, CTL_TRAP(exception_context(trap, excinfo)), PC)
 }
 
 mapping clause assembly = EBREAK() <-> "ebreak"
