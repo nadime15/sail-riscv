@@ -720,6 +720,12 @@ function translateAddr(
 // Initialize Virtual Memory state
 
 // PUBLIC: invoked from reset() [postlude/model.sail]
-function reset_vmem() -> unit = reset_TLB()
+function reset_vmem() -> unit = {
+  // "If the hypervisor extension is implemented, the hgatp.MODE and vsatp.MODE fields are reset to 0."
+  vsatp = zeros();
+  hgatp = zeros();
+
+  reset_TLB()
+}
 
 // ****************************************************************
