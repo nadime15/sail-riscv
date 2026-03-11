@@ -74,12 +74,20 @@ type tlb_index_range = range(0, num_tlb_entries - 1)
 
 private register tlb : vector(num_tlb_entries, option(TLB_Entry)) = vector_init(None())
 
-// Indexed by the lowest bits of the VPN.
+// Indexed by the lowest bits of the VPN XORed with the translation stage,
+// to avoid collisions between VS-stage and G-stage entries for the same VPN.
 function tlb_hash forall 'v, is_sv_or_svx4_mode('v) . (
   _sv_mode : int('v),
-  vpn     : vpn_bits('v),
-) -> tlb_index_range =
-  unsigned(vpn[num_tlb_entries_exp - 1 .. 0])
+  vpn      : vpn_bits('v),
+  stage    : TranslationStage,
+) -> tlb_index_range = {
+  let stage_bits : bits(num_tlb_entries_exp) = match stage {
+    S_Stage  => zero_extend(0b00),
+    VS_Stage => zero_extend(0b01),
+    G_Stage  => zero_extend(0b10),
+  };
+  unsigned(vpn[num_tlb_entries_exp - 1 .. 0] ^ stage_bits)
+}
 
 // PUBLIC: invoked in reset_vmem() [vmem.sail]
 function reset_TLB() -> unit = tlb = vector_init(None())
@@ -140,7 +148,7 @@ function lookup_TLB forall 'v, is_sv_or_svx4_mode('v) . (
   vpn      : vpn_bits('v),
   stage    : TranslationStage,
 ) -> option((tlb_index_range, TLB_Entry)) = {
-  let index = tlb_hash('v, vpn);
+  let index = tlb_hash('v, vpn, stage);
   match tlb[index] {
     None() => None(),
     Some(entry) => {
@@ -182,7 +190,7 @@ function add_to_TLB forall 'v, is_sv_or_svx4_mode('v) . (
   // to add it to the index corresponding to the page because that is how
   // lookup_TLB looks it up. For superpages will just end up with the same
   // TLB entry in multiple slots.
-  let index = tlb_hash('v, vpn);
+  let index = tlb_hash('v, vpn, stage);
   tlb[index] = Some(entry);
 }
 
