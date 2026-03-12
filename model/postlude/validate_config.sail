@@ -281,20 +281,29 @@ private function check_misc_extension_dependencies() -> bool = {
     // written with the faulting instruction.
     // TODO: add validation for virtual-instruction exceptions.
     valid = valid & check_required_sstvala_option("load page-faults", load_page_fault_writes_xtval);
+    valid = valid & check_required_sstvala_option("load guest page-faults", load_guest_page_fault_writes_xtval);
     valid = valid & check_required_sstvala_option("load access-faults", load_access_fault_writes_xtval);
     valid = valid & check_required_sstvala_option("misaligned load exceptions", misaligned_load_writes_xtval);
     valid = valid & check_required_sstvala_option("store/AMO page-faults", samo_page_fault_writes_xtval);
+    valid = valid & check_required_sstvala_option("store/AMO guest page-faults", samo_guest_page_fault_writes_xtval);
     valid = valid & check_required_sstvala_option("store/AMO access-faults", samo_access_fault_writes_xtval);
     valid = valid & check_required_sstvala_option("misaligned store/AMO exceptions", misaligned_samo_writes_xtval);
     valid = valid & check_required_sstvala_option("fetch page-faults", fetch_page_fault_writes_xtval);
+    valid = valid & check_required_sstvala_option("fetch guest page-faults", fetch_guest_page_fault_writes_xtval);
     valid = valid & check_required_sstvala_option("fetch access-faults", fetch_access_fault_writes_xtval);
     valid = valid & check_required_sstvala_option("misaligned fetch exceptions", misaligned_fetch_writes_xtval);
     valid = valid & check_required_sstvala_option("hardware breakpoint exceptions", hardware_breakpoint_writes_xtval);
     valid = valid & check_required_sstvala_option("illegal instruction exceptions", illegal_instruction_writes_xtval);
+    valid = valid & check_required_sstvala_option("virtual instruction exceptions", virtual_instruction_writes_xtval);
   };
   if hartSupports(Ext_Ssqosid) & not(hartSupports(Ext_Zicsr)) then {
     valid = false;
     print_endline("The Ssqosid extensions is enabled but Zicsr is disabled: supporting Ssqosid requires Zicsr.");
+  };
+  if hartSupports(Ext_H) & (not(hartSupports(Ext_Zicsr)) | not(hartSupports(Ext_S)) | not(hartSupports(if xlen == 64 then Ext_Sv39 else Ext_Sv32))) then {
+    valid = false;
+    print_endline("The H extension is enabled but one or more of Zicsr, S, and " ^ (if xlen == 64 then "Sv39" else "Sv32") ^
+                  " are disabled: supporting H requires Zicsr, S, and " ^ (if xlen == 64 then "Sv39" else "Sv32") ^ " on RV" ^ dec_str(xlen) ^ ".");
   };
   valid
 }
