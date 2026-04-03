@@ -151,7 +151,7 @@ jobs:
   # always run and then checks the results of all of the jobs it depends on.
   ci_pass:
     runs-on: ubuntu-latest
-    needs: [build, linux]
+    needs: [build, linux-benchmark]
     if: "${{ always() }}"
     steps:
       - name: exit failure
