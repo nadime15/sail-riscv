@@ -286,48 +286,75 @@ foreach (xlen IN ITEMS 32 64)
 
     ############# RMEM #############
 
-            set(sail_default_inst
-                "riscv_insts_base.sail"
-                "riscv_insts_zifencei.sail"
-                "riscv_insts_zaamo.sail"
-                "riscv_insts_zalrsc.sail"
-                "riscv_insts_zca.sail"
-                "riscv_insts_mext.sail"
-                "riscv_insts_zicsr.sail"
-                "riscv_insts_hints.sail"
-                "riscv_insts_fext.sail"
-                "riscv_insts_zcf.sail"
-                "riscv_insts_dext.sail"
-                "riscv_insts_zcd.sail"
-                "riscv_insts_svinval.sail"
-                "riscv_insts_zba.sail"
-                "riscv_insts_zbb.sail"
-                "riscv_insts_zbc.sail"
-                "riscv_insts_zbs.sail"
-                "riscv_insts_zcb.sail"
-                "riscv_insts_zcmp.sail"
-                "riscv_insts_zfh.sail"
-                # Zfa needs to be added after fext, dext and Zfh (as it needs
-                # definitions from those)
-                "riscv_insts_zfa.sail"
-                "riscv_insts_zkn.sail"
-                "riscv_insts_zks.sail"
-                "riscv_insts_zbkb.sail"
-                "riscv_insts_zbkx.sail"
-                "riscv_insts_zicond.sail"
-                ${vext_srcs}
-                "riscv_insts_zicbom.sail"
-                "riscv_insts_zicboz.sail"
-                "riscv_insts_zawrs.sail"
-                "riscv_insts_zvbb.sail"
-                "riscv_insts_zvbc.sail"
-                "riscv_insts_zvkned.sail"
-                "riscv_insts_zvknhab.sail"
-                "riscv_insts_zvksh.sail"
-                # Zimop and Zcmop should be at the end so they can be overridden by earlier extensions
-                "riscv_insts_zimop.sail"
-                "riscv_insts_zcmop.sail"
-            )
+    # Generate riscv.lem, riscv_toFromInterp2.ml and riscv.defs
+    # These are used for "rmem".
+    add_custom_command(
+        DEPENDS ${sail_srcs} ${project_file}
+        VERBATIM
+        OUTPUT "rmem_${arch}.lem"
+        COMMENT "Building rmem lem from Sail model (${arch})"
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        COMMAND
+            ${SAIL_BIN}
+            ${sail_common}
+            # Generate lem files.
+            --lem
+            --lem-mwords
+            --lem-lib Riscv_extras
+            --lem-lib Riscv_extras_fdext
+            --lem-lib Mem_metadata
+            # Output dir for Lem.
+            --lem-output-dir ${CMAKE_CURRENT_BINARY_DIR}
+            # Output dir for ISabelle auxiliary theories.
+            # We do not need the Isabelle .thy files, but sail always generates them.
+            --isa-output-dir ${CMAKE_CURRENT_BINARY_DIR}
+            # The prefix of the output files.
+            -o "lem_${arch}"
+            --config ${config_file}
+            # Input files.
+            ${SAIL_MODULES}
+            --variable "RMEM = true"
+            ${project_file}
+    )
+    add_custom_command(
+        DEPENDS ${sail_srcs} ${project_file}
+        VERBATIM
+        OUTPUT "rmem_${arch}_toFromInterp2.ml"
+        COMMENT "Building rmem toFromInterp2.ml from Sail model (${arch})"
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        COMMAND
+            ${SAIL_BIN}
+            ${sail_common}
+            --tofrominterp
+            --tofrominterp-lem
+            --tofrominterp-mwords
+            --tofrominterp-output-dir ${CMAKE_CURRENT_BINARY_DIR}
+            # The prefix of the output files.
+            -o "rmem_${arch}"
+            --config ${config_file}
+            # Input files.
+            ${SAIL_MODULES}
+            --variable "RMEM = true"
+            ${project_file}
+    )
+    add_custom_command(
+        DEPENDS ${sail_srcs} ${project_file}
+        VERBATIM
+        OUTPUT "rmem_${arch}.defs"
+        COMMENT "Building rmem defs from Sail model (${arch})"
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        COMMAND
+            ${SAIL_BIN}
+            ${sail_common}
+            --marshal
+            # The prefix of the output files.
+            -o "rmem_${arch}"
+            --config ${config_file}
+            # Input files.
+            ${SAIL_MODULES}
+            --variable "RMEM = true"
+            ${project_file}
+    )
 
     add_custom_target(generated_rmem_${arch} DEPENDS
         "rmem_${arch}.lem"
