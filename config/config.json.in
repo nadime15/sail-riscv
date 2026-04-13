@@ -94,7 +94,7 @@
       // This specifies the number of usable PMP entries.
       // Entries higher than this are read-only-zero.
       // The value must be less than or equal to `count`.
-      "usable_count": 16,
+      "usable_count": 0,
       "tor_supported": true,
       "na4_supported": true,
       "napot_supported": true
