@@ -1,0 +1,8 @@
+benchmarks:
+  - name: "Linux boot"
+    exec: ./build/c_emulator/sail_riscv_sim --show-times --inst-limit 20000000 --device-tree-blob os-boot/linux/build/sail.dtb os-boot/linux/build/fw_payload.elf
+    mode: simulation
+
+  - name: "RISC-V tests"
+    exec: ctest --test-dir build --output-on-failure
+    mode: simulation
