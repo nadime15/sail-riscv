@@ -30,6 +30,7 @@ jobs:
       - name: Run tests
         uses: CodSpeedHQ/action@v4
         with:
+          mode: simulation
           config: benchmark/riscv-test.yml
 
   linux-boot:
@@ -67,4 +68,5 @@ jobs:
       - name: Linux boot
         uses: CodSpeedHQ/action@v4
         with:
+          mode: simulation
           config: benchmark/linux.yml
