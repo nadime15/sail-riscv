@@ -1,0 +1,4 @@
+benchmarks:
+  - name: "RISC-V tests"
+    exec: ctest --test-dir build --output-on-failure
+    mode: simulation
