@@ -1,4 +1,7 @@
 benchmarks:
   - name: "Linux boot"
-    exec: ./build/c_emulator/sail_riscv_sim --show-times --inst-limit 20000000 --device-tree-blob os-boot/linux/build/sail.dtb os-boot/linux/build/fw_payload.elf
+    exec: |
+      $GITHUB_WORKSPACE/build/c_emulator/sail_riscv_sim --show-times --inst-limit 20000000 \
+        --device-tree-blob $GITHUB_WORKSPACE/os-boot/linux/build/sail.dtb \
+        $GITHUB_WORKSPACE/os-boot/linux/build/fw_payload.elf
     mode: simulation

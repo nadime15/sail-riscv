@@ -1,4 +1,4 @@
 benchmarks:
   - name: "RISC-V tests"
-    exec: ctest --test-dir build --output-on-failure
+    exec: ctest --test-dir $GITHUB_WORKSPACE/build --output-on-failure
     mode: simulation
