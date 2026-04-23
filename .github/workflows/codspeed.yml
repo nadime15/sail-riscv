@@ -31,7 +31,6 @@ jobs:
         uses: CodSpeedHQ/action@v4
         with:
           mode: simulation
-          run: ctest --test-dir build --output-on-failure
 
   linux-boot:
     name: "Linux boot (benchmarked)"
@@ -69,4 +68,3 @@ jobs:
         uses: CodSpeedHQ/action@v4
         with:
           mode: simulation
-          run: ./build/c_emulator/sail_riscv_sim --show-times --inst-limit 20000000 --device-tree-blob os-boot/linux/build/sail.dtb os-boot/linux/build/fw_payload.elf
