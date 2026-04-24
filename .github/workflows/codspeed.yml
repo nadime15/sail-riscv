@@ -36,7 +36,9 @@ jobs:
               [ -f "$elf" ] || continue
               name=$(basename "$elf")
               echo "  - name: \"$name\""
-              echo "    exec: $WS/build/c_emulator/sail_riscv_sim $elf"
+              echo "    entrypoint:"
+              echo "      - $WS/build/c_emulator/sail_riscv_sim"
+              echo "      - $elf"
               echo "    mode: simulation"
             done
           } > codspeed.yml
@@ -85,7 +87,14 @@ jobs:
           cat > codspeed.yml <<EOF
           benchmarks:
             - name: "Linux boot"
-              exec: $GITHUB_WORKSPACE/build/c_emulator/sail_riscv_sim --show-times --inst-limit 20000000 --device-tree-blob $GITHUB_WORKSPACE/os-boot/linux/build/sail.dtb $GITHUB_WORKSPACE/os-boot/linux/build/fw_payload.elf
+              entrypoint:
+                - $GITHUB_WORKSPACE/build/c_emulator/sail_riscv_sim
+                - --show-times
+                - --inst-limit
+                - "20000000"
+                - --device-tree-blob
+                - $GITHUB_WORKSPACE/os-boot/linux/build/sail.dtb
+                - $GITHUB_WORKSPACE/os-boot/linux/build/fw_payload.elf
               mode: simulation
           EOF
 
