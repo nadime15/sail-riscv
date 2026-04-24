@@ -27,11 +27,26 @@ jobs:
             -DENABLE_RISCV_TESTS=TRUE -DENABLE_SMT_TESTS=FALSE $CLANG_FLAG
           ninja -C build
 
+      - name: Generate CodSpeed config
+        run: |
+          WS="$GITHUB_WORKSPACE"
+          {
+            echo "benchmarks:"
+            for elf in "$WS"/build/test/*/riscv-tests/rv64*; do
+              [ -f "$elf" ] || continue
+              name=$(basename "$elf")
+              echo "  - name: \"$name\""
+              echo "    exec: $WS/build/c_emulator/sail_riscv_sim $elf"
+              echo "    mode: simulation"
+            done
+          } > codspeed.yml
+          echo "Generated $(grep -c '^  - name:' codspeed.yml) benchmarks"
+
       - name: Run tests
         uses: CodSpeedHQ/action@v4
         with:
           mode: simulation
-          config: benchmark/riscv-test.yml
+          config: codspeed.yml
 
   linux-boot:
     name: "Linux boot (benchmarked)"
@@ -65,8 +80,17 @@ jobs:
       - name: Prepare DTB
         run: make -C os-boot/linux build/sail.dtb
 
+      - name: Generate CodSpeed config
+        run: |
+          cat > codspeed.yml <<EOF
+          benchmarks:
+            - name: "Linux boot"
+              exec: $GITHUB_WORKSPACE/build/c_emulator/sail_riscv_sim --show-times --inst-limit 20000000 --device-tree-blob $GITHUB_WORKSPACE/os-boot/linux/build/sail.dtb $GITHUB_WORKSPACE/os-boot/linux/build/fw_payload.elf
+              mode: simulation
+          EOF
+
       - name: Linux boot
         uses: CodSpeedHQ/action@v4
         with:
           mode: simulation
-          config: benchmark/linux.yml
+          config: codspeed.yml
