@@ -22,6 +22,7 @@
 #include "elf_loader.h"
 #include "jsoncons/config/version.hpp"
 #include "jsoncons/json.hpp"
+#include "riscv_sim_utils.h"
 #include "rts.h"
 #include "sail.h"
 #include "sail_config.h"
@@ -46,13 +47,7 @@ namespace {
 
 std::optional<rvfi_handler> rvfi;
 
-// The address of the HTIF tohost port, if it is enabled.
-std::optional<uint64_t> htif_tohost_address;
-
 rvfi_callbacks rvfi_cbs;
-
-uint64_t mem_sig_start = 0;
-uint64_t mem_sig_end = 0;
 
 steady_clock::time_point init_start;
 steady_clock::time_point init_end;
@@ -329,99 +324,6 @@ static CLIOptions parse_cli(int argc, char **argv) {
   return opts;
 }
 
-uint64_t load_sail(ModelImpl &model, const std::string &filename, bool main_file) {
-  ELF elf = ELF::open(filename);
-
-  switch (elf.architecture()) {
-  case Architecture::RV32:
-    if (model.zxlen != 32) {
-      fprintf(stderr, "32-bit ELF not supported by RV%" PRIu64 " model.\n", model.zxlen);
-      exit(EXIT_FAILURE);
-    }
-    break;
-  case Architecture::RV64:
-    if (model.zxlen != 64) {
-      fprintf(stderr, "64-bit ELF not supported by RV%" PRIu64 " model.\n", model.zxlen);
-      exit(EXIT_FAILURE);
-    }
-    break;
-  }
-
-  // Load into memory.
-  elf.load([](uint64_t address, const uint8_t *data, uint64_t length) {
-    // TODO: We could definitely improve on rts.c's memory implementation
-    // (which is O(N^2)) and writing one byte at a time here.
-    for (uint64_t i = 0; i < length; ++i) {
-      write_mem(address + i, data[i]);
-    }
-  });
-
-  // Load the entire symbol table.
-  const auto symbols = elf.symbols();
-
-  // Save reversed symbol table for log symbolization.
-  // If multiple symbols from different ELF files have the same value the first
-  // one wins.
-  const auto reversed_symbols = reverse_symbol_table(symbols);
-  g_symbols.insert(reversed_symbols.begin(), reversed_symbols.end());
-
-  if (main_file) {
-    // Only scan for test-signature/htif symbols in the main ELF file.
-
-    const auto &tohost = symbols.find("tohost");
-    if (tohost == symbols.end()) {
-      fprintf(stderr, "Unable to locate tohost symbol; disabling HTIF.\n");
-      htif_tohost_address = std::nullopt;
-    } else {
-      htif_tohost_address = tohost->second;
-      fprintf(stdout, "HTIF located at 0x%0" PRIx64 "\n", *htif_tohost_address);
-    }
-    // Locate test-signature locations if any.
-    const auto &begin_sig = symbols.find("begin_signature");
-    if (begin_sig != symbols.end()) {
-      fprintf(stdout, "begin_signature: 0x%0" PRIx64 "\n", begin_sig->second);
-      mem_sig_start = begin_sig->second;
-    }
-    const auto &end_sig = symbols.find("end_signature");
-    if (end_sig != symbols.end()) {
-      fprintf(stdout, "end_signature: 0x%0" PRIx64 "\n", end_sig->second);
-      mem_sig_end = end_sig->second;
-    }
-  }
-
-  return elf.entry();
-}
-
-void write_dtb_to_rom(ModelImpl &model, const std::vector<uint8_t> &dtb) {
-  uint64_t addr = get_config_uint64({"memory", "dtb_address"});
-  uint64_t size = static_cast<uint64_t>(dtb.size());
-
-  // Overflow check for addr + size - 1
-  uint64_t end = addr + size - 1;
-  if (end < addr) {
-    fprintf(stderr, "DTB address/size overflow: addr=0x%0" PRIx64 ", size=0x%0" PRIx64 "\n", addr, size);
-    exit(EXIT_FAILURE);
-  }
-
-  // Validate DTB range against configured PMA memory regions.
-  if (!model.zdtb_within_configured_pma_memory(addr, size)) {
-    fprintf(
-      stderr,
-      "DTB does not fit in any configured PMA memory region: "
-      "addr=0x%0" PRIx64 ", size=0x%0" PRIx64 " (end=0x%0" PRIx64 ")\n"
-      "Hint: adjust memory.dtb_address or memory.regions in the config.\n",
-      addr,
-      size,
-      end
-    );
-    exit(EXIT_FAILURE);
-  }
-
-  for (uint8_t d : dtb) {
-    write_mem(addr++, d);
-  }
-}
-
 void init_platform_constants(ModelImpl &model) {
   model.set_reservation_set_size_exp(get_config_uint64({"platform", "reservation", "reservation_set_size_exp"}));
   model.set_reservation_require_exact_addr_match(
@@ -429,31 +331,13 @@ void init_platform_constants(ModelImpl &model) {
   );
 }
 
-void init_sail(ModelImpl &model, uint64_t elf_entry, const char *config_file) {
-  // zset_pc_reset_address must be called before zinit_model
-  // because reset happens inside init_model().
-  model.zset_pc_reset_address(elf_entry);
-  if (htif_tohost_address.has_value()) {
-    model.zenable_htif(*htif_tohost_address);
-  }
-  model.zinit_model(config_file != nullptr ? config_file : "");
-  model.zinit_boot_requirements(UNIT);
-}
-
-/* reinitialize to clear state and memory, typically across tests runs */
-void reinit_sail(ModelImpl &model, uint64_t elf_entry, const char *config_file) {
-  model.model_fini();
-  model.model_init();
-  init_sail(model, elf_entry, config_file);
-}
-
 void write_signature(const std::string &file, unsigned signature_granularity) {
-  if (mem_sig_start >= mem_sig_end) {
+  if (riscv_sim::mem_sig_start >= riscv_sim::mem_sig_end) {
     fprintf(
       stderr,
       "Invalid signature region [0x%0" PRIx64 ",0x%0" PRIx64 "] to %s.\n",
-      mem_sig_start,
-      mem_sig_end,
+      riscv_sim::mem_sig_start,
+      riscv_sim::mem_sig_end,
       file.c_str()
     );
     return;
@@ -464,7 +348,7 @@ void write_signature(const std::string &file, unsigned signature_granularity) {
     return;
   }
   /* write out words depending on signature granularity in signature area */
-  for (uint64_t addr = mem_sig_start; addr < mem_sig_end; addr += signature_granularity) {
+  for (uint64_t addr = riscv_sim::mem_sig_start; addr < riscv_sim::mem_sig_end; addr += signature_granularity) {
     /* most-significant byte first */
     for (int i = signature_granularity - 1; i >= 0; i--) {
       uint8_t byte = (uint8_t)read_mem(addr + i);
@@ -487,16 +371,16 @@ void close_logs() {
   }
 }
 
-void finish(ModelImpl &model, const CLIOptions &opts) {
+void finish(ModelImpl &model, const riscv_sim::RunConfig &sail_opts) {
   // Don't write a signature if there was an internal Sail exception.
-  if (!model.have_exception && !opts.sig_file.empty()) {
-    write_signature(opts.sig_file, opts.signature_granularity);
+  if (!model.have_exception && !sail_opts.sig_file.empty()) {
+    write_signature(sail_opts.sig_file, sail_opts.sig_granularity);
   }
 
   // `model_fini()` exits with failure if there was a Sail exception.
   model.model_fini();
 
-  if (opts.do_show_times) {
+  if (sail_opts.show_times) {
     auto run_end = steady_clock::now();
     uint64_t init_msecs = duration_cast<milliseconds>(init_end - init_start).count();
     uint64_t exec_msecs = duration_cast<milliseconds>(run_end - init_end).count();
@@ -507,7 +391,7 @@ void finish(ModelImpl &model, const CLIOptions &opts) {
     fprintf(stderr, "Performance:      %" PRIu64 " kIPS\n", kips);
   }
   close_logs();
-  exit(EXIT_SUCCESS);
+  // exit(EXIT_SUCCESS);
 }
 
 void flush_logs() {
@@ -516,24 +400,24 @@ void flush_logs() {
   fflush(trace_log);
 }
 
-void run_sail(ModelImpl &model, const CLIOptions &opts, traploop_detector &loop_detector) {
+void run_sail(ModelImpl &model, const riscv_sim::RunConfig &sail_opts, traploop_detector &loop_detector) {
   bool is_waiting = false;
   // The emulator tick increments time by 1 at every step, so the number
   // of steps to wait is equal to the needed increment in the time CSR.
-  uint64_t max_wait_steps = get_config_uint64({"platform", "max_time_to_wait"});
+  uint64_t max_wait_steps = sail_opts.max_time_to_wait;
   uint64_t wait_steps_remaining = 0;
 
   /* initialize the step number */
   mach_int step_no = 0;
   uint64_t insn_cnt = 0;
 
-  uint64_t insns_per_tick = get_config_uint64({"platform", "instructions_per_tick"});
+  uint64_t insns_per_tick = sail_opts.insns_per_tick;
 
   auto interval_start = steady_clock::now();
 
-  while (!model.zhtif_done && (opts.insn_limit == 0 || total_insns < opts.insn_limit)) {
+  while (!model.zhtif_done && (sail_opts.insn_limit == 0 || total_insns < sail_opts.insn_limit)) {
     if (rvfi.has_value()) {
-      switch (rvfi->pre_step(opts.config_print_rvfi)) {
+      switch (rvfi->pre_step(sail_opts.trace_rvfi)) {
       case RVFI_prestep_continue:
         continue;
       case RVFI_prestep_eof:
@@ -559,11 +443,11 @@ void run_sail(ModelImpl &model, const CLIOptions &opts, traploop_detector &loop_
         model.print_current_exception();
         break;
       }
-      if (opts.config_print_instr) {
+      if (sail_opts.trace_instr) {
         flush_logs();
       }
       if (rvfi) {
-        rvfi->send_trace(opts.config_print_rvfi);
+        rvfi->send_trace(sail_opts.trace_rvfi);
       }
       if (is_waiting) {
         if (wait_steps_remaining == 0) {
@@ -579,7 +463,7 @@ void run_sail(ModelImpl &model, const CLIOptions &opts, traploop_detector &loop_
     model.call_post_step_callbacks(is_waiting);
 
     if (!is_waiting) {
-      if (opts.config_print_step) {
+      if (sail_opts.trace_step) {
         fprintf(trace_log, "\n");
       }
       step_no++;
@@ -587,7 +471,7 @@ void run_sail(ModelImpl &model, const CLIOptions &opts, traploop_detector &loop_
       total_insns++;
     }
 
-    if (opts.do_show_times && (total_insns & 0xfffff) == 0) {
+    if (sail_opts.show_times && (total_insns & 0xfffff) == 0) {
       const auto now = steady_clock::now();
       const auto interval = now - interval_start;
       interval_start = now;
@@ -626,13 +510,15 @@ void run_sail(ModelImpl &model, const CLIOptions &opts, traploop_detector &loop_
 
   // This is reached if there is a Sail exception, HTIF has indicated
   // successful completion, or the instruction limit has been reached.
-  finish(model, opts);
+  finish(model, sail_opts);
+  exit(EXIT_SUCCESS);
 }
 
 void init_logs(const CLIOptions &opts) {
-  if (!opts.term_log.empty() &&
-      (term_fd = open(opts.term_log.c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR)) <
-        0) {
+  if (
+    !opts.term_log.empty() &&
+    (term_fd = open(opts.term_log.c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR)) < 0
+  ) {
     fprintf(stderr, "Cannot create terminal log '%s': %s\n", opts.term_log.c_str(), strerror(errno));
     exit(EXIT_FAILURE);
   }
@@ -809,10 +695,10 @@ int inner_main(int argc, char **argv) {
 
   if (!opts.dtb_file.empty()) {
     fprintf(stderr, "using %s as DTB file.\n", opts.dtb_file.c_str());
-    write_dtb_to_rom(model, read_file(opts.dtb_file));
+    riscv_sim::write_dtb_to_rom(model, read_file(opts.dtb_file), get_config_uint64({"memory", "dtb_address"}));
   }
 
-  uint64_t entry = rvfi.has_value() ? rvfi->get_entry() : load_sail(model, opts.elfs[0], /*main_file=*/true);
+  uint64_t entry = rvfi.has_value() ? rvfi->get_entry() : riscv_sim::load_sail(model, opts.elfs[0], /*main_file=*/true);
 
   fprintf(stdout, "Entry point: 0x%" PRIx64 "\n", entry);
 
@@ -820,19 +706,33 @@ int inner_main(int argc, char **argv) {
   // the first one because it was loaded above.
   for (auto it = opts.elfs.cbegin() + (rvfi.has_value() ? 0 : 1); it != opts.elfs.cend(); it++) {
     fprintf(stdout, "Loading additional ELF file %s.\n", it->c_str());
-    (void)load_sail(model, *it, /*main_file=*/false);
+    (void)riscv_sim::load_sail(model, *it, /*main_file=*/false);
   }
 
-  init_sail(model, entry, opts.config_file.c_str());
+  riscv_sim::init_sail(model, entry, opts.config_file.c_str());
 
   init_end = steady_clock::now();
 
+  riscv_sim::RunConfig sail_opts;
+
+  // CLI Options
+  sail_opts.insn_limit = opts.insn_limit;
+  sail_opts.trace_instr = opts.config_print_instr;
+  sail_opts.trace_step = opts.config_print_step;
+  sail_opts.trace_rvfi = opts.config_print_rvfi;
+  sail_opts.show_times = opts.do_show_times;
+  sail_opts.sig_file = opts.sig_file;
+  sail_opts.sig_granularity = opts.signature_granularity;
+  // Config Options
+  sail_opts.max_time_to_wait = get_config_uint64({"platform", "max_time_to_wait"});
+  sail_opts.insns_per_tick = get_config_uint64({"platform", "instructions_per_tick"});
+
   do {
-    run_sail(model, opts, loop_detector);
+    run_sail(model, sail_opts, loop_detector);
     // `run_sail` only returns in the case of rvfi.
     if (rvfi) {
       /* Reset for next test */
-      reinit_sail(model, entry, opts.config_file.c_str());
+      riscv_sim::reinit_sail(model, entry, opts.config_file.c_str());
       loop_detector.reset();
     }
   } while (rvfi);
