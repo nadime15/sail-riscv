@@ -1,11 +1,17 @@
 #pragma once
-
 #include "riscv_model_impl.h"
 #include <cstdint>
 #include <optional>
+#include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace riscv_sim {
+
+class ConfigError : public std::runtime_error {
+public:
+  using std::runtime_error::runtime_error;
+};
 
 struct RunConfig {
   // From CLI
@@ -14,7 +20,6 @@ struct RunConfig {
   bool trace_step = false;
   bool show_times = false;
   bool trace_rvfi = false;
-
   std::string sig_file;
   // TODO: Move default value over here:
   unsigned sig_granularity = 4;
@@ -26,7 +31,6 @@ struct RunConfig {
 uint64_t load_sail(ModelImpl &model, const std::string &filename, bool main_file);
 void init_sail(ModelImpl &model, uint64_t elf_entry, const char *config_file);
 void reinit_sail(ModelImpl &model, uint64_t elf_entry, const char *config_file);
-
 void write_dtb_to_rom(ModelImpl &model, const std::vector<uint8_t> &dtb, uint64_t addr);
 
 // We should also declare the variables that load_sail fills

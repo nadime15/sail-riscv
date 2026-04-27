@@ -28,6 +28,8 @@ add_custom_target(generated_config_schema DEPENDS config_schema.h)
 add_library(riscv_model
     riscv_sim_utils.cpp
     riscv_sim_utils.h
+    simulator.cpp
+    simulator.h
     elf_loader.cpp
     elf_loader.h
     riscv_callbacks_if.cpp

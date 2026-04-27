@@ -2,13 +2,9 @@
 #include "elf_loader.h"
 #include "rts.h"
 #include "symbol_table.h"
+#include <stdexcept>
 
 namespace riscv_sim {
-
-class ConfigError : public std::runtime_error {
-public:
-  using std::runtime_error::runtime_error;
-};
 
 // The address of the HTIF tohost port, if it is enabled.
 std::optional<uint64_t> htif_tohost_address;
