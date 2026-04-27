@@ -97,20 +97,20 @@ struct CLIOptions {
   std::string dtb_file;
   std::vector<std::string> elfs;
 
-  // Model-side flags (passed to model.set_config_*, NOT to Simulator)
+  // Model-side flags
   bool config_print_instr = false;
   bool config_print_clint = false;
   bool config_print_exception = false;
   bool config_print_interrupt = false;
   bool config_print_htif = false;
   bool config_print_pma = false;
-  bool config_print_step = false; // also mirrored into sim_cfg.trace_step
+  bool config_print_step = false;
   bool config_enable_experimental_extensions = false;
 
-  // Everything that flows into Simulator goes directly into this.
   riscv_sim::SimulatorConfig sim;
 };
 
+// Intentionally kept 100% identical to preserve existing CLI interface
 static CLIOptions parse_cli(int argc, char **argv) {
   CLI::App app("Sail RISC-V Model");
   argv = app.ensure_utf8(argv);
@@ -118,7 +118,7 @@ static CLIOptions parse_cli(int argc, char **argv) {
   CLIOptions opts;
   auto &sim = opts.sim;
 
-  // --- Print-and-exit / mode flags ---
+  // Print-and-exit / mode flags
   app.add_flag("--show-times", sim.show_times, "Show execution times");
   app.add_flag("--version", opts.do_print_version, "Print model version");
   app.add_flag("--build-info", opts.do_print_build_info, "Print build information");
@@ -142,7 +142,7 @@ static CLIOptions parse_cli(int argc, char **argv) {
     "Disable detection of potentially infinite trap loops"
   );
 
-  // --- File / value options ---
+  // File / value options
   app.add_option("--device-tree-blob", opts.dtb_file, "Device tree blob file")
     ->check(CLI::ExistingFile)
     ->option_text("<file>");
@@ -171,7 +171,7 @@ static CLIOptions parse_cli(int argc, char **argv) {
   app.add_option("--sailcov-file", sailcov_file, "Sail coverage output file")->option_text("<file>");
 #endif
 
-  // --- Trace flags ---
+  // Trace flags
   app.add_flag("--trace-instr", opts.config_print_instr, "Enable trace output for instruction execution");
   app.add_flag("--trace-ptw", sim.trace_ptw, "Enable trace output for Page Table walk");
   app.add_flag("--trace-tlb", sim.trace_tlb, "Enable trace output for TLB adds and flushes");
@@ -268,31 +268,27 @@ void init_platform_constants(ModelImpl &model) {
   );
 }
 
-int inner_main(int argc, char **argv) {
-  CLIOptions opts = parse_cli(argc, argv);
-  ModelImpl model;
-
-  // --- Print-and-exit options ---
+static bool handle_early_exit_prints(const CLIOptions &opts) {
   if (opts.do_print_version) {
     std::cout << version_info::release_version << std::endl;
-    return EXIT_SUCCESS;
+    return true;
   }
   if (opts.do_print_build_info) {
     print_build_info();
-    return EXIT_SUCCESS;
+    return true;
   }
   if (opts.do_print_default_config) {
     printf("%s", opts.use_rv32_default ? get_default_rv32_config() : get_default_config());
-    return EXIT_SUCCESS;
+    return true;
   }
   if (opts.do_print_config_schema) {
     printf("%s", get_config_schema());
-    return EXIT_SUCCESS;
+    return true;
   }
+  return false;
+}
 
-  const bool use_rvfi = (opts.sim.rvfi_dii_port != 0);
-
-  // --- Info messages ---
+static void print_simulation_startup_info(const CLIOptions &opts, bool use_rvfi, ModelImpl &model) {
   if (opts.sim.show_times) {
     fprintf(stderr, "will show execution times on completion.\n");
   }
@@ -312,8 +308,9 @@ int inner_main(int argc, char **argv) {
   if (!opts.sim.trace_log_path.empty()) {
     fprintf(stderr, "using %s for trace output.\n", opts.sim.trace_log_path.c_str());
   }
+}
 
-  // --- Pre-init model config flags ---
+static void configure_model_flags(ModelImpl &model, const CLIOptions &opts, bool use_rvfi) {
   model.set_config_print_instr(opts.config_print_instr);
   model.set_config_print_clint(opts.config_print_clint);
   model.set_config_print_exception(opts.config_print_exception);
@@ -323,15 +320,17 @@ int inner_main(int argc, char **argv) {
   model.set_config_rvfi(use_rvfi);
   model.set_config_use_abi_names(opts.sim.use_abi_names);
   model.set_config_print_step(opts.config_print_step);
+}
 
-  // --- JSON config + overrides ---
+static bool process_and_validate_json_config(ModelImpl &model, const CLIOptions &opts) {
   std::string config_json_string = opts.config_file.empty()
                                      ? (opts.use_rv32_default ? get_default_rv32_config() : get_default_config())
                                      : read_file_to_string(opts.config_file);
 
-  const std::string base_source_desc =
+  std::string base_source_desc =
     opts.config_file.empty() ? "default configuration" : "configuration file " + opts.config_file;
   jsoncons::json config_json = parse_json_or_exit(config_json_string, base_source_desc);
+
   for (const auto &override_path : opts.config_overrides) {
     std::string override_json_string = read_file_to_string(override_path);
     jsoncons::json override_item = parse_json_or_exit(override_json_string, "override file " + override_path);
@@ -346,76 +345,61 @@ int inner_main(int argc, char **argv) {
   if (!opts.config_overrides.empty()) {
     config_source_desc = "merged configuration from " + config_source_desc;
     for (const auto &override_path : opts.config_overrides) {
-      config_source_desc = config_source_desc + ", " + override_path;
+      config_source_desc += ", " + override_path;
     }
   }
-  validate_config_schema(config_json, config_source_desc);
 
+  validate_config_schema(config_json, config_source_desc);
   sail_config_set_string(config_json_string.c_str());
   init_platform_constants(model);
   model.model_init();
 
-  // Validate config (and exit if requested)
-  {
-    bool config_is_valid = model.zconfig_is_valid(UNIT);
+  bool config_is_valid = model.zconfig_is_valid(UNIT);
+  if (!config_is_valid || opts.do_validate_config) {
     const char *s = config_is_valid ? "valid" : "invalid";
-    if (!config_is_valid || opts.do_validate_config) {
-      if (opts.config_file.empty()) {
-        fprintf(stderr, "Default configuration is %s.\n", s);
-      } else {
-        fprintf(stderr, "Configuration in %s is %s.\n", opts.config_file.c_str(), s);
-      }
-      return config_is_valid ? EXIT_SUCCESS : EXIT_FAILURE;
+    if (opts.config_file.empty()) {
+      fprintf(stderr, "Default configuration is %s.\n", s);
+    } else {
+      fprintf(stderr, "Configuration in %s is %s.\n", opts.config_file.c_str(), s);
     }
+    return false; // Tells the caller to exit early
   }
 
-  if (opts.do_print_dts) {
-    print_dts(model);
-    return EXIT_SUCCESS;
-  }
-  if (opts.do_print_isa) {
-    print_isa(model);
-    return EXIT_SUCCESS;
-  }
+  return true;
+}
 
-  if (opts.elfs.empty() && !use_rvfi) {
-    fprintf(stderr, "No elf file provided.\n");
-    return EXIT_FAILURE;
-  }
-
-  // --- Fill in the few sim_cfg fields that come from JSON config ---
-  opts.sim.max_time_to_wait = get_config_uint64({"platform", "max_time_to_wait"});
-  opts.sim.insns_per_tick = get_config_uint64({"platform", "instructions_per_tick"});
-
-  // --- Construct simulator (opens logs, sockets, registers callbacks) ---
-  riscv_sim::Simulator simulator(model, opts.sim);
-
-#ifdef SAILCOV
-  if (!sailcov_file.empty()) {
-    sail_set_coverage_file(sailcov_file.c_str());
-  }
-#endif
-
-  // --- DTB ---
+static uint64_t initialize_binaries(
+  ModelImpl &model,
+  riscv_sim::Simulator &simulator,
+  const CLIOptions &opts,
+  bool use_rvfi
+) {
   if (!opts.dtb_file.empty()) {
     fprintf(stderr, "using %s as DTB file.\n", opts.dtb_file.c_str());
     riscv_sim::write_dtb_to_rom(model, read_file(opts.dtb_file), get_config_uint64({"memory", "dtb_address"}));
   }
 
-  // --- Resolve entry, load ELFs, init sail ---
-  uint64_t entry = use_rvfi ? simulator.rvfi_entry() : riscv_sim::load_sail(model, opts.elfs[0], /*main_file=*/true);
+  uint64_t entry = use_rvfi ? simulator.rvfi_entry() : riscv_sim::load_sail(model, opts.elfs[0], true);
   fprintf(stdout, "Entry point: 0x%" PRIx64 "\n", entry);
 
   for (auto it = opts.elfs.cbegin() + (use_rvfi ? 0 : 1); it != opts.elfs.cend(); ++it) {
     fprintf(stdout, "Loading additional ELF file %s.\n", it->c_str());
-    (void)riscv_sim::load_sail(model, *it, /*main_file=*/false);
+    (void)riscv_sim::load_sail(model, *it, false);
   }
 
-  riscv_sim::init_sail(model, entry, opts.config_file.c_str());
+  return entry;
+}
 
-  // Main Loop
+static int simulation_loop(
+  ModelImpl &model,
+  riscv_sim::Simulator &simulator,
+  const CLIOptions &opts,
+  bool use_rvfi,
+  uint64_t entry
+) {
   int exit_code = EXIT_SUCCESS;
   bool keep_running = true;
+
   while (keep_running) {
     auto result = simulator.run();
     switch (result.status) {
@@ -454,11 +438,71 @@ int inner_main(int argc, char **argv) {
     }
   }
 
-  // Finish
+  return exit_code;
+}
+
+int inner_main(int argc, char **argv) {
+  CLIOptions opts = parse_cli(argc, argv);
+  ModelImpl model;
+
+  // Handle simple print-and-exit commands
+  if (handle_early_exit_prints(opts)) {
+    return EXIT_SUCCESS;
+  }
+
+  const bool use_rvfi = (opts.sim.rvfi_dii_port != 0);
+
+  // Validate prerequisites before heavy lifting
+  if (opts.elfs.empty() && !use_rvfi && !opts.do_print_dts && !opts.do_print_isa) {
+    fprintf(stderr, "No elf file provided.\n");
+    return EXIT_FAILURE;
+  }
+
+  // Informational prints and model flag configuration
+  print_simulation_startup_info(opts, use_rvfi, model);
+  configure_model_flags(model, opts, use_rvfi);
+
+  // Process JSON, merge overrides, and validate
+  if (!process_and_validate_json_config(model, opts)) {
+    return (opts.do_validate_config && model.zconfig_is_valid(UNIT)) ? EXIT_SUCCESS : EXIT_FAILURE;
+  }
+
+  // Handle model-specific prints that require initialization
+  if (opts.do_print_dts) {
+    print_dts(model);
+    return EXIT_SUCCESS;
+  }
+  if (opts.do_print_isa) {
+    print_isa(model);
+    return EXIT_SUCCESS;
+  }
+
+  // Finalize simulation configuration
+  opts.sim.max_time_to_wait = get_config_uint64({"platform", "max_time_to_wait"});
+  opts.sim.insns_per_tick = get_config_uint64({"platform", "instructions_per_tick"});
+
+  riscv_sim::Simulator simulator(model, opts.sim);
+
+#ifdef SAILCOV
+  if (!sailcov_file.empty()) {
+    sail_set_coverage_file(sailcov_file.c_str());
+  }
+#endif
+
+  // Load binaries and prepare state
+  uint64_t entry = initialize_binaries(model, simulator, opts, use_rvfi);
+  riscv_sim::init_sail(model, entry, opts.config_file.c_str());
+
+  // Run the simulation
+  int exit_code = simulation_loop(model, simulator, opts, use_rvfi, entry);
+
+  // Teardown and Cleanup
   if (!model.have_exception) {
     simulator.write_signature();
   }
+
   model.model_fini();
+
   if (opts.sim.show_times) {
     simulator.print_times();
   }
