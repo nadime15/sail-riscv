@@ -59,6 +59,15 @@ jobs:
           git clone --recurse-submodules -b main https://github.com/nadime15/riscv-hypervisor-tests.git
           make -C riscv-hypervisor-tests build
 
+      - name: Checkout riscv-test
+        shell: bash
+        run: |
+          git clone --recurse-submodules -b master https://github.com/riscv-software-src/riscv-tests
+          cd riscv-tests
+          autoconf
+          ./configure
+          make -C isa hypervisor hypervisor-svadu
+
       - name: Build simulator
         run: |
           cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
@@ -67,3 +76,12 @@ jobs:
       - name: Run hypervisor tests
         run: |
           make -C riscv-hypervisor-tests run SAIL=${{ env.SAIL }}
+
+      - name: Run riscv-test hypervisor tests
+        shell: bash
+        run: |
+          ${{ env.SAIL }} ./riscv-tests/isa/hypervisor-p-2-stage_translation
+          ${{ env.SAIL }} ./riscv-tests/isa/hypervisor-p-2-stage_translation_implicit_load_error
+          ${{ env.SAIL }} ./riscv-tests/isa/hypervisor-p-2-stage_translation_implicit_load_error_hs
+          ${{ env.SAIL }} ./riscv-tests/isa/hypervisor-svadu-p-2-stage_translation_implicit_store_error
+          ${{ env.SAIL }} ./riscv-tests/isa/hypervisor-svadu-p-2-stage_translation_implicit_store_error_hs
