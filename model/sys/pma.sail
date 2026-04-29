@@ -139,16 +139,16 @@ function override_PMA(pma : PMA, pbmt : page_based_mem_type) -> PMA =
 function pma_misaligned_exception(pma : PMA, access : MemoryAccessType(mem_payload)) -> option(misaligned_exception) = {
   let exceptions = pma.misaligned_exceptions;
   match access {
-    Load(Data)                  => exceptions.load_store,
-    Load(PageTableEntry)        => exceptions.load_store,
-    Load(ShadowStack)           => exceptions.load_store,
-    LoadExecute(Data)           => exceptions.load_store,
-    Store(Data)                 => exceptions.load_store,
-    Store(PageTableEntry)       => exceptions.load_store,
-    Store(ShadowStack)          => exceptions.load_store,
-    Load(Vector)                => exceptions.vector,
-    Store(Vector)               => exceptions.vector,
-    Atomic(_, _, _)             => Some(exceptions.amo),
+    Load(Data)             => exceptions.load_store,
+    Load(PageTableEntry)   => exceptions.load_store,
+    Load(ShadowStack)      => exceptions.load_store,
+    LoadExecute(Data)      => exceptions.load_store,
+    Store(Data)            => exceptions.load_store,
+    Store(PageTableEntry)  => exceptions.load_store,
+    Store(ShadowStack)     => exceptions.load_store,
+    Load(Vector)           => exceptions.vector,
+    Store(Vector)          => exceptions.vector,
+    Atomic(_, _, _)        => Some(exceptions.amo),
 
     // These access types should not be misaligned at the PMA level.
     InstructionFetch()  => internal_error(__FILE__, __LINE__, "PMA: Invalid misaligned instruction fetch."),

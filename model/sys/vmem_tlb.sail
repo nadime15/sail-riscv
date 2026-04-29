@@ -227,7 +227,10 @@ function flush_TLB(
   foreach (i from 0 to (length(tlb) - 1)) {
     match tlb[i] {
       None()  => (),
-      Some(entry) => if flush_TLB_Entry(entry, asid, vmid, addr, stage) then { tlb[i] = None(); },
+      Some(entry) => if flush_TLB_Entry(entry, asid, vmid, addr, stage) then {
+        tlb[i] = None();
+        tlb_flush_callback(i)
+      },
     }
   };
   tlb_flush_end_callback(tlb);

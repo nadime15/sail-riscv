@@ -228,7 +228,6 @@ function try_step(step_no : nat, exit_wait : bool) -> bool = {
       handle_interrupt(intr, priv)
     },
     Step_Ext_Fetch_Failure(e) => ext_handle_fetch_check_error(e),
-    // TODO
     Step_Fetch_Failure(e) => handle_exception(e),
     Step_Waiting(_) => assert(hart_is_waiting(hart_state), "cannot be Waiting in a non-Wait state"),
     Step_Execute(Retire_Success(), _) => assert(hart_is_active(hart_state)),
@@ -238,9 +237,7 @@ function try_step(step_no : nat, exit_wait : bool) -> bool = {
     Step_Execute(ExecuteAs(_), _) => internal_error(__FILE__, __LINE__, "Multiple chained ExecuteAs (only one redirection is supported)."),
     // standard errors
     Step_Execute(Trap(priv, ctl, pc), _) => set_next_pc(exception_handler(priv, ctl, pc)),
-    // TODO: We probably dont need vaddr anymore...
     Step_Execute(Memory_Exception(e), _) => handle_exception(e),
-    // TODO:
     Step_Execute(Illegal_Instruction(), instbits) =>
       // TODO/NOTE: Define a new constructor?
       handle_exception(struct {
@@ -251,7 +248,7 @@ function try_step(step_no : nat, exit_wait : bool) -> bool = {
         excinst        = None(),
         ext            = None(),
       }),
-    // TODO/NOTE: Define a new constructor
+    // TODO/NOTE: Define a new constructor?
     Step_Execute(Virtual_Instruction(), instbits) =>
       handle_exception(struct {
         trap           = E_Virtual_Instr(),

@@ -109,6 +109,7 @@ function getPendingSet(priv : Privilege) -> option((xlenbits, Privilege)) = {
   // mideleg can only be non-zero if we support Supervisor mode.
   assert(currentlyEnabled(Ext_S) | mideleg.bits == zeros());
 
+  // Read mip with the external platform interrupts ORed in.
   let pending    = read_mip(IncludePlatformInterrupts).bits & mie.bits;
   let pending_m  = pending & ~(mideleg.bits);
   let pending_s  = pending &   mideleg.bits  & ~(hideleg.bits);
@@ -124,9 +125,9 @@ function getPendingSet(priv : Privilege) -> option((xlenbits, Privilege)) = {
     // Translate VS-level interrupts to their S-level counterpart
     let vs = Mk_Minterrupts(pending_vs);
     let translated = [vs with
-      SEI  = vs[VSEI], VSEI = 0b0,
-      SSI  = vs[VSSI], VSSI = 0b0,
-      STI  = vs[VSTI], VSTI = 0b0,
+      SEI = vs[VSEI], VSEI = 0b0,
+      SSI = vs[VSSI], VSSI = 0b0,
+      STI = vs[VSTI], VSTI = 0b0,
     ];
     Some((translated.bits, VirtualSupervisor))
   }
@@ -218,10 +219,10 @@ function trap_handler(
   };
 
   if   get_config_print_exception() | get_config_print_interrupt()
-  // TODO
-  then print_log("handling " ^ to_str(c)
-                      ^ " at priv " ^ to_str(del_priv)
-                      ^ " with tval " ^ bits_str(tval(excinfo)));
+  then print_log("handling " ^ to_str(c) ^ " at priv " ^ to_str(del_priv) ^
+          " | tval="  ^ bits_str(tval(excinfo))  ^
+          " | tval2=" ^ bits_str(tval(excinfo2)) ^
+          " | tinst=" ^ bits_str(tval(excinst)));
 
   if hartSupports(Ext_Zicfilp) then zicfilp_preserve_elp_on_trap(del_priv);
 
