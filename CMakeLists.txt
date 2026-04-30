@@ -48,6 +48,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 # Generally it just simplifies everything for a negligible performance cost.
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 
+# TODO
 include(CheckIPOSupported)
 check_ipo_supported(RESULT lto_supported OUTPUT lto_error)
 if (lto_supported)
