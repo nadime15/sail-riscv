@@ -48,6 +48,15 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 # Generally it just simplifies everything for a negligible performance cost.
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 
+include(CheckIPOSupported)
+check_ipo_supported(RESULT lto_supported OUTPUT lto_error)
+if (lto_supported)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+    message(STATUS "LTO enabled globally")
+else()
+    message(STATUS "LTO not supported: ${lto_error}")
+endif()
+
 # Don't allow undefined symbols. This is generally a pain.
 include(CheckLinkerFlag)
 
@@ -111,9 +120,8 @@ if (DOWNLOAD_GMP)
             "--prefix=<INSTALL_DIR>"
             --disable-shared
             --enable-static
-            --with-pic
             # Newer compilers default to C23 which causes GMP build errors.
-            CFLAGS=-std=c11
+            "CFLAGS=-std=c11 -O3 -fno-plt"
         # The libgmp.a output is created by the install step but since GMP::GMP
         # depends on the entire ExternalProject build, we can pretend it is
         # created by the build.
