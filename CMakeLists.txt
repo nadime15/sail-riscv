@@ -127,9 +127,8 @@ if (DOWNLOAD_GMP)
             "--prefix=<INSTALL_DIR>"
             --disable-shared
             --enable-static
-            --with-pic
             # Newer compilers default to C23 which causes GMP build errors.
-            CFLAGS=-std=c11
+            "CFLAGS=-std=c11 -O3 -fno-plt"
         # The libgmp.a output is created by the install step but since GMP::GMP
         # depends on the entire ExternalProject build, we can pretend it is
         # created by the build.
