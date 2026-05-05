@@ -555,7 +555,7 @@ mops {
 postlude {
   after extensions, mops, core
 
-  requires prelude, core, sys, exceptions, Smcntrpmf, pmp, Zicfilp_regs, Zicfilp_insts
+  requires prelude, core, sys, exceptions, Smcntrpmf, pmp, Zicfilp_regs, Zicfilp_insts, Zicbom_insts, Zicboz, Zicbop_insts
 
   files
     postlude/insts_end.sail,

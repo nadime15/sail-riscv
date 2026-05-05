@@ -8,6 +8,9 @@
 
 // Cache Block Operations - Prefetch
 
+// Cache block size for prefetch.{i,r,w}, as a power of 2.
+let zicbop_block_size_exp : range(0, 12) = config extensions.Zicbop.block_size_exp
+
 function clause currentlyEnabled(Ext_Zicbop) = hartSupports(Ext_Zicbop)
 
 // ******************************************************************
@@ -35,9 +38,9 @@ mapping clause assembly = ZICBOP(cbop, rs1, offset)
 
 function clause execute ZICBOP(cbop, rs1, offset) = {
   let rs1_val = X(rs1);
-  let cache_block_size = 2 ^ plat_cache_block_size_exp;
+  let cache_block_size = 2 ^ zicbop_block_size_exp;
   let addr = rs1_val + sign_extend(offset);
-  let cache_block_addr = addr & ~(zero_extend(ones(plat_cache_block_size_exp)));
+  let cache_block_addr = addr & ~(zero_extend(ones(zicbop_block_size_exp)));
   let offset = cache_block_addr - rs1_val;
   let access : MemoryAccessType(mem_payload) = CacheAccess(CB_prefetch(cbop));
 

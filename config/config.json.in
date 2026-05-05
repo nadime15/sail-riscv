@@ -278,8 +278,6 @@
     "archid": 0,
     "impid": 0,
     "hartid": 0,
-    // Cache block size, specified as a power of 2.
-    "cache_block_size_exp": 6,
     "reservation": {
       // This specifies both the size and alignment of the reservation set, specified as a power of 2.
       // It must be at least 2 on RV32 and 3 on RV64 to support Zalrsc.  It must not be more than
@@ -375,20 +373,28 @@
     "Zibi": {
       "supported": true
     },
-    // This extension just asserts that the cache block size is 64 bytes.
-    // If you enable this you also need to ensure `platform.cache_block_size_exp`
-    // is 6, otherwise you will get a config validation error.
+    // This extension asserts that all cache block sizes (Zicbom, Zicboz,
+    // Zicbop) are 64 bytes. If you enable this you also need to ensure
+    // each `block_size_exp` under those extensions is 6, otherwise you
+    // will get a config validation error.
     "Zic64b": {
       "supported": true
     },
     "Zicbom": {
-      "supported": true
+      "supported": true,
+      // Cache block size for cbo.clean, cbo.flush, and cbo.inval, specified
+      // as a power of 2.
+      "block_size_exp": 6
     },
     "Zicbop": {
-      "supported": true
+      "supported": true,
+      // Cache block size for prefetch.{i,r,w}, specified as a power of 2.
+      "block_size_exp": 6
     },
     "Zicboz": {
-      "supported": true
+      "supported": true,
+      // Cache block size for cbo.zero, specified as a power of 2.
+      "block_size_exp": 6
     },
     "Ziccamoa": {
       "supported": true

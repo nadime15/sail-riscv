@@ -8,6 +8,11 @@
 
 // Cache Block Operations - Zero
 
+// Cache block size for cbo.zero, as a power of 2. Max is `max_mem_access`
+// (4096) because cbo.zero is performed as a single write and behaviour with
+// blocks larger than a page is not clearly defined.
+let zicboz_block_size_exp : range(0, 12) = config extensions.Zicboz.block_size_exp
+
 function clause currentlyEnabled(Ext_Zicboz) = hartSupports(Ext_Zicboz)
 
 // *****************************************************************
@@ -30,12 +35,12 @@ function clause execute ZICBOZ(rs1) = {
   };
 
   let rs1_val = X(rs1);
-  let cache_block_size = 2 ^ plat_cache_block_size_exp;
+  let cache_block_size = 2 ^ zicboz_block_size_exp;
   let access = Store(Data);
 
   // Offset from rs1 to the beginning of the cache block. This is 0 if rs1
   // is aligned to the cache block, or negative if rs1 is misaligned.
-  let negative_offset = (rs1_val & ~(zero_extend(ones(plat_cache_block_size_exp)))) - rs1_val;
+  let negative_offset = (rs1_val & ~(zero_extend(ones(zicboz_block_size_exp)))) - rs1_val;
 
   match ext_data_get_addr(rs1, negative_offset, access, cache_block_size) {
     Ext_DataAddr_Error(e) => Ext_DataAddr_Check_Failure(e),

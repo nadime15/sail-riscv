@@ -498,9 +498,19 @@ private function check_misc_extension_dependencies() -> bool = {
 
 private function check_extension_param_constraints() -> bool = {
   var valid : bool = true;
-  if (config extensions.Zic64b.supported : bool) & (plat_cache_block_size_exp != 6) then {
-    valid = false;
-    print_endline("The Zic64b extension is enabled but the cache block size is not 64 bytes.");
+  if (config extensions.Zic64b.supported : bool) then {
+    if (config extensions.Zicbom.supported : bool) & (zicbom_block_size_exp != 6) then {
+      valid = false;
+      print_endline("The Zic64b extension is enabled but the Zicbom cache block size is not 64 bytes.");
+    };
+    if (config extensions.Zicboz.supported : bool) & (zicboz_block_size_exp != 6) then {
+      valid = false;
+      print_endline("The Zic64b extension is enabled but the Zicboz cache block size is not 64 bytes.");
+    };
+    if (config extensions.Zicbop.supported : bool) & (zicbop_block_size_exp != 6) then {
+      valid = false;
+      print_endline("The Zic64b extension is enabled but the Zicbop cache block size is not 64 bytes.");
+    };
   };
   let min_rss_exp = log2_xlen - 3;
   if ((config extensions.A.supported : bool) | (config extensions.Zalrsc.supported : bool)) & (plat_reservation_set_size_exp < min_rss_exp) then {

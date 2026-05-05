@@ -8,6 +8,15 @@
     by the same hart to the reservation set has been added; see
     `platform.reservation.invalidate_on_same_hart_store`. This defaults
     to false to match previous behavior.
+  - The cache block size is now configured per-extension instead of as
+    a single shared platform parameter, since Zicbom, Zicboz, and Zicbop
+    can in principle have different block sizes. The previous
+    `platform.cache_block_size_exp` has been replaced by
+    `extensions.Zicbom.block_size_exp`, `extensions.Zicboz.block_size_exp`,
+    and `extensions.Zicbop.block_size_exp`. When the Zic64b extension is
+    enabled, all three (for the extensions that are supported) must be 6.
+    This is a backwards incompatible change, existing configurations that
+    set `platform.cache_block_size_exp` need to be updated.
 
 # Release notes for version 0.11
 

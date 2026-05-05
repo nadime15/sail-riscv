@@ -8,11 +8,6 @@
 
 // Platform-specific configuration parameters.
 
-// Cache block size is 2^cache_block_size_exp. Max is `max_mem_access` (4096)
-// because this model performs `cbo.zero` with a single write, and the behaviour
-// with cache blocks larger than a page is not clearly defined.
-let plat_cache_block_size_exp : range(0, 12) = config platform.cache_block_size_exp
-
 // Reservation set size is 2^reservation_set_size_exp.
 //
 // The reservation set must lie completely within a 4KiB page on systems with
