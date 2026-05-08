@@ -388,7 +388,16 @@
       // should be left as 3 (or any other legal value).
       "vlen_exp": @CONFIG__V__VLEN_EXP@,
       "elen_exp": @CONFIG__V__ELEN_EXP@,
-      "vl_use_ceil": false
+      "vl_use_ceil": false,
+      // Whether vector arithmetic instructions raise an illegal instruction
+      // exception when `vstart` is non-zero. The model never produces a
+      // non-zero `vstart` for these instructions, so the spec permits
+      // trapping. When set to `false`, arithmetic instructions execute
+      // with `vstart` as the start element per the standard prestart/body/tail
+      // rules. This also governs the element-wise vector-crypto instructions
+      // (Zvbb, Zvbc), the element-group crypto instructions keep their own
+      // EGS-alignment rules and are unaffected.
+      "vstart_arith_zero_required": true
     },
     "B": {
       "supported": true

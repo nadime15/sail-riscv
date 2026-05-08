@@ -16,6 +16,11 @@
   - Writable bits of the `mcounteren` CSR can now be specified;
     see `base.mcounteren_writable_bits`. (This was previously controlled
     by `base.writable_hpm_counters`, which was incorrect.)
+  - New option `extensions.V.vstart_arith_zero_required` (default `true`)
+    controls whether vector arithmetic instructions raise an illegal instruction
+    exception when `vstart` is non-zero. Setting it to `false` lets arithmetic
+    instructions execute with `vstart` as the start element per the standard
+    prestart/body/tail rules.
 
 - Performance improvements:
   - https://github.com/riscv/sail-riscv/pull/1692 : Optional `ENABLE_LTO`
