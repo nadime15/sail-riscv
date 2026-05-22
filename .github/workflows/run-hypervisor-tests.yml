@@ -22,6 +22,7 @@ jobs:
         uses: ./.github/actions/sail-setup
         with:
           install-clang: "true"
+          sail-version: "latest"
 
       - name: Cache RISC-V toolchain
         id: cache-riscv
@@ -98,6 +99,8 @@ jobs:
 
       - name: Common setup
         uses: ./.github/actions/sail-setup
+        with:
+          sail-version: "latest"
 
       - name: Build simulator
         run: |
