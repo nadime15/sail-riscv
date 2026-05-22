@@ -159,6 +159,6 @@ runs:
         key: ${{ steps.cache-opam-restore.outputs.cache-primary-key }}
 
     - name: Load OPAM environment (macOS)
-      if: runner.os == 'macOS'
+      if: runner.os == 'macOS' || inputs.sail-version == 'latest'
       shell: bash
       run: echo "$HOME/.opam/default/bin" >> $GITHUB_PATH
