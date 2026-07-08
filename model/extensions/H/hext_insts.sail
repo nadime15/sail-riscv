@@ -106,7 +106,7 @@ function clause execute(HSV(width, rs1, rs2)) = {
         match translateAddr_eff_priv(vaddr, Store(Data), eff_priv) {
           Err(e, _) => Memory_Exception(e),
           Ok(paddr, pbmt, _) => {
-            match mem_write_ea(paddr, width, Store(Data), false, false, false) {
+            match mem_write_ea(paddr, width, Store(Data), pbmt, false, false, false) {
               Err(e) => Memory_Exception(hlsv_exception_context(e, bits_of(vaddr))),
               Ok(_) => {
                 match mem_write_value(paddr, width, X(rs2)[8 * width - 1 .. 0], Store(Data), pbmt, false, false, false) {
