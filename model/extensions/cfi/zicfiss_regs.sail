@@ -23,10 +23,11 @@ function zicfiss_xSSE(priv : Privilege) -> bool =
     Machine           => // "Use of Zicfiss in M-mode is not supported."
                          false,
     Supervisor        => bool_bit(menvcfg[SSE]),
-    // TODO: needs currentlyEnabled(Ext_H) & read_henvcfg()[SSE]
-    VirtualSupervisor => internal_error(__FILE__, __LINE__, "Hypervisor extension not supported"),
+    // henvcfg.SSE is read-only zero unless menvcfg.SSE is set, and
+    // senvcfg.SSE is read-only zero unless henvcfg.SSE is set.
+    VirtualSupervisor => menvcfg[SSE] == 0b1 & henvcfg[SSE] == 0b1,
     User              => bool_bit(read_senvcfg()[SSE]),
-    VirtualUser       => bool_bit(read_senvcfg()[SSE]),
+    VirtualUser       => menvcfg[SSE] == 0b1 & henvcfg[SSE] == 0b1 & read_senvcfg()[SSE] == 0b1,
   })
 
 // See "Shadow Stack Pointer (ssp) CSR access control".
