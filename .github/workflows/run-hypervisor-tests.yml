@@ -384,9 +384,25 @@ jobs:
         shell: bash
         run: |
           git clone https://github.com/XUANTIE-RV/damo-rv-priv-ats.git
-          git -C damo-rv-priv-ats checkout d43796f
+          git -C damo-rv-priv-ats checkout 96c5cfab
 
       - name: Run XUANTIE-RV/damo-rv-priv-ats hypervisor tests
         shell: bash
         run: |
-          make -C damo-rv-priv-ats/Hypervisor sail CROSS_COMPILER=riscv64-unknown-elf- SAIL=${{ env.SAIL }}
+          EXTS="Hypervisor
+                Sv39x4 Sv48x4 Sv57x4
+                Sv39x4_Sv39 Sv39x4_Sv48 Sv39x4_Sv57
+                Sv48x4_Sv39 Sv48x4_Sv48 Sv48x4_Sv57
+                Sv57x4_Sv39 Sv57x4_Sv48 Sv57x4_Sv57
+                Hypervisor_Smstateen Hypervisor_Ssccptr Hypervisor_Ssstateen
+                Hypervisor_Sstc Hypervisor_Sstvala Hypervisor_Svadu
+                Hypervisor_Svinval Hypervisor_Svnapot Hypervisor_Svpbmt
+                Sha Shgatpa Shcounterenw Shlcofideleg
+                Shtvala Shvsatpa Shvstvala Shvstvecd"
+
+          fail=0
+          for ext in $EXTS; do
+            make -C damo-rv-priv-ats/$ext sail \
+              CROSS_COMPILER=riscv64-unknown-elf- SAIL=${{ env.SAIL }} || fail=1
+          done
+          exit $fail
