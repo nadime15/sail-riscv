@@ -93,8 +93,9 @@ private function pte_is_invalid(pte_flags : PTE_Flags, pte_ext : PTE_Ext) -> boo
   // TODO: handle V=1 and henvcfg.SSE=0 at VS/VU levels
   | (pte_flags[R] == 0b0 & pte_flags[W] == 0b1 & pte_flags[X] == 0b0 & menvcfg[SSE] == 0b0)
   | (pte_flags[R] == 0b0 & pte_flags[W] == 0b1 & pte_flags[X] == 0b1)
-  // Reserved encodings mean the PTE is invalid.
-  | not(page_based_mem_type_forwards_matches(pte_ext[PBMT])) & currentlyEnabled(Ext_Svpbmt)
+  // Reserved encodings mean the PTE is invalid. When PBMTE=0 the PBMT
+  // bits are plain reserved bits, handled below.
+  | not(page_based_mem_type_forwards_matches(pte_ext[PBMT])) & currentlyEnabled(Ext_Svpbmt) & menvcfg[PBMTE] == 0b1
   // Early versions of the spec did not require reserved bits to be zero.
   | pte_reserved_bits_must_be_zero & (
     // A/D/U and all ext bits are currently reserved for non-leaf PTEs.
