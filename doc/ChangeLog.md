@@ -1,5 +1,8 @@
 # Release notes for the next version
 
+- The following extensions have been added:
+  - H
+
 # Release notes for version 0.13.1
 
 This is primarily a bug-fix release with fixes for the issues listed
@@ -25,7 +28,6 @@ and LLDB](../c_emulator/gdb/README.md).
 
 - The following extensions have been added:
   - Zama16b
-  - H
 
 - Updates to the [configuration file](../config/config.json.in):
   - The version of the privileged ISA specification for the model can
