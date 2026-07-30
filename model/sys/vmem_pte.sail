@@ -218,6 +218,11 @@ private function check_PTE_permission(
 
     };
     if not(shadow_stack_ok) then return PTE_Check_Failure((), PTE_No_Access());
+    // On a shadow stack page the rules above fully decide the access. The R/W/X
+    // bits do not apply (the encoding is R=0, W=1, X=0), so grant access here
+    // rather than falling through to the normal permission check, which would
+    // reject any load or atomic because the page is not readable.
+    return PTE_Check_Success(());
   } else if is_shadow_stack_access(access) then {
     // "Should a shadow stack instruction access a page that is not designated
     // as a shadow stack page and is not marked as read-only (pte.xwr=001), a
