@@ -100,10 +100,12 @@ private function pmaCheck forall 'n, 0 < 'n <= max_mem_access .
     InstructionFetch()     => attributes.executable,
     Load(Data)             => {assert(not(res_or_con)); attributes.readable},
     Load(Vector)           => {assert(not(res_or_con)); attributes.readable},
-    Load(PageTableEntry)   => {assert(not(res_or_con)); attributes.supports_pte_read},
+    // PTE accesses are reserved/conditional when they are the halves of an
+    // A/D-bit update, which the spec requires to be atomic.
+    Load(PageTableEntry)   => attributes.supports_pte_read & (not(res_or_con) | attributes.reservability != RsrvNone),
     Store(Data)            => {assert(not(res_or_con)); attributes.writable},
     Store(Vector)          => {assert(not(res_or_con)); attributes.writable},
-    Store(PageTableEntry)  => {assert(not(res_or_con)); attributes.supports_pte_write},
+    Store(PageTableEntry)  => attributes.supports_pte_write & (not(res_or_con) | attributes.reservability != RsrvNone),
 
     // For LR/SC, we currently don't differentiate between the presence (RsrvEventual)
     // or absence (RsrvNonEventual) of an eventual success guarantee.
