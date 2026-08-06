@@ -40,13 +40,14 @@ private type PTW_Result('v : Int), is_sv_mode('v) = result((PTW_Output('v), ext_
 // ****************************************************************
 // Page Table Walk (PTW)
 
-// Write a Page Table Entry.
-private function write_pte forall 'n, 'n in {4, 8} . (
+// Write a Page Table Entry as the write half of the atomic
+// compare-and-swap that updates its A/D bits (Step 9 of the VATP).
+private function write_pte_conditional forall 'n, 'n in {4, 8} . (
   paddr    : physaddr,
   pte_size : int('n),
   pte      : bits('n * 8),
 ) -> MemoryOpResult(bool) =
-  mem_write_value_priv(paddr, pte_size, pte, Supervisor, Store(PageTableEntry), PBMT_PMA, false, false, false)
+  mem_write_value_priv(paddr, pte_size, pte, Supervisor, Store(PageTableEntry), PBMT_PMA, false, false, true)
 
 // Sscptr: Main memory supports page table read
 function clause currentlyEnabled(Ext_Ssccptr) = hartSupports(Ext_Ssccptr) & (currentlyEnabled(Ext_Sv32) | currentlyEnabled(Ext_Sv39))
@@ -58,29 +59,67 @@ private function read_pte forall 'n, 'n in {4, 8} . (
 ) -> MemoryOpResult(bits(8 * 'n)) =
   mem_read_priv(Load(PageTableEntry), PBMT_PMA, Supervisor, paddr, pte_size, false, false, false)
 
-// Update a PTE's A/D bits and write it to memory if needed.  This returns
-// * Ok(Some(pte)) if a write was needed and was successful. pte is the new value.
-// * Ok(None()) if no write was needed.
-// * Err(PTW_PTE_Needs_Update()) if a write was needed but is forbidden by the current state
-// * Err(PTW_No_Access()) if a write was needed and attempted but there was an error.
-private function update_and_write_pte forall 'pte_width, 'pte_width in {4, 8} . (
-  pteAddr : physaddr,
-  pteWidth : int('pte_width),
-  pte : bits('pte_width * 8),
-  access : MemoryAccessType(mem_payload),
-) -> result(option(bits('pte_width * 8)), PTW_Error) =
+// Read a Page Table Entry as the read half of the atomic compare-and-swap
+// that updates its A/D bits (Step 9 of the VATP).
+private function read_pte_reserved forall 'n, 'n in {4, 8} . (
+  paddr    : physaddr,
+  pte_size : int('n),
+) -> MemoryOpResult(bits(8 * 'n)) =
+  mem_read_priv(Load(PageTableEntry), PBMT_PMA, Supervisor, paddr, pte_size, false, false, true)
+
+// The outcome of Step 9 of the VATP.
+private union PTE_AD_Result('n : Int), 'n in {4, 8} = {
+  PTE_AD_Unchanged : unit,         // No update was needed.
+  PTE_AD_Written   : bits('n * 8), // The PTE was updated. This is the new value.
+  PTE_AD_Stale     : unit,         // The compare failed, i.e. "return to step 2".
+  PTE_AD_Failed    : PTW_Error,    // An update was needed but could not be done.
+}
+
+// Update a PTE's A/D bits and write it to memory if needed (Step 9 of the
+// VATP).
+//
+// The spec requires this to be atomic with respect to other accesses to the
+// PTE, and specifies it as a compare-and-swap:
+//
+//   "Compare pte to the value of the PTE at address a+va.vpn[i]*PTESIZE.
+//    If the values match, set pte.a to 1 and, if the original memory access
+//    is a store, also set pte.d to 1. Then store pte to the PTE at address
+//    a+va.vpn[i]*PTESIZE. If the comparison fails, return to step 2."
+//
+// so the read is reserved and the write conditional, as for an AMO. The
+// value compare is also what satisfies the requirement to "atomically
+// perform all page-table walk checks for that leaf PTE": a PTE that still
+// holds the value the walk read passes exactly the checks the walk ran on
+// it.
+private function update_and_write_pte forall 'n, 'n in {4, 8} . (
+  pteAddr  : physaddr,
+  pte_size : int('n),
+  pte      : bits('n * 8),
+  access   : MemoryAccessType(mem_payload),
+) -> PTE_AD_Result('n) =
   match update_PTE_Bits(pte, access) {
-    None()    => Ok(None()),
-    Some(pte) => // The PTE has new A/D bits.  If neither Svadu or Svade is supported,
-                 // the current default is to update the PTE.
-                 if (currentlyEnabled(Ext_Svadu) & menvcfg[ADUE] == 0b1)
-                   | (not(currentlyEnabled(Ext_Svadu)) & not(currentlyEnabled(Ext_Svade)))
-                 then match write_pte(pteAddr, pteWidth, pte) {
-                   Ok(_)  => Ok(Some(pte)),
-                   Err(_) => Err(PTW_No_Access()),
-                 } else {
-                   Err(PTW_PTE_Needs_Update())
-                 },
+    None()        => PTE_AD_Unchanged(),
+    Some(new_pte) =>
+      // The PTE has new A/D bits.  If neither Svadu or Svade is supported,
+      // the current default is to update the PTE.
+      if (currentlyEnabled(Ext_Svadu) & menvcfg[ADUE] == 0b1)
+        | (not(currentlyEnabled(Ext_Svadu)) & not(currentlyEnabled(Ext_Svade)))
+      then match read_pte_reserved(pteAddr, pte_size) {
+        Err(_) => PTE_AD_Failed(PTW_No_Access()),
+        Ok(mem_pte) =>
+          if mem_pte != pte then
+            // The PTE changed since it was read. Only reachable via a TLB
+            // hit, where `pte` is the cached copy.
+            PTE_AD_Stale()
+          else match write_pte_conditional(pteAddr, pte_size, new_pte) {
+            Ok(true)  => PTE_AD_Written(new_pte),
+            // As for the AMO write in zaamo_insts.sail, a failed conditional
+            // write cannot happen in the sequential model.
+            Ok(false) => internal_error(__FILE__, __LINE__, "PTE conditional write failed"),
+            Err(_)    => PTE_AD_Failed(PTW_No_Access()),
+          },
+      }
+      else PTE_AD_Failed(PTW_PTE_Needs_Update()),
   }
 
 // 'v is the virtual address size.
@@ -287,9 +326,9 @@ private function translate_TLB_hit forall 'v, is_sv_mode('v) . (
   ext_ptw   : ext_ptw,
   tlb_index : tlb_index_range,
   ent       : TLB_Entry,
-) -> TR_Result(ppn_bits('v), PTW_Error) = {
+) -> option(TR_Result(ppn_bits('v), PTW_Error)) = {
 
-  let pte_size  = if sv_width == 32 then 4 else 8;
+  let 'pte_size = if sv_width == 32 then 4 else 8;
   let pte       = tlb_get_pte(pte_size, ent);  // Step 2 of VATP.
   let ext_pte   = ext_bits_of_PTE(pte);
   let pte_flags = Mk_PTE_Flags(pte[7 .. 0]);
@@ -298,18 +337,20 @@ private function translate_TLB_hit forall 'v, is_sv_mode('v) . (
 
   match pte_check {
     PTE_Check_Failure(ext_ptw, pte_failure) =>
-      Err(ext_get_ptw_error(pte_failure), ext_ptw),
+      Some(Err(ext_get_ptw_error(pte_failure), ext_ptw)),
     PTE_Check_Success(ext_ptw) =>
-      // Step 9 of VATP.
+      // Step 9 of VATP. This goes to memory: the address-translation cache
+      // cannot be used for A/D updates.
       match update_and_write_pte(ent.pteAddr, pte_size, pte, access) {
-        Ok(Some(pte)) => {
+        PTE_AD_Written(pte) => {
           // Writeback the PTE (which has new A/D bits).
           write_TLB(tlb_index, tlb_set_pte(ent, pte));
-          Ok(tlb_get_ppn(sv_width, ent, vpn), tlb_get_pbmt(ent), ext_ptw)
+          Some(Ok(tlb_get_ppn(sv_width, ent, vpn), tlb_get_pbmt(ent), ext_ptw))
         },
-        Ok(None()) => Ok(tlb_get_ppn(sv_width, ent, vpn), tlb_get_pbmt(ent), ext_ptw),
-        Err(PTW_PTE_Needs_Update()) => Err(PTW_PTE_Needs_Update(), ext_ptw),
-        Err(e) => Err(e, ext_ptw),
+        PTE_AD_Unchanged() => Some(Ok(tlb_get_ppn(sv_width, ent, vpn), tlb_get_pbmt(ent), ext_ptw)),
+        // This TLB entry is stale, so tell translate() to walk again.
+        PTE_AD_Stale()     => None(),
+        PTE_AD_Failed(e)   => Some(Err(e, ext_ptw)),
       },
   }
 }
@@ -339,18 +380,21 @@ private function translate_TLB_miss forall 'v, is_sv_mode('v) . (
 
       // Step 9 of VATP.
       match update_and_write_pte(pteAddr, pte_size, pte, access) {
-        Ok(Some(new_pte)) => {
+        PTE_AD_Written(new_pte) => {
           // Writeback the PTE (which has new A/D bits).
           add_to_TLB(sv_width, asid, vpn, ppn, new_pte, pteAddr, level, global);
           Ok(ppn, pbmt, ext_ptw)
         },
-        Ok(None()) => {
+        PTE_AD_Unchanged() => {
           // There was no change in the PTE, but it still needs to be added
           // to the TLB due to the TLB miss.
           add_to_TLB(sv_width, asid, vpn, ppn, pte, pteAddr, level, global);
           Ok(ppn, pbmt, ext_ptw)
         },
-        Err(e) => Err(e, ext_ptw),
+        // The walk just read this PTE from memory, so the compare cannot
+        // fail here in the sequential model.
+        PTE_AD_Stale()   => internal_error(__FILE__, __LINE__, "stale PTE after page table walk"),
+        PTE_AD_Failed(e) => Err(e, ext_ptw),
       }
     },
   }
@@ -378,11 +422,18 @@ private function translate forall 'v, is_sv_mode('v) . (
 ) -> TR_Result(ppn_bits('v), PTW_Error) = {
   // On first reading, assume lookup_TLB returns None(), since TLBs
   // are not part of RISC-V archticture spec (see TLB NOTE above)
-  match lookup_TLB(sv_width, asid, vpn) {
+  let hit : option(TR_Result(ppn_bits('v), PTW_Error)) = match lookup_TLB(sv_width, asid, vpn) {
     Some(index, ent) => translate_TLB_hit(sv_width, asid, vpn, access, priv,
                                           mxr, do_sum, ext_ptw, index, ent),
-    None()           => translate_TLB_miss(sv_width, asid, base_ppn, vpn, access, priv,
-                                           mxr, do_sum, ext_ptw),
+    None()           => None(),
+  };
+  match hit {
+    Some(result) => result,
+    // Either there was no TLB entry, or Step 9 found that the entry no
+    // longer matches the PTE in memory, which is the spec's "return to
+    // step 2". The walk reads memory directly, so it cannot come back here.
+    None() => translate_TLB_miss(sv_width, asid, base_ppn, vpn, access, priv,
+                                 mxr, do_sum, ext_ptw),
   }
 }
 
