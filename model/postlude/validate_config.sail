@@ -299,14 +299,17 @@ private struct pma_check_opts = {
   zicclsm  : bool,
   ziccrse  : bool,
   ssccptr  : bool,
-  svadu    : bool,
+  // Whether the hart can update PTE A/D bits in hardware. True for Svadu,
+  // and also when neither Svadu nor Svade is supported, where the model
+  // updates the PTE by default.
+  hw_ad_update : bool,
 }
 
 // Return true if a list of PMA regions are sorted and don't overlap, and the specified extension checks are satisfied.
-private function check_pma_regions(regions : list(PMA_Region), prev_base : bits(64), prev_size : bits(64), check_opts : pma_check_opts, found_valid_svadu_pma : bool) -> bool =
+private function check_pma_regions(regions : list(PMA_Region), prev_base : bits(64), prev_size : bits(64), check_opts : pma_check_opts, found_valid_ad_update_pma : bool) -> bool =
   match regions {
-    [||] => if check_opts.svadu & not(found_valid_svadu_pma) then {
-        print_endline("The Svadu extension is enabled but no memory region supports hardware page-table writes: Svadu requires at least one region provide this support.");
+    [||] => if check_opts.hw_ad_update & not(found_valid_ad_update_pma) then {
+        print_endline("Hardware updating of PTE A/D bits is enabled but no memory region supports hardware page-table writes: this requires at least one region provide this support.");
         false
       } else true,
     region :: rest => {
@@ -367,9 +370,9 @@ private function check_pma_regions(regions : list(PMA_Region), prev_base : bits(
         };
       };
 
-      let found_valid_svadu_pma = found_valid_svadu_pma | (attributes.supports_pte_write & attributes.reservability == RsrvEventual);
+      let found_valid_ad_update_pma = found_valid_ad_update_pma | (attributes.supports_pte_write & attributes.reservability == RsrvEventual);
 
-      check_pma_regions(rest, region.base, region.size, check_opts, found_valid_svadu_pma)
+      check_pma_regions(rest, region.base, region.size, check_opts, found_valid_ad_update_pma)
     },
   }
 
@@ -410,7 +413,9 @@ private function check_mem_layout() -> bool =
       zicclsm  = config extensions.Zicclsm.supported,
       ziccrse  = config extensions.Ziccrse.supported,
       ssccptr  = config extensions.Ssccptr.supported,
-      svadu    = config extensions.Svadu.supported,
+      // Svade-only harts never write the PTE, so they need no such region.
+      hw_ad_update = (config extensions.Svadu.supported : bool)
+                     | not(config extensions.Svade.supported : bool),
     };
     let pmas_ok  = check_pma_regions(pma_regions, zeros(), zeros(), check_opts, false);
     let clint_supported : bool = config platform.clint.supported;
