@@ -109,8 +109,9 @@ private function update_and_write_pte forall 'n, 'n in {4, 8} . (
         Err(_) => PTE_AD_Failed(PTW_No_Access()),
         Ok(mem_pte) =>
           if mem_pte != pte then
-            // The PTE changed since it was read. Only reachable via a TLB
-            // hit, where pte is the cached copy.
+            // The PTE changed since it was read. In the sequential model
+            // this means a stale TLB entry, since pte is then the cached
+            // copy. Under weak memory a concurrent write gets here too.
             PTE_AD_Stale()
           else match write_pte_conditional(pteAddr, pte_size, new_pte) {
             Ok(true)  => PTE_AD_Written(new_pte),
@@ -392,8 +393,11 @@ private function translate_TLB_miss forall 'v, is_sv_mode('v) . (
           add_to_TLB(sv_width, asid, vpn, ppn, pte, pteAddr, level, global);
           Ok(ppn, pbmt, ext_ptw)
         },
-        // The walk just read this PTE from memory, so the compare cannot
-        // fail here in the sequential model.
+        // The walk just read this PTE from memory, so in the sequential
+        // model the compare cannot fail here. Under weak memory it can, and
+        // the spec says to retry from step 2 until the write succeeds or the
+        // walk faults. How to model that is still open, so abort loudly
+        // rather than be silently wrong.
         PTE_AD_Stale()   => internal_error(__FILE__, __LINE__, "stale PTE after page table walk"),
         PTE_AD_Failed(e) => Err(e, ext_ptw),
       }
