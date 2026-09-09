@@ -37,7 +37,6 @@ jobs:
         # This needs be done before the git checkout step.
         if: startsWith(matrix.os, 'ubuntu') && job.container != null
         run: |
-          dnf update -y --enablerepo=devel
           dnf install -y git
 
       - name: Check out repository code
