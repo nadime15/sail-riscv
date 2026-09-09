@@ -164,6 +164,7 @@ jobs:
         with:
           cmake-version: "${{ matrix.cmake_version }}"
           install-clang: "false"
+          install-sail: "false"
 
       - name: Name build artifact
         id: name_build

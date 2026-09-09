@@ -13,6 +13,10 @@ inputs:
     description: "Install latest Clang"
     required: false
     default: "false"
+  install-sail:
+    description: "Install Sail (set false when using a pre-built simulator)"
+    required: false
+    default: "true"
 
 # This is the current CI Platform/Target support matrix:
 #
@@ -86,8 +90,12 @@ runs:
       if: runner.os == 'macOS'
       shell: bash
       run: |
-        brew install opam llvm lld
-        echo "$(brew --prefix llvm)/bin" >> $GITHUB_PATH
+        # gmp is the runtime lib for the model / downloaded simulator.
+        brew install gmp
+        if [ "${{ inputs.install-sail }}" = "true" ] || [ "${{ inputs.install-clang }}" = "true" ]; then
+          brew install opam llvm lld
+          echo "$(brew --prefix llvm)/bin" >> $GITHUB_PATH
+        fi
 
     - name: Install CMake
       shell: bash
@@ -99,7 +107,7 @@ runs:
         fi
         curl --location https://github.com/Kitware/CMake/releases/download/v${{ inputs.cmake-version }}/cmake-${{ inputs.cmake-version }}-${{ runner.os }}-$cmake_suffix.tar.gz | sudo tar xvz --directory=/usr/local --strip-components=1
     - name: Restore cached opam (macOS or latest Sail)
-      if: runner.os == 'macOS' || inputs.sail-version == 'latest'
+      if: (runner.os == 'macOS' || inputs.sail-version == 'latest') && inputs.install-sail == 'true'
       id: cache-opam-restore
       uses: actions/cache/restore@v4
       with:
@@ -107,14 +115,14 @@ runs:
         key: ${{ runner.os }}-${{ runner.arch }}-cmake-${{ inputs.cmake-version }}-sail-${{ inputs.sail-version }}-opam
 
     - name: Install Sail (Linux binary)
-      if: runner.os == 'Linux' && inputs.sail-version != 'latest'
+      if: runner.os == 'Linux' && inputs.sail-version != 'latest' && inputs.install-sail == 'true'
       shell: bash
       run: |
         sudo mkdir -p /usr/local
         curl --location https://github.com/rems-project/sail/releases/download/${{ inputs.sail-version }}-binary/sail-$(uname)-$(arch).tar.gz | sudo tar xvz --directory=/usr/local --strip-components=1
 
     - name: Install Sail (macOS opam)
-      if: runner.os == 'macOS' && steps.cache-opam-restore.outputs.cache-hit != 'true' && inputs.sail-version != 'latest'
+      if: runner.os == 'macOS' && steps.cache-opam-restore.outputs.cache-hit != 'true' && inputs.sail-version != 'latest' && inputs.install-sail == 'true'
       shell: bash
       run: |
         opam init --auto-setup --bare
@@ -124,7 +132,7 @@ runs:
         opam install -y sail.${{ inputs.sail-version }}
 
     - name: Install opam (latest Sail)
-      if: inputs.sail-version == 'latest'
+      if: inputs.sail-version == 'latest' && inputs.install-sail == 'true'
       shell: bash
       run: |
         if [ "${{ runner.os }}" = "Linux" ]; then
@@ -134,14 +142,14 @@ runs:
         fi
 
     - name: Setup opam (latest Sail)
-      if: inputs.sail-version == 'latest' && steps.cache-opam-restore.outputs.cache-hit != 'true'
+      if: inputs.sail-version == 'latest' && steps.cache-opam-restore.outputs.cache-hit != 'true' && inputs.install-sail == 'true'
       shell: bash
       run: |
         opam init --yes --no-setup --shell=sh --compiler=5.3.0
         opam install dune
 
     - name: Install Sail (latest Sail)
-      if: inputs.sail-version == 'latest'
+      if: inputs.sail-version == 'latest' && inputs.install-sail == 'true'
       shell: bash
       run: |
         git clone https://github.com/rems-project/sail.git
@@ -151,7 +159,7 @@ runs:
 
     - name: Save cached opam (macOS or latest Sail)
       # Update cache only on the master branch
-      if: (runner.os == 'macOS' || inputs.sail-version == 'latest') && github.ref == 'refs/heads/master'
+      if: (runner.os == 'macOS' || inputs.sail-version == 'latest') && github.ref == 'refs/heads/master' && inputs.install-sail == 'true'
       id: cache-opam-save
       uses: actions/cache/save@v4
       with:
@@ -159,6 +167,6 @@ runs:
         key: ${{ steps.cache-opam-restore.outputs.cache-primary-key }}
 
     - name: Load OPAM environment (macOS)
-      if: runner.os == 'macOS'
+      if: runner.os == 'macOS' && inputs.install-sail == 'true'
       shell: bash
       run: echo "$HOME/.opam/default/bin" >> $GITHUB_PATH

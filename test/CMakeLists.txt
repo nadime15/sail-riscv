@@ -316,4 +316,7 @@ if (FIRST_PARTY_TESTS)
     add_subdirectory("first_party")
 endif()
 
-add_subdirectory("unit_tests")
+# Unit tests link against the model target, so they need a full build.
+if (NOT SAIL_RISCV_SIM)
+    add_subdirectory("unit_tests")
+endif()

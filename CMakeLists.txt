@@ -180,54 +180,62 @@ else()
     endif()
 endif()
 
-find_program(SAIL_BIN "sail")
-if (NOT SAIL_BIN)
-    message(FATAL_ERROR "Sail not found. See README.md for installation instructions.")
-endif()
-message(STATUS "Found sail: ${SAIL_BIN}")
+if (NOT SAIL_RISCV_SIM)
+    find_program(SAIL_BIN "sail")
+    if (NOT SAIL_BIN)
+        message(FATAL_ERROR "Sail not found. See README.md for installation instructions.")
+    endif()
+    message(STATUS "Found sail: ${SAIL_BIN}")
 
-# Set sail_dir to Sail's library directory for use in build rules
-execute_process(
-    COMMAND ${SAIL_BIN} --dir
-    OUTPUT_VARIABLE sail_dir
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    COMMAND_ERROR_IS_FATAL ANY
-)
-message(STATUS "Sail library directory: ${sail_dir}")
+    # Set sail_dir to Sail's library directory for use in build rules
+    execute_process(
+        COMMAND ${SAIL_BIN} --dir
+        OUTPUT_VARIABLE sail_dir
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        COMMAND_ERROR_IS_FATAL ANY
+    )
+    message(STATUS "Sail library directory: ${sail_dir}")
+endif()
 
 option(COVERAGE "Compile with Sail coverage collection enabled.")
 
 include(GNUInstallDirs)
 
-# Third party dependencies.
-add_subdirectory("dependencies")
+if (NOT SAIL_RISCV_SIM)
+    # Third party dependencies.
+    add_subdirectory("dependencies")
 
-# Sail C runtime.
-add_subdirectory("sail_runtime")
+    # Sail C runtime.
+    add_subdirectory("sail_runtime")
+endif()
 
 # Sail configuration
 add_subdirectory("config")
 
-# Sail model generated C code.
-add_subdirectory("model")
+if (NOT SAIL_RISCV_SIM)
+    # Sail model generated C code.
+    add_subdirectory("model")
 
-# Emulator binary.
-add_subdirectory("c_emulator")
+    # Emulator binary.
+    add_subdirectory("c_emulator")
 
-# Lean emulator
-add_subdirectory("lean_emulator")
+    # Lean emulator
+    add_subdirectory("lean_emulator")
+endif()
 
 # Old pre-compiled riscv-tests & first-party tests.
 add_subdirectory("test")
 
-# Handwritten support files for provers
-add_subdirectory("handwritten_support")
+if (NOT SAIL_RISCV_SIM)
+    # Handwritten support files for provers
+    add_subdirectory("handwritten_support")
 
-# Convenience targets.
-add_custom_target(csim DEPENDS sail_riscv_sim)
-add_custom_target(check DEPENDS generated_model_rv)
+    # Convenience targets.
+    add_custom_target(csim DEPENDS sail_riscv_sim)
+    add_custom_target(check DEPENDS generated_model_rv)
 
-# TODO: Add `interpret` target.
+    # TODO: Add `interpret` target.
 
-# Release packaging.
-include(cmake/packaging.cmake)
+    # Release packaging.
+    include(cmake/packaging.cmake)
+endif()
