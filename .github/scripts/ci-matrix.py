@@ -69,11 +69,24 @@ def make_test_names(tests: list[str]) -> list[str]:
     tests = [t.upper().replace('-', '_') for t in tests]
     return tests
 
+def one_build_per_platform(build_entries: list[dict]) -> list[dict]:
+    # Run the test suites once per platform (os + container), not once
+    # per CMake version.
+    groups : dict = {}
+    for e in build_entries:
+        key = (e["os"], e.get("container"))
+        groups.setdefault(key, []).append(e)
+    picked : list[dict] = []
+    for entries in groups.values():
+        best = next((e for e in entries if e.get("run_all_steps") == "true"), entries[-1])
+        picked.append(best)
+    return picked
+
 def test_matrix_include(build_entries: list[dict], all: bool) -> list[dict]:
     entries : list[dict] = []
     tests = sail_riscv_tests(all)
 
-    for e in build_entries:
+    for e in one_build_per_platform(build_entries):
         for t in tests:
             t_ent = copy.deepcopy(e)
             t_ent["test"] = t
