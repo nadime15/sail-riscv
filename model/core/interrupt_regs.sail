@@ -227,12 +227,12 @@ function read_mip(read_type : XipReadType) -> Minterrupts =
   match read_type {
     IncludePlatformInterrupts => {
       let platform_interrupts =
-        supported_interrupts_mask([external_interrupts_pending(hgeie) with
+        [external_interrupts_pending(hgeie) with
           SSI = if currentlyEnabled(Ext_S) then supervisor_software_interrupt_pending() else 0b0,
-        ]);
-      Mk_Minterrupts(mip.bits | platform_interrupts.bits)
+        ];
+      supported_interrupts_mask(Mk_Minterrupts(mip.bits | platform_interrupts.bits))
     },
-    ExcludePlatformInterrupts => mip,
+    ExcludePlatformInterrupts => supported_interrupts_mask(mip),
   }
 
 // This should be called once at the start of instruction execution.
@@ -284,6 +284,8 @@ function update_mip() -> unit = {
                    then bool_to_bit(vstimecmp <=_u (cur_mtime + htimedelta))
                    else 0b0);
   };
+
+  mip = supported_interrupts_mask(mip);
 
   if old_mip != mip.bits then {
     csr_write_callback("mip", read_mip(IncludePlatformInterrupts).bits);
