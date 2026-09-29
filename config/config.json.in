@@ -631,7 +631,7 @@
       // writes the transformed instruction to `mtinst`/`htinst`. If false, zero
       // is written instead (the mandatory pseudoinstructions for guest-page
       // faults are unaffected).
-      "trap_writes_transformed_instruction": false,
+      "trap_writes_transformed_instruction": true,
       // Whether a guest-page fault writes the faulting guest physical address
       // to `htval`/`mtval2`. If false, `htval`/`mtval2` is written as zero.
       // Enabling Shtvala requires this option to be enabled.
