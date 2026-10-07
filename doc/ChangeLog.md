@@ -1,5 +1,12 @@
 # Release notes for the next version
 
+- Updates to the [configuration file](../config/config.json.in):
+- More `stateen` bits can be made read-only zero, see
+  `Stateen.ENVCFG_readonly_zero`, `CONTEXT_readonly_zero`, `P1P13_readonly_zero`,
+  `SRMCFG_readonly_zero` and `FCSR_readonly_zero` (under `extensions.Stateen`).
+- Bits of `mstateen0` can be made read-only one, see
+  `extensions.Stateen.mstateen0_readonly_one`.
+
 # Release notes for version 0.15
 
 The highlights of this release are the addition of the Double Trap

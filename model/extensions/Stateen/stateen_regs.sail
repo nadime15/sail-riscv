@@ -63,15 +63,17 @@ private function get_mstateen(idx : range(0, 3)) -> bits(64) = {
   }
 }
 
+let mstateen0_readonly_one : bits(64) = config extensions.Stateen.mstateen0_readonly_one
+
 function legalize_mstateen0(m : Mstateen0, v : bits(64)) -> Mstateen0 = {
-  let v = Mk_Mstateen0(v);
+  let v = Mk_Mstateen0(v | mstateen0_readonly_one);
   [m with
     SE0     = if config extensions.Stateen.SE0_readonly_zero then 0b0 else v[SE0],
-    ENVCFG  = if currentlyEnabled(Ext_S) then v[ENVCFG] else 0b0,
-    CONTEXT = if currentlyEnabled(Ext_Sdtrig) & (sdtrig_has_scontext | sdtrig_has_hcontext) then v[CONTEXT] else 0b0,
-    P1P13   = if delegh_csrs_are_defined & currentlyEnabled(Ext_H) & xlen == 32 then v[P1P13] else 0b0,
-    SRMCFG  = if currentlyEnabled(Ext_Ssqosid) then v[SRMCFG] else 0b0,
-    FCSR    = if hartSupports(Ext_Zfinx) & (misa[F] == 0b0) then v[FCSR] else 0b0,
+    ENVCFG  = if config extensions.Stateen.ENVCFG_readonly_zero : bool | not(currentlyEnabled(Ext_S)) then 0b0 else v[ENVCFG],
+    CONTEXT = if config extensions.Stateen.CONTEXT_readonly_zero : bool | not(currentlyEnabled(Ext_Sdtrig) & (sdtrig_has_scontext | sdtrig_has_hcontext)) then 0b0 else v[CONTEXT],
+    P1P13   = if config extensions.Stateen.P1P13_readonly_zero : bool | not(delegh_csrs_are_defined & currentlyEnabled(Ext_H) & xlen == 32) then 0b0 else v[P1P13],
+    SRMCFG  = if config extensions.Stateen.SRMCFG_readonly_zero : bool | not(currentlyEnabled(Ext_Ssqosid)) then 0b0 else v[SRMCFG],
+    FCSR    = if config extensions.Stateen.FCSR_readonly_zero : bool | not(hartSupports(Ext_Zfinx) & (misa[F] == 0b0)) then 0b0 else v[FCSR],
     C       = if config extensions.Stateen.C_readonly_zero then 0b0 else v[C],
   ];
 }
@@ -122,9 +124,9 @@ function legalize_hstateen0(h : Hstateen0, v : bits(64)) -> Hstateen0 = {
   let v = Mk_Hstateen0(v & get_hstateen_mask(0));
   [h with
     SE0     = if config extensions.Stateen.SE0_readonly_zero then 0b0 else v[SE0],
-    ENVCFG  = if currentlyEnabled(Ext_S) then v[ENVCFG] else 0b0,
-    CONTEXT = if currentlyEnabled(Ext_Sdtrig) & sdtrig_has_scontext then v[CONTEXT] else 0b0,
-    FCSR    = if hartSupports(Ext_Zfinx) & (misa[F] == 0b0) then v[FCSR] else 0b0,
+    ENVCFG  = if config extensions.Stateen.ENVCFG_readonly_zero : bool | not(currentlyEnabled(Ext_S)) then 0b0 else v[ENVCFG],
+    CONTEXT = if config extensions.Stateen.CONTEXT_readonly_zero : bool | not(currentlyEnabled(Ext_Sdtrig) & sdtrig_has_scontext) then 0b0 else v[CONTEXT],
+    FCSR    = if config extensions.Stateen.FCSR_readonly_zero : bool | not(hartSupports(Ext_Zfinx) & (misa[F] == 0b0)) then 0b0 else v[FCSR],
     C       = if config extensions.Stateen.C_readonly_zero then 0b0 else v[C],
   ];
 }
@@ -175,7 +177,7 @@ function legalize_sstateen0(s : Sstateen0, v : bits(32)) -> Sstateen0 = {
   let v = Mk_Sstateen0(v);
   let mask = get_sstateen_mask(0);
   let legalized = [s with
-    FCSR = if hartSupports(Ext_Zfinx) & (misa[F] == 0b0) then v[FCSR] else 0b0,
+    FCSR = if config extensions.Stateen.FCSR_readonly_zero : bool | not(hartSupports(Ext_Zfinx) & (misa[F] == 0b0)) then 0b0 else v[FCSR],
     C    = if config extensions.Stateen.C_readonly_zero then 0b0 else v[C],
   ];
   Mk_Sstateen0(legalized.bits & mask[31..0])
@@ -203,7 +205,7 @@ function is_zfinx_enabled_by_stateen() -> bool = check_stateen_bit(cur_privilege
 termination_measure is_zfinx_enabled_by_stateen() = 8 // > check_stateen_bit
 
 function reset_stateen() -> unit = {
-  mstateen0.bits = zeros();
+  mstateen0 = legalize_mstateen0(Mk_Mstateen0(zeros()), zeros());
   mstateen1.bits = zeros();
   mstateen2.bits = zeros();
   mstateen3.bits = zeros();

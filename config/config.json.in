@@ -1147,7 +1147,19 @@
       "Ssstateen": {
         "supported": true
       },
+      // Bits set here are read-only one in mstateen0.
+      // Bits for features the model does not implement
+      // stay read-only zero.
+      "mstateen0_readonly_one": {
+        "len": 64,
+        "value": "0x0000_0000_0000_0000"
+      },
       "C_readonly_zero": true,
+      "FCSR_readonly_zero": false,
+      "SRMCFG_readonly_zero": false,
+      "P1P13_readonly_zero": false,
+      "CONTEXT_readonly_zero": false,
+      "ENVCFG_readonly_zero": false,
       "SE0_readonly_zero": false
     },
     "Ssqosid": {

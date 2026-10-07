@@ -982,9 +982,24 @@ private function check_stateen_config() -> bool = {
     print_endline("Stateen SE0_readonly_zero is true but H extension is supported: SE0 must be writable when H is implemented.");
   };
   // TODO: Update when Zcmt is implemented
-  if config extensions.Stateen.SE0_readonly_zero : bool & ((config extensions.Zfinx.supported : bool) | not(config extensions.Stateen.C_readonly_zero : bool)) then {
+  if config extensions.Stateen.SE0_readonly_zero : bool & ((config extensions.Zfinx.supported : bool &
+    not(config extensions.Stateen.FCSR_readonly_zero : bool)) | not(config extensions.Stateen.C_readonly_zero : bool)) then {
     valid = false;
     print_endline("Stateen SE0_readonly_zero is true but sstateen0 has writable bits (FCSR due to Zfinx support or C due to disabled C_readonly_zero): SE0 must be writable.");
+  };
+  // Bits that may be read-only one in mstateen0.
+  let allowed : Mstateen0 = [Mk_Mstateen0(zeros()) with
+    SE0     = bool_to_bit(not(config extensions.Stateen.SE0_readonly_zero : bool)),
+    ENVCFG  = bool_to_bit(not(config extensions.Stateen.ENVCFG_readonly_zero : bool) & hartSupports(Ext_S)),
+    CONTEXT = bool_to_bit(not(config extensions.Stateen.CONTEXT_readonly_zero : bool) & hartSupports(Ext_Sdtrig) & (sdtrig_has_scontext | sdtrig_has_hcontext)),
+    P1P13   = bool_to_bit(not(config extensions.Stateen.P1P13_readonly_zero : bool) & delegh_csrs_are_defined &  hartSupports(Ext_H) & xlen == 32),
+    SRMCFG  = bool_to_bit(not(config extensions.Stateen.SRMCFG_readonly_zero : bool) & hartSupports(Ext_Ssqosid)),
+    FCSR    = bool_to_bit(not(config extensions.Stateen.FCSR_readonly_zero : bool) & hartSupports(Ext_Zfinx)),
+    C       = bool_to_bit(not(config extensions.Stateen.C_readonly_zero : bool)),
+  ];
+  if (mstateen0_readonly_one & ~(allowed.bits)) != zeros() then {
+    valid = false;
+    print_endline("Stateen mstateen0_readonly_one sets bits that must be read-only zero (unsupported feature, reserved bit or *_readonly_zero is set).");
   };
   valid
 }
