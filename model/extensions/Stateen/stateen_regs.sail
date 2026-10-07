@@ -53,16 +53,6 @@ register mstateen1 : Mstateen1 = Mk_Mstateen1(zeros())
 register mstateen2 : Mstateen2 = Mk_Mstateen2(zeros())
 register mstateen3 : Mstateen3 = Mk_Mstateen3(zeros())
 
-private function get_mstateen(idx : range(0, 3)) -> bits(64) = {
-  if not(is_mstateen_accessible()) then ones()
-  else match idx {
-    0 => mstateen0.bits,
-    1 => mstateen1.bits,
-    2 => mstateen2.bits,
-    3 => mstateen3.bits,
-  }
-}
-
 let mstateen0_readonly_one : bits(64) = config extensions.Stateen.mstateen0_readonly_one
 
 function legalize_mstateen0(m : Mstateen0, v : bits(64)) -> Mstateen0 = {
@@ -76,6 +66,20 @@ function legalize_mstateen0(m : Mstateen0, v : bits(64)) -> Mstateen0 = {
     FCSR    = if config extensions.Stateen.FCSR_readonly_zero : bool | not(hartSupports(Ext_Zfinx) & (misa[F] == 0b0)) then 0b0 else v[FCSR],
     C       = if config extensions.Stateen.C_readonly_zero then 0b0 else v[C],
   ];
+}
+
+// misa can change after the last write, so mstateen0 can be stale.
+// Any read of mstateen0 must go through this function.
+function read_mstateen0() -> Mstateen0 = legalize_mstateen0(mstateen0, mstateen0.bits)
+
+private function get_mstateen(idx : range(0, 3)) -> bits(64) = {
+  if not(is_mstateen_accessible()) then ones()
+  else match idx {
+    0 => read_mstateen0().bits,
+    1 => mstateen1.bits,
+    2 => mstateen2.bits,
+    3 => mstateen3.bits,
+  }
 }
 
 function legalize_mstateen1(m : Mstateen1, _v : bits(64)) -> Mstateen1 = { m }
