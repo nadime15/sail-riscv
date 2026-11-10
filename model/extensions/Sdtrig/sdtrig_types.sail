@@ -13,6 +13,108 @@
 // If `num_triggers` is zero, there is no valid index.
 type trigger_index = range(0, num_triggers - 1)
 
+/// Trigger configuration
+
+struct icount_config = {
+  supported               : bool,
+  count_hardwired_one     : bool,
+  self_write_sets_pending : bool,
+}
+
+struct etrigger_config = {
+  supported            : bool,
+  supported_exceptions : xlenbits,
+}
+
+struct itrigger_config = {
+  supported            : bool,
+  supported_interrupts : xlenbits,
+}
+
+struct address_access_sizes_config = {
+  bits8   : bool,
+  bits16  : bool,
+  bits32  : bool,
+  bits48  : bool,
+  bits64  : bool,
+  bits128 : bool,
+}
+
+struct data_access_sizes_config = {
+  bits8  : bool,
+  bits16 : bool,
+  bits32 : bool,
+  bits48 : bool,
+  bits64 : bool,
+}
+
+struct mcontrol6_config = {
+  supported                            : bool,
+  address_select_matches_all_addresses : bool,
+  supported_address_access_sizes       : address_access_sizes_config,
+  supported_data_access_sizes         : data_access_sizes_config,
+}
+
+struct mhselect_config = {
+  mcontext_match : bool,
+  vmid_match     : bool,
+}
+
+struct sselect_config = {
+  scontext_match : bool,
+  asid_match     : bool,
+}
+
+struct textra_config = {
+  mhselect    : mhselect_config,
+  sselect     : sselect_config,
+  mhvalue_len : range(0, 13),
+  svalue_len  : range(0, 32),
+}
+
+struct trigger_config = {
+  icount    : icount_config,
+  etrigger  : etrigger_config,
+  itrigger  : itrigger_config,
+  mcontrol6 : mcontrol6_config,
+  textra    : textra_config,
+}
+
+struct custom_trigger = {
+  indices : list(nat),
+  trigger : trigger_config,
+}
+
+let default_trigger_config : trigger_config = config extensions.Sdtrig.default_trigger
+let custom_triggers : list(custom_trigger) = config extensions.Sdtrig.custom_triggers
+
+
+private function index_in_list(indices : list(nat), i : nat) -> bool =
+  match indices {
+    [||]        => false,
+    // Configure a single trigger: [4]
+    // or multiple at once: [1, 2, 3]
+    // NOTE/TODO: Overlapping indices need to be (and will be) rejected.
+    idx :: rest => idx == i | index_in_list(rest, i),
+  }
+
+private function find_custom_trigger(triggers : list(custom_trigger), i : nat) -> option(trigger_config) =
+  match triggers {
+    // No custom triggers
+    [||]      => None(),
+    // Find the config for trigger i, or None() if the default applies.
+    c :: rest => if index_in_list(c.indices, i) then Some(c.trigger)
+                 else find_custom_trigger(rest, i),
+  }
+
+function trigger_config_for(i : trigger_index) -> trigger_config =
+  match find_custom_trigger(custom_triggers, i) {
+    // Return custom config for trigger i
+    Some(t) => t,
+    // Return default config for trigger i
+    None()  => default_trigger_config,
+  }
+
 // Trigger field types and encodings
 enum Trig_Type = {
   TT_none,         // no trigger
@@ -61,27 +163,27 @@ mapping trig_type_name : Trig_Type <-> string = {
   TT_reserved     <-> "reserved",
 }
 
-function is_supported_trigger_type(tt : bits(4)) -> bool = {
+function is_supported_trigger_type(trig_cfg : trigger_config, tt : bits(4)) -> bool = {
   if not(trig_type_bits_forwards_matches(tt)) then return false;
   let typ = trig_type_bits(tt);
   (typ == TT_none) | (typ == TT_disabled) |
-  (typ == TT_icount & sdtrig_has_icount) |
-  (typ == TT_etrigger & sdtrig_has_etrigger) |
-  (typ == TT_itrigger & sdtrig_has_itrigger) |
-  (typ == TT_mcontrol6 & sdtrig_has_mcontrol6)
+  (typ == TT_icount & trig_cfg.icount.supported) |
+  (typ == TT_etrigger & trig_cfg.etrigger.supported) |
+  (typ == TT_itrigger & trig_cfg.itrigger.supported) |
+  (typ == TT_mcontrol6 & trig_cfg.mcontrol6.supported)
 }
 
-function supported_triggers_info() -> bits(16) = {
+function supported_triggers_info(trig_cfg : trigger_config) -> bits(16) = {
   let flag = zero_extend(16, 0b1);
   // the model disables triggers via type 15, so it is always supported
   var info : bits(16) = flag << unsigned(trig_type_bits(TT_disabled));
-  if sdtrig_has_icount
+  if trig_cfg.icount.supported
   then info = info | (flag << unsigned(trig_type_bits(TT_icount)));
-  if sdtrig_has_etrigger
+  if trig_cfg.etrigger.supported
   then info = info | (flag << unsigned(trig_type_bits(TT_etrigger)));
-  if sdtrig_has_itrigger
+  if trig_cfg.itrigger.supported
   then info = info | (flag << unsigned(trig_type_bits(TT_itrigger)));
-  if sdtrig_has_mcontrol6
+  if trig_cfg.mcontrol6.supported
   then info = info | (flag << unsigned(trig_type_bits(TT_mcontrol6)));
   info
 }
@@ -156,41 +258,30 @@ mapping trig_match_size : bits(3) <-> Trig_Match_Size = {
   0b110 <-> 128,
 }
 
-let data_access_size_supports_8bits   : bool = config extensions.Sdtrig.mcontrol6.supported_data_access_sizes.bits8
-let data_access_size_supports_16bits  : bool = config extensions.Sdtrig.mcontrol6.supported_data_access_sizes.bits16
-let data_access_size_supports_32bits  : bool = config extensions.Sdtrig.mcontrol6.supported_data_access_sizes.bits32
-let data_access_size_supports_48bits  : bool = config extensions.Sdtrig.mcontrol6.supported_data_access_sizes.bits48
-let data_access_size_supports_64bits  : bool = config extensions.Sdtrig.mcontrol6.supported_data_access_sizes.bits64
-
-let address_access_size_supports_8bits   : bool = config extensions.Sdtrig.mcontrol6.supported_address_access_sizes.bits8
-let address_access_size_supports_16bits  : bool = config extensions.Sdtrig.mcontrol6.supported_address_access_sizes.bits16
-let address_access_size_supports_32bits  : bool = config extensions.Sdtrig.mcontrol6.supported_address_access_sizes.bits32
-let address_access_size_supports_48bits  : bool = config extensions.Sdtrig.mcontrol6.supported_address_access_sizes.bits48
-let address_access_size_supports_64bits  : bool = config extensions.Sdtrig.mcontrol6.supported_address_access_sizes.bits64
-let address_access_size_supports_128bits : bool = config extensions.Sdtrig.mcontrol6.supported_address_access_sizes.bits128
-
-function is_supported_match_size(s : bits(3), select : Compare_Selection) -> bool = {
+function is_supported_match_size(trig_cfg : trigger_config, s : bits(3), select : Compare_Selection) -> bool = {
   if not(trig_match_size_forwards_matches(s)) then return false;
+  let data_sizes = trig_cfg.mcontrol6.supported_data_access_sizes;
+  let addr_sizes = trig_cfg.mcontrol6.supported_address_access_sizes;
   match select {
     // data compares are limited by the size of `tdata2`,
     // which is validated in `validate_config`.
     Compare_Data    => match trig_match_size(s) {
       0   => true,
-      8   => data_access_size_supports_8bits,
-      16  => data_access_size_supports_16bits,
-      32  => data_access_size_supports_32bits,
-      48  => data_access_size_supports_48bits,
-      64  => data_access_size_supports_64bits,
+      8   => data_sizes.bits8,
+      16  => data_sizes.bits16,
+      32  => data_sizes.bits32,
+      48  => data_sizes.bits48,
+      64  => data_sizes.bits64,
       128 => false,
     },
     Compare_Address => match trig_match_size(s) {
       0   => true,
-      8   => address_access_size_supports_8bits,
-      16  => address_access_size_supports_16bits,
-      32  => address_access_size_supports_32bits,
-      48  => address_access_size_supports_48bits,
-      64  => address_access_size_supports_64bits,
-      128 => address_access_size_supports_128bits,
+      8   => addr_sizes.bits8,
+      16  => addr_sizes.bits16,
+      32  => addr_sizes.bits32,
+      48  => addr_sizes.bits48,
+      64  => addr_sizes.bits64,
+      128 => addr_sizes.bits128,
     },
   }
 }
@@ -233,12 +324,6 @@ bitfield Trigger_Extra_RV64 : bits(64) = {
   sselect   : 1 .. 0,
 }
 
-let mhselect_mcontext_match : bool = config extensions.Sdtrig.textra.mhselect.mcontext_match
-let mhselect_vmid_match : bool = config extensions.Sdtrig.textra.mhselect.vmid_match
-
-let sselect_scontext_match : bool = config extensions.Sdtrig.textra.sselect.scontext_match
-let sselect_asid_match : bool = config extensions.Sdtrig.textra.sselect.asid_match
-
 struct TExtra = {
   mhvalue   : bits(13),
   mhselect  : bits(3),
@@ -246,13 +331,6 @@ struct TExtra = {
   svalue    : bits(32),
   sselect   : bits(2),
 }
-
-// The number of implemented mhvalue and svalue bits.
-let sdtrig_mhvalue_len : range(0, 13) = config extensions.Sdtrig.textra.mhvalue_len
-let sdtrig_svalue_len  : range(0, 32) = config extensions.Sdtrig.textra.svalue_len
-// The corresponding masks for their values.
-let mhvalue_mask : bits(13) = zero_extend(ones(sdtrig_mhvalue_len))
-let svalue_mask  : bits(32) = zero_extend(ones(sdtrig_svalue_len))
 
 function TExtra_to_bits(t : TExtra) -> xlenbits = {
   if xlen == 32 then {
@@ -274,46 +352,53 @@ function TExtra_to_bits(t : TExtra) -> xlenbits = {
   }
 }
 
-function legalize_mhselect(mhselect : bits(3)) -> bits(3) = {
+function legalize_mhselect(trig_cfg : trigger_config, mhselect : bits(3)) -> bits(3) = {
+  let mcontext_match = trig_cfg.textra.mhselect.mcontext_match;
+  let vmid_match     = trig_cfg.textra.mhselect.vmid_match;
   match mhselect {
-    0b000 => mhselect,                                                                  // 0
-    0b001 => if hartSupports(Ext_H) & mhselect_mcontext_match then mhselect else 0b000, // 1
-    0b010 => if mhselect_vmid_match then mhselect else 0b000,                           // 2
-    0b011 => 0b000,                                                                     // 3
-    0b100 => if mhselect_mcontext_match then mhselect else 0b000,                       // 4
-    0b101 => if hartSupports(Ext_H) & mhselect_mcontext_match then mhselect else 0b000, // 5
-    0b110 => if mhselect_vmid_match then mhselect else 0b000,                           // 6
-    0b111 => 0b000,                                                                     // 7
+    0b000 => mhselect,                                                         // 0
+    0b001 => if hartSupports(Ext_H) & mcontext_match then mhselect else 0b000, // 1
+    0b010 => if vmid_match then mhselect else 0b000,                           // 2
+    0b011 => 0b000,                                                            // 3
+    0b100 => if mcontext_match then mhselect else 0b000,                       // 4
+    0b101 => if hartSupports(Ext_H) & mcontext_match then mhselect else 0b000, // 5
+    0b110 => if vmid_match then mhselect else 0b000,                           // 6
+    0b111 => 0b000,                                                            // 7
   }
 }
 
-function legalize_sselect(sselect : bits(2)) -> bits(2) = {
+function legalize_sselect(trig_cfg : trigger_config, sselect : bits(2)) -> bits(2) = {
   match sselect {
-    0b00 => sselect,                                          // 0
-    0b01 => if sselect_scontext_match then sselect else 0b00, // 1
-    0b10 => if sselect_asid_match then sselect else 0b00,     // 2
-    0b11 => 0b00,                                             // 3
+    0b00 => sselect,                                                          // 0
+    0b01 => if trig_cfg.textra.sselect.scontext_match then sselect else 0b00, // 1
+    0b10 => if trig_cfg.textra.sselect.asid_match then sselect else 0b00,     // 2
+    0b11 => 0b00,                                                             // 3
   }
 }
 
-function make_textra(v : xlenbits) -> TExtra = {
+function make_textra(trig_cfg : trigger_config, v : xlenbits) -> TExtra = {
+  let mhvalue_len = trig_cfg.textra.mhvalue_len;
+  let svalue_len  = trig_cfg.textra.svalue_len;
+  let mhvalue_mask : bits(13) = zero_extend(ones(mhvalue_len));
+  let svalue_mask  : bits(32) = zero_extend(ones(svalue_len));
+  let scontext_match = trig_cfg.textra.sselect.scontext_match;
   if xlen == 32 then {
     let data = Mk_Trigger_Extra_RV32(v);
     struct {
       mhvalue   = zero_extend(data[mhvalue]) & mhvalue_mask,
-      mhselect  = legalize_mhselect(data[mhselect]),
-      sbytemask = if sselect_scontext_match then zero_extend(data[sbytemask]) else zeros(),
+      mhselect  = legalize_mhselect(trig_cfg, data[mhselect]),
+      sbytemask = if scontext_match then zero_extend(data[sbytemask]) else zeros(),
       svalue    = if hartSupports(Ext_S) then zero_extend(data[svalue]) & svalue_mask else zeros(),
-      sselect   = legalize_sselect(data[sselect]),
+      sselect   = legalize_sselect(trig_cfg, data[sselect]),
     }
   } else {
     let data = Mk_Trigger_Extra_RV64(v);
     struct {
       mhvalue   = data[mhvalue] & mhvalue_mask,
-      mhselect  = legalize_mhselect(data[mhselect]),
-      sbytemask = if sselect_scontext_match then data[sbytemask] else zeros(),
+      mhselect  = legalize_mhselect(trig_cfg, data[mhselect]),
+      sbytemask = if scontext_match then data[sbytemask] else zeros(),
       svalue    = if hartSupports(Ext_S) then data[svalue] & svalue_mask else zeros(),
-      sselect   = legalize_sselect(data[sselect]),
+      sselect   = legalize_sselect(trig_cfg, data[sselect]),
     }
   }
 }
@@ -429,9 +514,6 @@ function MControl6_to_bits(t : MControl6) -> MControl6_bits =
     store       = bool_bit(t.store),
     load        = bool_bit(t.load),
   ]
-
-let icount_count_is_hardwired_one : bool = config extensions.Sdtrig.icount.count_hardwired_one
-let icount_self_write_sets_pending : bool = config extensions.Sdtrig.icount.self_write_sets_pending
 
 struct ICount = {
   dmode      : bool,
@@ -577,7 +659,7 @@ function trigger_name(t : Trigger) -> string =
   }
 
 let trig_reset_val : Trigger =
-  T_disabled(struct { dmode = false, data = zeros(), tdata2 = zeros(), textra = make_textra(zeros()) })
+  T_disabled(struct { dmode = false, data = zeros(), tdata2 = zeros(), textra = make_textra(default_trigger_config, zeros()) })
 
 function tdata1_of_trigger(t : Trigger) -> xlenbits =
   match t {
@@ -615,19 +697,18 @@ function trigger_is_in_chain(t : Trigger) -> bool =
     _              => false,
   }
 
-// For now, every trigger supports each supported type.
-function info_of_trigger(_t : Trigger) -> bits(16) =
-  supported_triggers_info()
+function info_of_trigger(idx : trigger_index) -> bits(16) =
+  supported_triggers_info(trigger_config_for(idx))
 
 bitfield TInfo : xlenbits = {
   version : 31 .. 24,
   info    : 15 .. 0,
 }
 
-function tinfo_of_trigger(t : Trigger) -> TInfo =
+function tinfo_of_trigger(idx : trigger_index) -> TInfo =
   [Mk_TInfo(zeros()) with
     version = 0x01, // Only support ratified version 1.0 for now.
-    info = info_of_trigger(t)]
+    info = info_of_trigger(idx)]
 
 // Other register layouts
 
@@ -666,16 +747,14 @@ function make_disabled_trigger(tdata1 : TData1, tdata2 : xlenbits, textra : TExt
                       tdata2 = tdata2,
                       textra })
 
-let supported_etrigger_mask : xlenbits = config extensions.Sdtrig.etrigger.supported_exceptions
-let supported_itrigger_mask : xlenbits = config extensions.Sdtrig.itrigger.supported_interrupts
-
 // Forward declaration.
 val allow_chain_at : (trigger_index) -> bool
 
 // TODO: support enabling tdata1.dmode when Debug Mode is supported with Sdext.
 function make_trigger(idx : trigger_index, tdata1 : TData1, tdata2 : xlenbits, textra : TExtra) -> Trigger = {
+  let trig_cfg = trigger_config_for(idx);
   let tt = tdata1[trig_type];
-  if   not(is_supported_trigger_type(tt))
+  if   not(is_supported_trigger_type(trig_cfg, tt))
   then {
     if get_config_print_trigger()
     then print_log("Cannot create unsupported trigger type " ^ bits_str(tt) ^ ".");
@@ -686,7 +765,7 @@ function make_trigger(idx : trigger_index, tdata1 : TData1, tdata2 : xlenbits, t
     TT_icount => {
       let v = Mk_ICount_bits(tdata1.bits);
       let act = v[action];
-      let count = if icount_count_is_hardwired_one then zero_extend(0x1) else v[count];
+      let count = if trig_cfg.icount.count_hardwired_one then zero_extend(0x1) else v[count];
       if is_supported_action(act) then {
         T_icount(struct {
           dmode = false,
@@ -715,7 +794,7 @@ function make_trigger(idx : trigger_index, tdata1 : TData1, tdata2 : xlenbits, t
       let act = v[action];
 
       let is_action_supported     = is_supported_action(act);
-      let is_interrupts_supported = (tdata2 & supported_itrigger_mask) == tdata2;
+      let is_interrupts_supported = (tdata2 & trig_cfg.itrigger.supported_interrupts) == tdata2;
       let is_valid_config         = is_action_supported & is_interrupts_supported;
 
       if is_valid_config then {
@@ -729,7 +808,7 @@ function make_trigger(idx : trigger_index, tdata1 : TData1, tdata2 : xlenbits, t
           s = if currentlyEnabled(Ext_S) then bool_bit(v[s]) else false,
           u = if currentlyEnabled(Ext_U) then bool_bit(v[u]) else false,
           action = trig_action(act),
-          tdata2 = tdata2 & supported_itrigger_mask,
+          tdata2 = tdata2 & trig_cfg.itrigger.supported_interrupts,
           textra,
           pending = false,
         })
@@ -738,7 +817,7 @@ function make_trigger(idx : trigger_index, tdata1 : TData1, tdata2 : xlenbits, t
           if not(is_action_supported)
           then print_log("Cannot create trigger type " ^ trig_type_name(tt) ^ " with unsupported action " ^ bits_str(act) ^ ".");
           if not(is_interrupts_supported)
-          then print_log("Cannot create trigger type " ^ trig_type_name(tt) ^ " with unsupported interrupts " ^ bits_str(tdata2) ^ " (supported = " ^ bits_str(supported_itrigger_mask) ^ ").");
+          then print_log("Cannot create trigger type " ^ trig_type_name(tt) ^ " with unsupported interrupts " ^ bits_str(tdata2) ^ " (supported = " ^ bits_str(trig_cfg.itrigger.supported_interrupts) ^ ").");
         };
         make_disabled_trigger(tdata1, tdata2, textra)
       }
@@ -748,7 +827,7 @@ function make_trigger(idx : trigger_index, tdata1 : TData1, tdata2 : xlenbits, t
       let act = v[action];
 
       let is_action_supported     = is_supported_action(act);
-      let is_exceptions_supported = (tdata2 & supported_etrigger_mask) == tdata2;
+      let is_exceptions_supported = (tdata2 & trig_cfg.etrigger.supported_exceptions) == tdata2;
       let is_valid_config         = is_action_supported & is_exceptions_supported;
 
       if is_valid_config then {
@@ -761,7 +840,7 @@ function make_trigger(idx : trigger_index, tdata1 : TData1, tdata2 : xlenbits, t
           s = if currentlyEnabled(Ext_S) then bool_bit(v[s]) else false,
           u = if currentlyEnabled(Ext_U) then bool_bit(v[u]) else false,
           action = trig_action(act),
-          tdata2 = tdata2 & supported_etrigger_mask,
+          tdata2 = tdata2 & trig_cfg.etrigger.supported_exceptions,
           textra,
           pending = false,
         })
@@ -770,7 +849,7 @@ function make_trigger(idx : trigger_index, tdata1 : TData1, tdata2 : xlenbits, t
           if not(is_action_supported)
           then print_log("Cannot create trigger type " ^ trig_type_name(tt) ^ " with unsupported action " ^ bits_str(act) ^ ".");
           if not(is_exceptions_supported)
-          then print_log("Cannot create trigger type " ^ trig_type_name(tt) ^ " with unsupported exceptions " ^ bits_str(tdata2) ^ " (supported = " ^ bits_str(supported_etrigger_mask) ^ ").");
+          then print_log("Cannot create trigger type " ^ trig_type_name(tt) ^ " with unsupported exceptions " ^ bits_str(tdata2) ^ " (supported = " ^ bits_str(trig_cfg.etrigger.supported_exceptions) ^ ").");
         };
         make_disabled_trigger(tdata1, tdata2, textra)
       }
@@ -780,7 +859,7 @@ function make_trigger(idx : trigger_index, tdata1 : TData1, tdata2 : xlenbits, t
       let act = v[action];
       let select = compare_select_bits(v[select]);
 
-      let is_size_supported      = is_supported_match_size(v[size], select);
+      let is_size_supported      = is_supported_match_size(trig_cfg, v[size], select);
       let is_action_supported    = is_supported_action(zero_extend(act));
       let is_match_supported     = is_supported_match_val(v[t_match]);
       let is_compare_value_valid =
@@ -865,7 +944,7 @@ function trigger_write_tdata1(idx : trigger_index, t : Trigger, tdata1 : xlenbit
       let data = Mk_ICount_bits(tdata1);
       let hit = data[hit];
       let pending = data[pending];
-      let count = if icount_count_is_hardwired_one then zero_extend(0x1) else data[count];
+      let count = if trigger_config_for(idx).icount.count_hardwired_one then zero_extend(0x1) else data[count];
       if get_config_print_trigger()
       then print_log(trigger_name(t) ^ " trigger #" ^ dec_str(idx) ^ ": hit <- " ^ bits_str(hit) ^ ", count <- " ^ bits_str(count));
       T_icount({s with hit = bool_bit(hit), pending = bool_bit(pending), new_count = Some(count)})
@@ -911,13 +990,13 @@ function trigger_write_tdata2(idx : trigger_index, t : Trigger, tdata2 : xlenbit
       T_mcontrol6({s with tdata2 = legalized})
     },
     T_itrigger(s) => {
-      let legalized = tdata2 & supported_itrigger_mask;
+      let legalized = tdata2 & trigger_config_for(idx).itrigger.supported_interrupts;
       if get_config_print_trigger()
       then print_log(trigger_name(t) ^ " trigger #" ^ dec_str(idx) ^ ": tdata2 <- " ^ bits_str(legalized) ^ " (write=" ^ bits_str(tdata2) ^ ")");
       T_itrigger({s with tdata2 = legalized})
     },
     T_etrigger(s) => {
-      let legalized = tdata2 & supported_etrigger_mask;
+      let legalized = tdata2 & trigger_config_for(idx).etrigger.supported_exceptions;
       if get_config_print_trigger()
       then print_log(trigger_name(t) ^ " trigger #" ^ dec_str(idx) ^ ": tdata2 <- " ^ bits_str(legalized) ^ " (write=" ^ bits_str(tdata2) ^ ")");
       T_etrigger({s with tdata2 = legalized})
@@ -930,7 +1009,7 @@ function trigger_write_tdata2(idx : trigger_index, t : Trigger, tdata2 : xlenbit
   }
 
 function trigger_write_tdata3(idx : trigger_index, t : Trigger, tdata3 : xlenbits) -> Trigger = {
-  let textra = make_textra(tdata3);
+  let textra = make_textra(trigger_config_for(idx), tdata3);
   if get_config_print_trigger()
   then print_log(trigger_name(t) ^ " trigger #" ^ dec_str(idx) ^ ": tdata3 <- " ^ bits_str(TExtra_to_bits(textra)) ^ " (write=" ^ bits_str(tdata3) ^ ")");
   match t {

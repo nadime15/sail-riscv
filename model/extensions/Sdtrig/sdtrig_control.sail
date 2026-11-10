@@ -87,7 +87,7 @@ function match_icount_triggers(priv : Privilege, reentrance : bool) -> unit = {
           // (`write_sets_pending` as false) be set.  If that write
           // updated `pending`, that value may be overridden.
           let set_pending : bool = match written_trigger_index {
-            Some(idx, TDATA1) => idx != i | icount_self_write_sets_pending,
+            Some(idx, TDATA1) => idx != i | trigger_config_for(i).icount.self_write_sets_pending,
             Some(_, _)        => true,
             None()            => true,
           };
@@ -98,7 +98,7 @@ function match_icount_triggers(priv : Privilege, reentrance : bool) -> unit = {
             // When count is 0, it stays at 0 until explicitly written.
             0 => t,
             1 => {t with
-                   count = if icount_count_is_hardwired_one then t.count else zeros(),
+                   count = if trigger_config_for(i).icount.count_hardwired_one then t.count else zeros(),
                    pending = set_pending},
             _ => {t with count = t.count - 1},
           };
@@ -227,15 +227,14 @@ private function compare_value_xlen(t_match : Trig_Match, value : xlenbits, tdat
   }
 }
 
-let address_select_matches_all : bool = config extensions.Sdtrig.mcontrol6.address_select_matches_all_addresses
-
 private function compare_address forall 'width, 0 < 'width <= max_mem_access. (
-  t_match : Trig_Match,
-  addr    : xlenbits,
-  width   : int('width),
-  tdata2  : xlenbits,
+  trig_cfg : trigger_config,
+  t_match  : Trig_Match,
+  addr     : xlenbits,
+  width    : int('width),
+  tdata2   : xlenbits,
 ) -> option(xlenbits) = {
-  let span = if address_select_matches_all then width - 1 else 0;
+  let span = if trig_cfg.mcontrol6.address_select_matches_all_addresses then width - 1 else 0;
 
   foreach (i from 0 to span) {
     let match_addr = addr + i;
@@ -317,7 +316,7 @@ private function match_mcontrol6(
       };
       let size_match : bool = compare_access_size(t.size, width);
       if addr_type_match & size_match & t.select == Compare_Address then {
-        let compare_result = compare_address(t.t_match, addr, width, t.tdata2);
+        let compare_result = compare_address(trigger_config_for(idx), t.t_match, addr, width, t.tdata2);
         if is_some(compare_result) then {
           if get_config_print_trigger()
           then print_log("Matched " ^ chain_info ^ " memory address trigger at index #" ^ dec_str(idx) ^ " with action " ^ trigger_action_name(t.action));
@@ -328,7 +327,7 @@ private function match_mcontrol6(
     },
     TriggerStore(addr, data, width) =>
       if t.store & t.select == Compare_Address & compare_access_size(t.size, width) then {
-        let compare_result = compare_address(t.t_match, addr, width, t.tdata2);
+        let compare_result = compare_address(trigger_config_for(idx), t.t_match, addr, width, t.tdata2);
         if is_some(compare_result) then {
           if get_config_print_trigger()
           then print_log("Matched " ^ chain_info ^ " memory store address trigger at index #" ^ dec_str(idx) ^ " with action " ^ trigger_action_name(t.action));
@@ -487,7 +486,7 @@ function fire_pending_before_triggers(_pti : pending_trigger_info) -> unit = {
 private function fire_trigger_after(idx : trigger_index) -> bool = {
   let (t, action, fired) : (Trigger, Trig_Action, bool) = match triggers[idx] {
     T_icount(t) => {
-      let t = if icount_count_is_hardwired_one
+      let t = if trigger_config_for(idx).icount.count_hardwired_one
               then {t with m = false, s = false, u = false, vs = false, vu = false}
               else t;
       (T_icount({t with pending = false, hit = true}), t.action, true)

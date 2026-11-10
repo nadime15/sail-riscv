@@ -83,13 +83,13 @@ function clause is_CSR_accessible(0x7a4, _, _) = currentlyEnabled(Ext_Sdtrig)
 function clause read_CSR(0x7a4) = {
   let idx = unsigned(tselect);
   assert(idx < num_triggers, "read(tinfo): out-of-range tselect: " ^ bits_str(tselect));
-  tinfo_of_trigger(triggers[idx]).bits
+  tinfo_of_trigger(idx).bits
 }
 function clause write_CSR(0x7a4, _value) = {
   let idx = unsigned(tselect);
   assert(idx < num_triggers, "write(tinfo): out-of-range tselect: " ^ bits_str(tselect));
   // Writing the tinfo CSR has no effect.
-  Ok(tinfo_of_trigger(triggers[idx]).bits)
+  Ok(tinfo_of_trigger(idx).bits)
 }
 
 register tcontrol : TControl = Mk_TControl(zeros())
