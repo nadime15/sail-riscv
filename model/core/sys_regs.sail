@@ -1329,6 +1329,16 @@ function architecture(priv : Privilege) -> Architecture = {
   })
 }
 
+// Effective XLEN for the given privilege mode. It is never wider than xlen,
+// since SXL and UXL can only be equal to or smaller than MXLEN.
+function effective_xlen(priv : Privilege) -> {'e, 'e in {32, 64} & 'e <= xlen. int('e)} =
+  if xlen == 32 then 32
+  else match architecture(priv) {
+    RV32  => 32,
+    RV64  => 64,
+    RV128 => (internal_error(__FILE__, __LINE__, "RV128 not supported") : int(64)),
+  }
+
 function in32BitMode() -> bool = {
   architecture(cur_privilege) == RV32
 }

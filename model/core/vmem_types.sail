@@ -12,6 +12,10 @@ type is_svx4_mode('v) -> Bool = 'v in {34, 41, 50, 59}
 type is_sv_or_svx4_mode('v : Int) -> Bool = is_sv_mode('v) | is_svx4_mode('v)
 type is_sv32_mode('v : Int) -> Bool = 'v == 32 | 'v == 34
 
+// Sv39 and above (and their x4 variants) are only available with a 64-bit
+// xlen. Sv32 and Sv32x4 are possible with any xlen.
+type is_sv_mode_for_xlen('v : Int) -> Bool = is_sv32_mode('v) | xlen == 64
+
 // Index of the root page table level, depending on the virtual mode.
 type root_level('v : Int), is_sv_or_svx4_mode('v) =
   if      'v == 32 | 'v == 34 then 1
